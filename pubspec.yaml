@@ -1,0 +1,24 @@
+name: fyp_hbs
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  image_picker: ^1.0.2
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets: 
+  - assets/images/QR.png
+  - assets/images/durianImage.jpeg
+  - assets/images/buyer.jpeg
