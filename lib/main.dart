@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:fyp_hbs/nav.dart';
+import 'package:fyp_hbs/authentication/login.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+void main() async{
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MainApp());
 }
 
@@ -13,7 +15,7 @@ class MainApp extends StatelessWidget {
     return const MaterialApp(
       debugShowCheckedModeBanner: false,
       title: "Hosba Durian System",
-      home: Nav()
+      home: LoginPage()
     );
   }
 }

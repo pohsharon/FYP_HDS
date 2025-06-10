@@ -10,6 +10,8 @@ dependencies:
   image_picker: ^1.0.2
   flutter:
     sdk: flutter
+  http: ^1.4.0
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:
@@ -22,3 +24,4 @@ flutter:
   - assets/images/QR.png
   - assets/images/durianImage.jpeg
   - assets/images/buyer.jpeg
+  - assets/images/logo.jpeg
