@@ -21,7 +21,6 @@ class AuthService {
       final data = jsonDecode(response.body);
       
       if (response.statusCode == 200) {
-        // Assuming your Laravel returns 'token' not 'access_token'
         if (data.containsKey("token")) {
           SharedPreferences prefs = await SharedPreferences.getInstance();
           await prefs.setString("token", data["token"]);
