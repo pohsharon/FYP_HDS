@@ -2,51 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/buyer/create_buyer.dart';
 import 'package:fyp_hbs/buyer/buyer_details.dart';
+import 'package:fyp_hbs/services/buyer_api.dart';
 
-class BuyerPage extends StatelessWidget {
+class BuyerPage extends StatefulWidget {
   const BuyerPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final mockBuyerData = [
-      {
-        'id': 'CMP00001',
-        'company': 'Durian Lovers',
-        'pic': 'John Doe',
-        'phone': '+60123456789',
-        'email': 'john.doe@example.com',
-        'location': 'Kuala Lumpur',
-        'state': 'Kedah',
-      },
-      {
-        'id': 'CMP00002',
-        'company': 'Fruit Paradise',
-        'pic': 'Jane Smith',
-        'phone': '+60198765432',
-        'email': 'jane.smith@example.com',
-        'location': 'George Town',
-        'state': 'Penang',
-      },
-      {
-        'id': 'CMP00003',
-        'company': 'Tropical Fruits Co.',
-        'pic': 'Alice Johnson',
-        'phone': '+60123456789',
-        'email': 'alice.johnson@example.com',
-        'location': 'Ipoh',
-        'state': 'Perak',
-      },
-      {
-        'id': 'CMP00004',
-        'company': 'Exotic Fruits Ltd.',
-        'pic': 'Bob Brown',
-        'phone': '+60123456789',
-        'email': 'bob@gmail.com',
-        'location': 'Kota Kinabalu',
-        'state': 'Sabah',
-      },
-    ];
+  State<BuyerPage> createState() => _BuyerPageState();
+}
 
+class _BuyerPageState extends State<BuyerPage> {
+  List<Map<String, dynamic>> buyers = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBuyers();
+  }
+
+  Future<void> _loadBuyers() async {
+    try {
+      final fetchedBuyers = await BuyerApi.fetchBuyers();
+      setState(() {
+        buyers = fetchedBuyers;
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error fetching buyers: $e');
+      setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -56,29 +45,35 @@ class BuyerPage extends StatelessWidget {
             _buildSearchBar(context),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: mockBuyerData.length,
-                itemBuilder: (context, index) {
-                  final buyer = mockBuyerData[index];
-                  return _buildBuyerCard(
-                    context,
-                    id: buyer['id']!,
-                    company: buyer['company']!,
-                    pic: buyer['pic']!,
-                    phone: buyer['phone']!,
-                    email: buyer['email']!,
-                    location: buyer['location']!,
-                    state: buyer['state']!,
-                  );
-                },
-              ),
+              child: isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: buyers.length,
+                      itemBuilder: (context, index) {
+                        final buyer = buyers[index];
+                        return _buildBuyerCard(
+                          context,
+                          id: buyer['uuid'] ?? '',
+                          company: buyer['company_name'] ?? '',
+                          pic: buyer['contact_name'] ?? '',
+                          phone: buyer['contact_number'] ?? '',
+                          email: buyer['email'] ?? '',
+                          location: buyer['address'] ?? '',
+                          state: 'Malaysia', // hardcoded or add 'state' if available
+                        );
+                      },
+                    ),
             ),
           ],
         ),
       ),
     );
   }
+
+  // Keep _buildSearchBar and _buildBuyerCard the same...
+}
+
 
   Widget _buildSearchBar(BuildContext context) {
     return Padding(
@@ -243,4 +238,3 @@ class BuyerPage extends StatelessWidget {
       ),
     );
   }
-}
