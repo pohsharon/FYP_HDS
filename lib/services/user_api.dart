@@ -3,70 +3,66 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 
-class BuyerApi {
-  /// Create a new buyer
-  static Future<Map<String, dynamic>> createBuyer({
-    required String companyName,
-    required String contactName,
-    String? contactNumber,
+class UserApi {
+  static Future<void> createUser({
+    required String name,
+    required String phone,
     String? email,
-    String? address,
+    required String role,
+    required bool isActive,
   }) async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
 
       final response = await http.post(
-        Uri.parse("${Config.apiBaseUrl}/buyers"),
+        Uri.parse("${Config.apiBaseUrl}/users"),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
         body: jsonEncode({
-          'company_name': companyName,
-          'contact_name': contactName,
-          'contact_number': contactNumber,
-          'email': email,
-          'address': address,
+          "name": name,
+          "email": email, 
+          "password": "hosbadurian",
+          "phone": phone,
+          "role": role.toLowerCase(),
+          "is_active": true,
         }),
       );
 
       final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return data;
-      } else {
-        throw Exception(data['message'] ?? 'Failed to create buyer');
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        throw Exception(data['message'] ?? 'Failed to create user');
       }
     } catch (e) {
       throw Exception('Error: ${e.toString()}');
     }
   }
 
-  /// Fetch all buyers
-  static Future<List<Map<String, dynamic>>> fetchBuyers() async {
+  static Future<List<Map<String, dynamic>>> fetchUsers() async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
 
       final response = await http.get(
-        Uri.parse("${Config.apiBaseUrl}/buyers"),
+        Uri.parse("${Config.apiBaseUrl}/users"),
         headers: {
-          'Accept': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
         },
       );
 
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
-        return List<Map<String, dynamic>>.from(data['data']);
+        return List<Map<String, dynamic>>.from(data);
       } else {
-        throw Exception(data['message'] ?? 'Failed to fetch buyers');
+        throw Exception(data["message"] ?? "Failed to fetch users");
       }
     } catch (e) {
-      throw Exception('Error: ${e.toString()}');
+      throw Exception("Error: ${e.toString()}");
     }
   }
 }

@@ -13,6 +13,10 @@ class SpeciesListPage extends StatefulWidget {
 
 class _SpeciesListPageState extends State<SpeciesListPage> {
   late Future<List<Species>> futureSpecies;
+  TextEditingController _searchController = TextEditingController();
+List<Species> _allSpecies = [];
+List<Species> _filteredSpecies = [];
+
 
   @override
   void initState() {
@@ -25,8 +29,8 @@ class _SpeciesListPageState extends State<SpeciesListPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Species List', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: AppColors.background,
+        title: const Text('Species List', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white), ),
+        backgroundColor: AppColors.pakistanGreen,
         elevation: 0,
         leading: const BackButton(color: Colors.black),
       ),
