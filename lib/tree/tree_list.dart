@@ -4,6 +4,8 @@ import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
+import 'package:fyp_hbs/tree/map.dart';
+
 
 class TreePage extends StatefulWidget {
   const TreePage({super.key});
@@ -51,7 +53,8 @@ class _TreePageState extends State<TreePage> {
                         context,
                         id: tree['tree_tag'],
                         type: tree['species']['name'],
-                        status: 'Flowering', // You can map flowering_period to this
+                        status:
+                            'Flowering', // You can map flowering_period to this
                         date: tree['planted_at'],
                         uuid: tree['uuid'],
                       );
@@ -71,16 +74,25 @@ class _TreePageState extends State<TreePage> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          const Icon(Icons.location_on, color: AppColors.danger, size: 30),
+          IconButton(
+            icon: const Icon(
+              Icons.location_on,
+              color: AppColors.danger,
+              size: 30,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const MapPage()),
+              );
+            },
+          ),
           const SizedBox(width: 5),
           Expanded(
             child: TextField(
               decoration: InputDecoration(
                 hintText: 'Search Tree ID',
-                hintStyle: TextStyle(
-                  color: AppColors.gray600,
-                  fontSize: 12,
-                ),
+                hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: const Icon(Icons.filter_alt_outlined),
                 filled: true,
@@ -133,7 +145,9 @@ class _TreePageState extends State<TreePage> {
     Color statusColor =
         status == 'Flowering' ? AppColors.successLight : AppColors.dangerLight;
     Color statusTextColor =
-        status == 'Flowering' ? AppColors.successActive : AppColors.dangerActive;
+        status == 'Flowering'
+            ? AppColors.successActive
+            : AppColors.dangerActive;
 
     return Card(
       color: AppColors.white,
@@ -200,7 +214,10 @@ class _TreePageState extends State<TreePage> {
                         ),
                       ),
                       const SizedBox(width: 4),
-                      const Text("•", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                      const Text(
+                        "•",
+                        style: TextStyle(color: Colors.grey, fontSize: 11),
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         date,
