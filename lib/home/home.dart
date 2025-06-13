@@ -10,7 +10,10 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Home Page'),
+        title: const Text(
+          'Home Page',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
         backgroundColor: AppColors.hunterGreen,
       ),
       body: Padding(
@@ -57,7 +60,10 @@ class HomePage extends StatelessWidget {
                   children: [
                     Icon(Icons.eco, color: Colors.white),
                     SizedBox(width: 10),
-                    Text('Create Species', style: TextStyle(color: Colors.white)),
+                    Text(
+                      'Create Species',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ],
                 ),
               ),

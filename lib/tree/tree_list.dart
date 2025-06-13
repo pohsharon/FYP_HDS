@@ -6,7 +6,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
 import 'package:fyp_hbs/tree/map.dart';
 
-
 class TreePage extends StatefulWidget {
   const TreePage({super.key});
 
@@ -16,11 +15,32 @@ class TreePage extends StatefulWidget {
 
 class _TreePageState extends State<TreePage> {
   late Future<List<dynamic>> _treesFuture;
+  List<dynamic> _allTrees = [];
+  List<dynamic> _filteredTrees = [];
 
   @override
   void initState() {
     super.initState();
-    _treesFuture = TreeApi.fetchTrees();
+    fetchTrees();
+  }
+
+  void fetchTrees() async {
+    final trees = await TreeApi.fetchTrees();
+    setState(() {
+      _allTrees = trees;
+      _filteredTrees = trees;
+    });
+  }
+
+  void filterTrees(String query) {
+    final filtered =
+        _allTrees.where((tree) {
+          final treeId = tree['tree_tag']?.toString().toLowerCase() ?? '';
+          return treeId.contains(query.toLowerCase());
+        }).toList();
+    setState(() {
+      _filteredTrees = filtered;
+    });
   }
 
   @override
@@ -34,34 +54,24 @@ class _TreePageState extends State<TreePage> {
             _buildSearchBar(context),
             const SizedBox(height: 16),
             Expanded(
-              child: FutureBuilder<List<dynamic>>(
-                future: _treesFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
-
-                  final trees = snapshot.data!;
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: trees.length,
-                    itemBuilder: (context, index) {
-                      final tree = trees[index];
-                      return _buildTreeCard(
-                        context,
-                        id: tree['tree_tag'],
-                        type: tree['species']['name'],
-                        status:
-                            'Flowering', // You can map flowering_period to this
-                        date: tree['planted_at'],
-                        uuid: tree['uuid'],
-                      );
-                    },
-                  );
-                },
-              ),
+              child:
+                  _filteredTrees.isEmpty
+                      ? const Center(child: Text("No trees found"))
+                      : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _filteredTrees.length,
+                        itemBuilder: (context, index) {
+                          final tree = _filteredTrees[index];
+                          return _buildTreeCard(
+                            context,
+                            id: tree['tree_tag'],
+                            type: tree['species']['name'],
+                            status: 'Flowering',
+                            date: tree['planted_at'],
+                            uuid: tree['uuid'],
+                          );
+                        },
+                      ),
             ),
           ],
         ),
@@ -90,6 +100,9 @@ class _TreePageState extends State<TreePage> {
           const SizedBox(width: 5),
           Expanded(
             child: TextField(
+              onChanged: (value) {
+                filterTrees(value);
+              },
               decoration: InputDecoration(
                 hintText: 'Search Tree ID',
                 hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),

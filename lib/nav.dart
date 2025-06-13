@@ -3,6 +3,7 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/tree/tree_list.dart';
 import 'package:fyp_hbs/buyer/buyer_list.dart';
 import 'package:fyp_hbs/home/home.dart';
+import 'package:fyp_hbs/QR.dart';
 
 class Nav extends StatefulWidget {
   const Nav({super.key});
@@ -31,7 +32,7 @@ class _NavState extends State<Nav> {
   }
 
   void _onFabPressed() {
-    print("QR Scanner Pressed");
+    Navigator.of(context).push(MaterialPageRoute(builder: (context) => const QRScannerPage()));
   }
 
   @override
