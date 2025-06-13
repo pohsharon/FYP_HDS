@@ -15,8 +15,11 @@ class TreePage extends StatefulWidget {
 
 class _TreePageState extends State<TreePage> {
   late Future<List<dynamic>> _treesFuture;
+  List<dynamic> trees = [];
   List<dynamic> _allTrees = [];
   List<dynamic> _filteredTrees = [];
+  List<String> _speciesList = [];
+  String? _selectedSpecies;
 
   @override
   void initState() {
@@ -25,11 +28,25 @@ class _TreePageState extends State<TreePage> {
   }
 
   void fetchTrees() async {
-    final trees = await TreeApi.fetchTrees();
-    setState(() {
-      _allTrees = trees;
-      _filteredTrees = trees;
-    });
+    try {
+      trees = await TreeApi.fetchTrees();
+      final speciesSet = <String>{};
+      for (var tree in trees) {
+        final speciesName = tree['species']?['name'] ?? 'Unknown Species';
+        if (speciesName != null) {
+          speciesSet.add(speciesName);
+        }
+      }
+
+      setState(() {
+        _treesFuture = Future.value(trees);
+        _allTrees = trees;
+        _filteredTrees = trees;
+        _speciesList = speciesSet.toList();
+      });
+    } catch (e) {
+      print('Failed to fetch trees: $e');
+    }
   }
 
   void filterTrees(String query) {
@@ -40,6 +57,80 @@ class _TreePageState extends State<TreePage> {
         }).toList();
     setState(() {
       _filteredTrees = filtered;
+    });
+  }
+
+  void _showSpeciesFilterDialog(BuildContext context) {
+    String? tempSelectedSpecies = _selectedSpecies;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Filter by Species"),
+          content: StatefulBuilder(
+            builder: (context, setStateDialog) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButton<String>(
+                    isExpanded: true,
+                    hint: const Text("Select a species"),
+                    value: tempSelectedSpecies,
+                    onChanged: (value) {
+                      setStateDialog(() {
+                        tempSelectedSpecies = value;
+                      });
+                    },
+                    items:
+                        _speciesList.map((species) {
+                          return DropdownMenuItem<String>(
+                            value: species,
+                            child: Text(species),
+                          );
+                        }).toList(),
+                  ),
+                ],
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _clearSpeciesFilter();
+              },
+              child: const Text("Clear Filter"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                if (tempSelectedSpecies != null) {
+                  _filterBySpecies(tempSelectedSpecies!);
+                }
+              },
+              child: const Text("Apply"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _filterBySpecies(String species) {
+    setState(() {
+      _selectedSpecies = species;
+      _filteredTrees =
+          _allTrees.where((tree) {
+            return tree['species']['name'] == species;
+          }).toList();
+    });
+  }
+
+  void _clearSpeciesFilter() {
+    setState(() {
+      _selectedSpecies = null;
+      _filteredTrees = _allTrees;
     });
   }
 
@@ -62,14 +153,7 @@ class _TreePageState extends State<TreePage> {
                         itemCount: _filteredTrees.length,
                         itemBuilder: (context, index) {
                           final tree = _filteredTrees[index];
-                          return _buildTreeCard(
-                            context,
-                            id: tree['tree_tag'],
-                            type: tree['species']['name'],
-                            status: 'Flowering',
-                            date: tree['planted_at'],
-                            uuid: tree['uuid'],
-                          );
+                          return _buildTreeCard(context, tree: tree);
                         },
                       ),
             ),
@@ -104,10 +188,13 @@ class _TreePageState extends State<TreePage> {
                 filterTrees(value);
               },
               decoration: InputDecoration(
-                hintText: 'Search Tree ID',
+                hintText: 'Search Tree',
                 hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: const Icon(Icons.filter_alt_outlined),
+                suffixIcon: GestureDetector(
+                  onTap: () => _showSpeciesFilterDialog(context),
+                  child: const Icon(Icons.filter_alt_outlined),
+                ),
                 filled: true,
                 fillColor: AppColors.white,
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -127,11 +214,18 @@ class _TreePageState extends State<TreePage> {
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: () {
-              Navigator.push(
+            onTap: () async {
+              final result = await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const CreateTreePage()),
+                MaterialPageRoute(builder: (_) => const CreateTreePage()),
               );
+
+              if (result == true) {
+                fetchTrees();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Tree list updated')),
+                );
+              }
             },
             child: Container(
               decoration: const BoxDecoration(
@@ -149,18 +243,19 @@ class _TreePageState extends State<TreePage> {
 
   Widget _buildTreeCard(
     BuildContext context, {
-    required String id,
-    required String type,
-    required String status,
-    required String date,
-    required String uuid,
+    required Map<String, dynamic> tree, // ✅ Accept tree map
   }) {
-    Color statusColor =
-        status == 'Flowering' ? AppColors.successLight : AppColors.dangerLight;
-    Color statusTextColor =
-        status == 'Flowering'
-            ? AppColors.successActive
-            : AppColors.dangerActive;
+    final String id = tree['tree_tag'];
+    final String type = tree['species']['name'];
+    final String date = tree['planted_at'];
+    final String uuid = tree['uuid'];
+
+    // Color statusColor =
+    //     status == 'Flowering' ? AppColors.successLight : AppColors.dangerLight;
+    // Color statusTextColor =
+    //     status == 'Flowering'
+    //         ? AppColors.successActive
+    //         : AppColors.dangerActive;
 
     return Card(
       color: AppColors.white,
@@ -197,22 +292,22 @@ class _TreePageState extends State<TreePage> {
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: statusColor,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          status,
-                          style: TextStyle(
-                            color: statusTextColor,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                        //   padding: const EdgeInsets.symmetric(
+                        //     horizontal: 8,
+                        //     vertical: 4,
+                        //   ),
+                        //   decoration: BoxDecoration(
+                        //     color: statusColor,
+                        //     borderRadius: BorderRadius.circular(12),
+                        //   ),
+                        //   child: Text(
+                        //     status,
+                        //     style: TextStyle(
+                        //       color: statusTextColor,
+                        //       fontSize: 10,
+                        //       fontWeight: FontWeight.w600,
+                        //     ),
+                        //   ),
                       ),
                     ],
                   ),
@@ -250,7 +345,7 @@ class _TreePageState extends State<TreePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => TreeDetailsPage(treeId: id),
+                    builder: (context) => TreeDetailsPage(tree: tree),
                   ),
                 );
               },

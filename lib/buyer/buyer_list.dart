@@ -13,6 +13,7 @@ class BuyerPage extends StatefulWidget {
 
 class _BuyerPageState extends State<BuyerPage> {
   List<Map<String, dynamic>> buyers = [];
+  List<Map<String, dynamic>> allBuyers = [];
   bool isLoading = true;
 
   @override
@@ -25,12 +26,27 @@ class _BuyerPageState extends State<BuyerPage> {
     try {
       final fetchedBuyers = await BuyerApi.fetchBuyers();
       setState(() {
+        allBuyers = fetchedBuyers;
         buyers = fetchedBuyers;
         isLoading = false;
       });
     } catch (e) {
-      print('Error fetching buyers: $e');
       setState(() => isLoading = false);
+    }
+  }
+
+  void filterBuyers(String query) {
+    if (query.isEmpty) {
+      setState(() => buyers = allBuyers);
+    } else {
+      final filtered =
+          allBuyers.where((buyer) {
+            final company = buyer['company_name']?.toLowerCase() ?? '';
+            final contactName = buyer['contact_name']?.toLowerCase() ?? '';
+            return company.contains(query.toLowerCase()) ||
+                contactName.contains(query.toLowerCase());
+          }).toList();
+      setState(() => buyers = filtered);
     }
   }
 
@@ -45,35 +61,33 @@ class _BuyerPageState extends State<BuyerPage> {
             _buildSearchBar(context),
             const SizedBox(height: 16),
             Expanded(
-              child: isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: buyers.length,
-                      itemBuilder: (context, index) {
-                        final buyer = buyers[index];
-                        return _buildBuyerCard(
-                          context,
-                          id: buyer['uuid'] ?? '',
-                          company: buyer['company_name'] ?? '',
-                          pic: buyer['contact_name'] ?? '',
-                          phone: buyer['contact_number'] ?? '',
-                          email: buyer['email'] ?? '',
-                          location: buyer['address'] ?? '',
-                          state: 'Malaysia', // hardcoded or add 'state' if available
-                        );
-                      },
-                    ),
+              child:
+                  isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: buyers.length,
+                        itemBuilder: (context, index) {
+                          final buyer = buyers[index];
+                          return _buildBuyerCard(
+                            context,
+                            id: buyer['uuid'] ?? '',
+                            company: buyer['company_name'] ?? '',
+                            pic: buyer['contact_name'] ?? '',
+                            phone: buyer['contact_number'] ?? '',
+                            email: buyer['email'] ?? '',
+                            location: buyer['address'] ?? '',
+                            state:
+                                'Malaysia', // hardcoded or add 'state' if available
+                          );
+                        },
+                      ),
             ),
           ],
         ),
       ),
     );
   }
-
-  // Keep _buildSearchBar and _buildBuyerCard the same...
-}
-
 
   Widget _buildSearchBar(BuildContext context) {
     return Padding(
@@ -88,11 +102,14 @@ class _BuyerPageState extends State<BuyerPage> {
           const SizedBox(width: 5),
           Expanded(
             child: TextField(
+              onChanged: (value) {
+                filterBuyers(value);
+              },
               decoration: InputDecoration(
-                hintText: 'Search Company Name',
+                hintText: 'Search Buyer',
                 hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: const Icon(Icons.filter_alt_outlined),
+                // suffixIcon: const Icon(Icons.filter_alt_outlined),
                 filled: true,
                 fillColor: AppColors.white,
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -116,7 +133,11 @@ class _BuyerPageState extends State<BuyerPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => CreateBuyerPage()),
-              );
+              ).then((value) {
+                if (value == true) {
+                  _loadBuyers();
+                }
+              });
             },
             child: Container(
               decoration: const BoxDecoration(
@@ -238,3 +259,4 @@ class _BuyerPageState extends State<BuyerPage> {
       ),
     );
   }
+}

@@ -89,7 +89,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
         const SnackBar(content: Text('Tree created successfully')),
       );
 
-      Navigator.pop(context); // Go back or clear form if needed
+      Navigator.pop(context, true);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
@@ -233,7 +233,7 @@ DropdownButtonFormField<String>(
               ElevatedButton(
                 onPressed: isLoading ? null : _saveTree,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF004225),
+                  backgroundColor: AppColors.pakistanGreen,
                 ),
                 child: isLoading
                     ? const CircularProgressIndicator(color: Colors.white)

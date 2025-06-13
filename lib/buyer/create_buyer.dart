@@ -149,7 +149,7 @@ class _CreateBuyerPageState extends State<CreateBuyerPage> {
                             content: Text('Buyer created successfully!'),
                           ),
                         );
-                        Navigator.pop(context); // or clear form
+                        Navigator.pop(context, true);
                       }
                     } catch (e) {
                       ScaffoldMessenger.of(

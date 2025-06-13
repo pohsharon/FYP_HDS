@@ -2,12 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 
 class TreeDetailsPage extends StatelessWidget {
-  final String treeId;
+  final Map<String, dynamic> tree;
 
-  const TreeDetailsPage({super.key, required this.treeId});
+  const TreeDetailsPage({super.key, required this.tree});
 
   @override
   Widget build(BuildContext context) {
+    final String treeTag = tree['tree_tag'] ?? 'Unknown';
+    final String treeType = tree['species']?['name'] ?? 'Unknown Type';
+    final String treeDate = tree['planted_at'] ?? 'Unknown Date';
+    final String treeUuid = tree['uuid'] ?? '';
+    final String treeImage = tree['thumbnail_base64'] ?? '';
+    final String treeStatus = tree['status'] ?? 'Unknown Status';
+    final int height = tree['height'] ?? 0;
+    final int width = tree['width'] ?? 0;
+
     return DefaultTabController(
       length: 4,
       child: Scaffold(
@@ -29,16 +38,12 @@ class TreeDetailsPage extends StatelessWidget {
                 ),
                 SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0,
-                      vertical: 0.0,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
                     child: Row(
                       children: [
                         Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            shape: BoxShape.rectangle,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: IconButton(
@@ -50,7 +55,6 @@ class TreeDetailsPage extends StatelessWidget {
                         Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            shape: BoxShape.rectangle,
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(blurRadius: 4, color: Colors.black26),
@@ -58,7 +62,9 @@ class TreeDetailsPage extends StatelessWidget {
                           ),
                           child: IconButton(
                             icon: const Icon(Icons.edit),
-                            onPressed: () => Navigator.pop(context),
+                            onPressed: () {
+                              // TODO: navigate to edit tree page
+                            },
                           ),
                         ),
                       ],
@@ -81,37 +87,20 @@ class TreeDetailsPage extends StatelessWidget {
                         Row(
                           children: [
                             Text(
-                              treeId,
+                              treeTag,
                               style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.successLight,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Text(
-                                "Flowering",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.successActive,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
+                            // Add status label here if needed
                           ],
                         ),
                         const SizedBox(height: 4),
-                        const Text(
-                          "Musang King",
-                          style: TextStyle(color: Colors.grey),
+                        Text(
+                          treeType,
+                          style: const TextStyle(color: Colors.grey),
                         ),
                       ],
                     ),
@@ -135,11 +124,20 @@ class TreeDetailsPage extends StatelessWidget {
               child: Wrap(
                 spacing: 16,
                 runSpacing: 16,
-                children: const [
-                  _InfoCard(label: "Planting Date", value: "12/01/2020"),
-                  _InfoCard(label: "Flowering Period", value: "3"),
-                  _InfoCard(label: "Height", value: "2.13 m"),
-                  _InfoCard(label: "Width", value: "1.5 m"),
+                children: [
+                  _InfoCard(label: "Planting Date", value: treeDate),
+                  _InfoCard(
+                    label: "Flowering Period",
+                    value: tree['flowering_period']?.toString() ?? '-',
+                  ),
+                  _InfoCard(
+                    label: "Height",
+                    value: tree['height'] != null ? "${tree['height']} m" : '-',
+                  ),
+                  _InfoCard(
+                    label: "Width",
+                    value: tree['width'] != null ? "${tree['width']} m" : '-',
+                  ),
                 ],
               ),
             ),
@@ -154,10 +152,7 @@ class TreeDetailsPage extends StatelessWidget {
                 Tab(text: "Harvest"),
               ],
               labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-              unselectedLabelStyle: TextStyle(
-                fontWeight: FontWeight.normal,
-                fontSize: 11,
-              ),
+              unselectedLabelStyle: TextStyle(fontSize: 11),
               indicatorColor: AppColors.hunterGreen,
               indicatorWeight: 3,
             ),
