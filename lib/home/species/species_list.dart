@@ -12,16 +12,34 @@ class SpeciesListPage extends StatefulWidget {
 }
 
 class _SpeciesListPageState extends State<SpeciesListPage> {
-  late Future<List<Species>> futureSpecies;
-  TextEditingController _searchController = TextEditingController();
-List<Species> _allSpecies = [];
-List<Species> _filteredSpecies = [];
-
+  List<Species> _allSpecies = [];
+  List<Species> _filteredSpecies = [];
 
   @override
   void initState() {
     super.initState();
-    futureSpecies = SpeciesApi.fetchSpecies();
+    fetchSpecies();
+  }
+
+  void fetchSpecies() async {
+    final speciesList = await SpeciesApi.fetchSpecies();
+    setState(() {
+      _allSpecies = speciesList;
+      _filteredSpecies = speciesList;
+    });
+  }
+
+  void _filterSpecies(String query) {
+    final filtered =
+        _allSpecies.where((species) {
+          final lowerQuery = query.toLowerCase();
+          return species.code.toLowerCase().contains(lowerQuery) ||
+              species.name.toLowerCase().contains(lowerQuery);
+        }).toList();
+
+    setState(() {
+      _filteredSpecies = filtered;
+    });
   }
 
   @override
@@ -29,7 +47,10 @@ List<Species> _filteredSpecies = [];
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Species List', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white), ),
+        title: const Text(
+          'Species List',
+          style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white),
+        ),
         backgroundColor: AppColors.pakistanGreen,
         elevation: 0,
         leading: const BackButton(color: Colors.black),
@@ -41,35 +62,26 @@ List<Species> _filteredSpecies = [];
             _buildSearchBar(context),
             const SizedBox(height: 16),
             Expanded(
-              child: FutureBuilder<List<Species>>(
-                future: futureSpecies,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const Center(child: Text('No species found.'));
-                  }
-
-                  final speciesList = snapshot.data!;
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: speciesList.length,
-                    itemBuilder: (context, index) {
-                      final species = speciesList[index];
-                      return _buildSpeciesCard(
-                        context,
-                        name: species.name,
-                        code: species.code,
-                        description: species.description ?? '',
-                        treeCount: species.treeCount.toString(),
-                        status: species.isActive ? 'Inactive' : 'Active',
-                      );
-                    },
-                  );
-                },
-              ),
+              child:
+                  _allSpecies.isEmpty
+                      ? const Center(child: CircularProgressIndicator())
+                      : _filteredSpecies.isEmpty
+                      ? const Center(child: Text('No species found.'))
+                      : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _filteredSpecies.length,
+                        itemBuilder: (context, index) {
+                          final species = _filteredSpecies[index];
+                          return _buildSpeciesCard(
+                            context,
+                            name: species.name,
+                            code: species.code,
+                            description: species.description ?? '',
+                            treeCount: species.treeCount.toString(),
+                            status: species.isActive ? 'Inactive' : 'Active',
+                          );
+                        },
+                      ),
             ),
           ],
         ),
@@ -85,6 +97,7 @@ List<Species> _filteredSpecies = [];
           const SizedBox(width: 5),
           Expanded(
             child: TextField(
+              onChanged: (value) => _filterSpecies(value),
               decoration: InputDecoration(
                 hintText: 'Search Species Code',
                 hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
@@ -109,11 +122,17 @@ List<Species> _filteredSpecies = [];
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: () {
-              Navigator.push(
+            onTap: () async {
+              final result = await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => CreateSpeciesPage()),
+                MaterialPageRoute(builder: (_) => const CreateSpeciesPage()),
               );
+
+              if (result == true) {
+                setState(() {
+                  fetchSpecies();
+                });
+              }
             },
             child: Container(
               decoration: const BoxDecoration(
@@ -137,25 +156,34 @@ List<Species> _filteredSpecies = [];
     required String treeCount,
     required String status,
   }) {
-    Color statusColor = status == 'Active' ? AppColors.successLight : AppColors.dangerLight;
-    Color statusTextColor = status == 'Active' ? AppColors.successActive : AppColors.dangerActive;
+    Color statusColor =
+        status == 'Active' ? AppColors.successLight : AppColors.dangerLight;
+    Color statusTextColor =
+        status == 'Active' ? AppColors.successActive : AppColors.dangerActive;
 
     return GestureDetector(
       onTap: () {
         if (description.trim().isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No description available.'), duration: Duration(seconds: 2)),
+            const SnackBar(
+              content: Text('No description available.'),
+              duration: Duration(seconds: 2),
+            ),
           );
         } else {
           showDialog(
             context: context,
-            builder: (context) => AlertDialog(
-              title: Text(name),
-              content: Text(description),
-              actions: [
-                TextButton(child: const Text('Close'), onPressed: () => Navigator.of(context).pop()),
-              ],
-            ),
+            builder:
+                (context) => AlertDialog(
+                  title: Text(name),
+                  content: Text(description),
+                  actions: [
+                    TextButton(
+                      child: const Text('Close'),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
           );
         }
       },
@@ -178,10 +206,19 @@ List<Species> _filteredSpecies = [];
                   children: [
                     Row(
                       children: [
-                        Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(
+                          name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: statusColor,
                             borderRadius: BorderRadius.circular(12),
@@ -200,14 +237,27 @@ List<Species> _filteredSpecies = [];
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Text(code, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                        Text(
+                          code,
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 11,
+                          ),
+                        ),
                       ],
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 4),
-              Text(treeCount, style: const TextStyle(color: AppColors.gray800, fontSize: 15, fontWeight: FontWeight.bold)),
+              Text(
+                treeCount,
+                style: const TextStyle(
+                  color: AppColors.gray800,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         ),

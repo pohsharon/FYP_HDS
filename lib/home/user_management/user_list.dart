@@ -14,7 +14,13 @@ class _UserListPageState extends State<UserListPage> {
   @override
   void initState() {
     super.initState();
-    _userFuture = UserApi.fetchUsers();
+    fetchUsers();
+  }
+
+  void fetchUsers() {
+    setState(() {
+      _userFuture = UserApi.fetchUsers();
+    });
   }
 
   Widget _buildUserCard(
@@ -22,9 +28,10 @@ class _UserListPageState extends State<UserListPage> {
     Map<String, dynamic> user, {
     bool isOwner = false,
   }) {
-    final roleText = (user['roles'] as List).isEmpty
-        ? 'No Role'
-        : (user['roles'] as List).join(', ');
+    final roleText =
+        (user['roles'] as List).isEmpty
+            ? 'No Role'
+            : (user['roles'] as List).join(', ');
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 6),
@@ -46,8 +53,7 @@ class _UserListPageState extends State<UserListPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(roleText),
-              if (isOwner)
-                const Icon(Icons.lock, size: 16, color: Colors.grey),
+              if (isOwner) const Icon(Icons.lock, size: 16, color: Colors.grey),
             ],
           ),
         ),
@@ -80,9 +86,9 @@ class _UserListPageState extends State<UserListPage> {
             final users = snapshot.data ?? [];
 
             final activeUsers =
-                users.where((u) => u['is_active'] == 1).toList();
-            final deactivatedUsers =
                 users.where((u) => u['is_active'] != 1).toList();
+            final deactivatedUsers =
+                users.where((u) => u['is_active'] == 1).toList();
 
             return ListView(
               children: [
@@ -91,25 +97,42 @@ class _UserListPageState extends State<UserListPage> {
                   children: [
                     const Text(
                       'Active Users',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     ElevatedButton.icon(
-                      onPressed: () => showAddUserSheet(context),
-                      icon: const Icon(Icons.add, size: 12, color: Colors.white),
-                      label: const Text('Add User', style: TextStyle(fontSize: 12, color: Colors.white)),
+                      onPressed: () async {
+                        final shouldRefresh = await showAddUserSheet(context);
+                        if (shouldRefresh == true) {
+                          fetchUsers();
+                        }
+                      },
+                      icon: const Icon(
+                        Icons.add,
+                        size: 12,
+                        color: Colors.white,
+                      ),
+                      label: const Text(
+                        'Add User',
+                        style: TextStyle(fontSize: 12, color: Colors.white),
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.hunterGreen,
                       ),
                     ),
                   ],
                 ),
+
                 const SizedBox(height: 10),
-                ...activeUsers.map((user) => _buildUserCard(
-                      context,
-                      user,
-                      isOwner: user['roles']?.contains('Owner') ?? false,
-                    )),
+                ...activeUsers.map(
+                  (user) => _buildUserCard(
+                    context,
+                    user,
+                    isOwner: user['roles']?.contains('Owner') ?? false,
+                  ),
+                ),
                 if (deactivatedUsers.isNotEmpty) ...[
                   const SizedBox(height: 20),
                   const Text(
@@ -117,7 +140,9 @@ class _UserListPageState extends State<UserListPage> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  ...deactivatedUsers.map((user) => _buildUserCard(context, user)),
+                  ...deactivatedUsers.map(
+                    (user) => _buildUserCard(context, user),
+                  ),
                 ],
               ],
             );

@@ -147,7 +147,7 @@ class _TreePageState extends State<TreePage> {
             Expanded(
               child:
                   _filteredTrees.isEmpty
-                      ? const Center(child: Text("No trees found"))
+                      ? const Center(child: Text("Loading..."))
                       : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         itemCount: _filteredTrees.length,
@@ -342,10 +342,15 @@ class _TreePageState extends State<TreePage> {
             // View Button
             OutlinedButton(
               onPressed: () {
+                // Navigator.pushNamed(
+                //   context,
+                //   '/tree-details',
+                //   arguments: tree['id'].toString(),
+                // );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => TreeDetailsPage(tree: tree),
+                    builder: (context) => TreeDetailsPage(treeID: uuid),
                   ),
                 );
               },

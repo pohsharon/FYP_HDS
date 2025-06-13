@@ -1,101 +1,123 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
+import 'package:fyp_hbs/services/tree_api.dart';
+import 'dart:convert';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:fyp_hbs/tree/map.dart';
 
-class TreeDetailsPage extends StatelessWidget {
-  final Map<String, dynamic> tree;
+class TreeDetailsPage extends StatefulWidget {
+  final String treeID;
 
-  const TreeDetailsPage({super.key, required this.tree});
+  const TreeDetailsPage({super.key, required this.treeID});
+
+  @override
+  State<TreeDetailsPage> createState() => _TreeDetailsPageState();
+}
+
+class _TreeDetailsPageState extends State<TreeDetailsPage> {
+  bool isLoading = true;
+  Map<String, dynamic>? tree;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTreeDetails();
+  }
+
+  Future<void> _loadTreeDetails() async {
+    try {
+      final data = await TreeApi.getTreeById(widget.treeID);
+      setState(() {
+        tree = data;
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error loading tree: $e')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final String treeTag = tree['tree_tag'] ?? 'Unknown';
-    final String treeType = tree['species']?['name'] ?? 'Unknown Type';
-    final String treeDate = tree['planted_at'] ?? 'Unknown Date';
-    final String treeUuid = tree['uuid'] ?? '';
-    final String treeImage = tree['thumbnail_base64'] ?? '';
-    final String treeStatus = tree['status'] ?? 'Unknown Status';
-    final int height = tree['height'] ?? 0;
-    final int width = tree['width'] ?? 0;
+    if (isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (tree == null) {
+      return const Scaffold(body: Center(child: Text("Failed to load tree.")));
+    }
+
+    final String treeTag = tree!['tree_tag'] ?? 'Unknown';
+    final String treeType = tree!['species']?['name'] ?? 'Unknown Type';
+    final String treeDate = tree!['planted_at'] ?? 'Unknown Date';
+    final String treeImage = tree!['thumbnail_base64'] ?? '';
+    final String uuid = tree!['uuid'] ?? 'Unknown UUID';
+    final String floweringPeriod = tree!['flowering_period']?.toString() ?? '-';
+    final double height = tree!['height']?.toDouble() ?? 0;
+    final double width = tree!['width']?.toDouble() ?? 0;
 
     return DefaultTabController(
       length: 4,
       child: Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            "Tree Details",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          ),
+          backgroundColor: AppColors.pakistanGreen,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.edit, color: Colors.white),
+              onPressed: () {
+                // Navigate to edit page or show edit dialog
+              },
+            ),
+          ],
+        ),
         backgroundColor: AppColors.background,
         body: Column(
           children: [
-            Container(
-              height: 60,
-              color: Colors.white,
-              alignment: Alignment.centerLeft,
-            ),
             Stack(
               children: [
-                Image.asset(
-                  'assets/images/durianImage.jpeg',
-                  width: double.infinity,
-                  height: 280,
-                  fit: BoxFit.fitWidth,
-                ),
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Row(
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.arrow_back),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(blurRadius: 4, color: Colors.black26),
-                            ],
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () {
-                              // TODO: navigate to edit tree page
-                            },
-                          ),
-                        ),
-                      ],
+                treeImage.isNotEmpty
+                    ? Image.memory(
+                      base64Decode(treeImage),
+                      width: double.infinity,
+                      height: 270,
+                      fit: BoxFit.cover,
+                    )
+                    : Image.asset(
+                      'assets/images/durianImage.jpeg',
+                      width: double.infinity,
+                      height: 270,
+                      fit: BoxFit.fitWidth,
                     ),
-                  ),
-                ),
               ],
             ),
             Container(
               padding: const EdgeInsets.all(16),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Image.asset("assets/images/QR.png", width: 50),
-                  const SizedBox(width: 12),
+                  QrImageView(
+                    data: tree!['uuid'] ?? 'N/A',
+                    version: QrVersions.auto,
+                    size: 70,
+                    gapless: true,
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Text(
-                              treeTag,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            // Add status label here if needed
-                          ],
+                        Text(
+                          treeTag,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -105,20 +127,22 @@ class TreeDetailsPage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.lightGreen,
-                    ),
-                    padding: const EdgeInsets.all(6),
-                    child: const Icon(
-                      Icons.location_on,
-                      color: AppColors.pakistanGreen,
-                    ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => MapPage(
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Icon(Icons.location_on, color: AppColors.pakistanGreen),
                   ),
                 ],
               ),
             ),
+
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Wrap(
@@ -126,18 +150,9 @@ class TreeDetailsPage extends StatelessWidget {
                 runSpacing: 16,
                 children: [
                   _InfoCard(label: "Planting Date", value: treeDate),
-                  _InfoCard(
-                    label: "Flowering Period",
-                    value: tree['flowering_period']?.toString() ?? '-',
-                  ),
-                  _InfoCard(
-                    label: "Height",
-                    value: tree['height'] != null ? "${tree['height']} m" : '-',
-                  ),
-                  _InfoCard(
-                    label: "Width",
-                    value: tree['width'] != null ? "${tree['width']} m" : '-',
-                  ),
+                  _InfoCard(label: "Flowering Period", value: floweringPeriod),
+                  _InfoCard(label: "Height", value: "$height m"),
+                  _InfoCard(label: "Width", value: "$width m"),
                 ],
               ),
             ),

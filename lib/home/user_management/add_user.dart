@@ -4,7 +4,8 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/services/user_api.dart';
 
-void showAddUserSheet(BuildContext context) {
+
+Future<bool?> showAddUserSheet(BuildContext context) {
   final _formKey = GlobalKey<FormState>();
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
@@ -15,7 +16,7 @@ void showAddUserSheet(BuildContext context) {
 
   File? _selectedImage;
 
-  showModalBottomSheet(
+  return showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
@@ -155,7 +156,7 @@ void showAddUserSheet(BuildContext context) {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () => Navigator.pop(context, false),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(
                             color: AppColors.pakistanGreen,
@@ -173,16 +174,21 @@ void showAddUserSheet(BuildContext context) {
                         onPressed: () async {
                           if (_formKey.currentState!.validate()) {
                             try {
+                              int roleId = selectedRole == 'Manager' ? 2 : 3;
+
                               await UserApi.createUser(
                                 name: nameController.text,
                                 phone: phoneController.text,
-                                role: selectedRole,
-                                email: null,
+                                role_id: roleId,
+                                email:
+                                    emailController.text.isEmpty
+                                        ? null
+                                        : emailController.text,
                                 isActive: isActive,
                               );
 
                               // Close the bottom sheet first
-                              Navigator.of(context, rootNavigator: true).pop();
+                              Navigator.of(context, rootNavigator: true).pop(true);
 
                               // Then show a success SnackBar
                               ScaffoldMessenger.of(context).showSnackBar(

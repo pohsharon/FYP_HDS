@@ -8,7 +8,7 @@ class UserApi {
     required String name,
     required String phone,
     String? email,
-    required String role,
+    required int role_id,
     required bool isActive,
   }) async {
     try {
@@ -27,8 +27,8 @@ class UserApi {
           "email": email, 
           "password": "hosbadurian",
           "phone": phone,
-          "role": role.toLowerCase(),
-          "is_active": true,
+          "role_id": role_id,
+          "is_active": isActive,
         }),
       );
 

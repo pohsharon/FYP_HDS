@@ -44,16 +44,18 @@ class _CreateTreePageState extends State<CreateTreePage> {
         }
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching species: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error fetching species: $e')));
     }
   }
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final pickedFile =
-        await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70,
+    );
 
     if (pickedFile != null) {
       setState(() {
@@ -66,10 +68,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
   }
 
   Future<void> _saveTree() async {
-    if (!_formKey.currentState!.validate() || selectedSpeciesId == null || _base64Image == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please complete the form and select an image')),
-      );
+    if (!_formKey.currentState!.validate() || selectedSpeciesId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please complete the form')));
       return;
     }
 
@@ -80,20 +82,19 @@ class _CreateTreePageState extends State<CreateTreePage> {
         speciesId: selectedSpeciesId!,
         plantedAt: plantingDateController.text,
         height: double.parse(heightController.text),
-        width: double.parse(widthController.text),
+        diameter: double.parse(widthController.text),
         floweringPeriod: floweringPeriodController.text,
-        imageBase64: _base64Image!,
+        imageBase64: _base64Image ?? "",
       );
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tree created successfully')),
       );
-
       Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       setState(() => isLoading = false);
     }
@@ -104,7 +105,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Add Tree', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Add Tree',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         centerTitle: false,
         leading: const BackButton(),
         backgroundColor: AppColors.background,
@@ -117,45 +121,54 @@ class _CreateTreePageState extends State<CreateTreePage> {
             children: [
               GestureDetector(
                 onTap: _pickImage,
-                child: _selectedImage != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.file(_selectedImage!, height: 180, width: double.infinity, fit: BoxFit.cover),
-                      )
-                    : Container(
-                        height: 180,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
+                child:
+                    _selectedImage != null
+                        ? ClipRRect(
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.grey),
+                          child: Image.file(
+                            _selectedImage!,
+                            height: 180,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                        : Container(
+                          height: 180,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.grey),
+                          ),
+                          child: const Center(
+                            child: Text('Tap to select tree image'),
+                          ),
                         ),
-                        child: const Center(child: Text('Tap to select tree image')),
-                      ),
               ),
               const SizedBox(height: 16),
 
-DropdownButtonFormField<String>(
-  value: selectedSpeciesId,
-  onChanged: (value) {
-    setState(() {
-      selectedSpeciesId = value!;
-    });
-  },
-  items: speciesList.map<DropdownMenuItem<String>>((species) {
-    return DropdownMenuItem<String>(
-      value: species['id'].toString(),
-      child: Text(species['name']),
-    );
-  }).toList(),
-  decoration: const InputDecoration(    
-    border: OutlineInputBorder(),
-    labelText: 'Species',
-    filled: true,
-    fillColor: Colors.white,
-  ),
-  validator: (value) =>
-      value == null ? 'Please select a species' : null,
-),
+              DropdownButtonFormField<String>(
+                value: selectedSpeciesId,
+                onChanged: (value) {
+                  setState(() {
+                    selectedSpeciesId = value!;
+                  });
+                },
+                items:
+                    speciesList.map<DropdownMenuItem<String>>((species) {
+                      return DropdownMenuItem<String>(
+                        value: species['id'].toString(),
+                        child: Text(species['name']),
+                      );
+                    }).toList(),
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Species',
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                validator:
+                    (value) => value == null ? 'Please select a species' : null,
+              ),
 
               const SizedBox(height: 16),
 
@@ -177,12 +190,16 @@ DropdownButtonFormField<String>(
                     lastDate: DateTime.now(),
                   );
                   if (pickedDate != null) {
-                    plantingDateController.text =
-                        DateFormat('yyyy-MM-dd').format(pickedDate);
+                    plantingDateController.text = DateFormat(
+                      'yyyy-MM-dd',
+                    ).format(pickedDate);
                   }
                 },
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Please pick a date' : null,
+                validator:
+                    (value) =>
+                        value == null || value.isEmpty
+                            ? 'Please pick a date'
+                            : null,
               ),
               const SizedBox(height: 16),
 
@@ -196,8 +213,9 @@ DropdownButtonFormField<String>(
                   fillColor: Colors.white,
                 ),
                 keyboardType: TextInputType.number,
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter height' : null,
+                validator:
+                    (value) =>
+                        value == null || value.isEmpty ? 'Enter height' : null,
               ),
               const SizedBox(height: 16),
 
@@ -211,8 +229,9 @@ DropdownButtonFormField<String>(
                   fillColor: Colors.white,
                 ),
                 keyboardType: TextInputType.number,
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter width' : null,
+                validator:
+                    (value) =>
+                        value == null || value.isEmpty ? 'Enter width' : null,
               ),
               const SizedBox(height: 16),
 
@@ -225,8 +244,11 @@ DropdownButtonFormField<String>(
                   fillColor: Colors.white,
                 ),
                 keyboardType: TextInputType.number,
-                validator: (value) =>
-                    value == null || value.isEmpty ? 'Enter flowering period' : null,
+                validator:
+                    (value) =>
+                        value == null || value.isEmpty
+                            ? 'Enter flowering period'
+                            : null,
               ),
               const SizedBox(height: 24),
 
@@ -235,9 +257,13 @@ DropdownButtonFormField<String>(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.pakistanGreen,
                 ),
-                child: isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Save', style: TextStyle(color: Colors.white)),
+                child:
+                    isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                          'Save',
+                          style: TextStyle(color: Colors.white),
+                        ),
               ),
             ],
           ),

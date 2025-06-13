@@ -38,7 +38,7 @@ class _CreateSpeciesPageState extends State<CreateSpeciesPage> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(response["message"] ?? "Species created")),
           );
-          Navigator.pop(context); // go back after success
+          Navigator.pop(context, true);
         }
       } catch (e) {
         if (mounted) {
