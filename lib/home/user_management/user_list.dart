@@ -71,6 +71,18 @@ class _UserListPageState extends State<UserListPage> {
           'User Management',
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
+         actions: [
+          Padding(
+            padding: const EdgeInsets.only(
+              right: 16.0,
+            ),
+            child: Tooltip(
+              message:
+                  'Long press to edit user details',
+              child: Icon(Icons.info_outline, color: Colors.grey),
+            ),
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -86,22 +98,26 @@ class _UserListPageState extends State<UserListPage> {
             final users = snapshot.data ?? [];
 
             final activeUsers =
-                users.where((u) => u['is_active'] != 1).toList();
-            final deactivatedUsers =
                 users.where((u) => u['is_active'] == 1).toList();
+            final deactivatedUsers =
+                users.where((u) => u['is_active'] != 1).toList();
 
             return ListView(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Active Users',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                    Padding(
+                      padding: const EdgeInsets.only(left: 10),
+                      child: const Text(
+                        'Active Users',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
+
                     ElevatedButton.icon(
                       onPressed: () async {
                         final shouldRefresh = await showAddUserSheet(context);
@@ -135,10 +151,16 @@ class _UserListPageState extends State<UserListPage> {
                 ),
                 if (deactivatedUsers.isNotEmpty) ...[
                   const SizedBox(height: 20),
-                  const Text(
-                    'Deactivated Users',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
+                   Padding(
+                      padding: const EdgeInsets.only(left: 10),
+                      child: const Text(
+                        'Deactivated Users',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   ...deactivatedUsers.map(
                     (user) => _buildUserCard(context, user),

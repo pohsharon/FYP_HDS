@@ -55,7 +55,7 @@ class _SpeciesListPageState extends State<SpeciesListPage> {
           Padding(
             padding: const EdgeInsets.only(
               right: 16.0,
-            ), // Adjust the right spacing here
+            ),
             child: Tooltip(
               message:
                   'Tap once to view description, long press to edit or delete',

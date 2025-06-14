@@ -63,7 +63,9 @@ class _BuyerPageState extends State<BuyerPage> {
             Expanded(
               child:
                   buyers.isEmpty
-                      ? const Center(child: Text("Loading..."))
+                      ? const Center(child: Text("No buyers found"))
+                      : isLoading
+                          ? const Center(child: CircularProgressIndicator())
                       : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         itemCount: buyers.length,

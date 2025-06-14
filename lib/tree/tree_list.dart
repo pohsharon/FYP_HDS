@@ -247,7 +247,7 @@ class _TreePageState extends State<TreePage> {
   }) {
     final String tag = tree['tree_tag'];
     final String id = tree['id'].toString();
-    final String type = tree['species']['name'];
+    final String type = tree['species']['name'] ?? 'Unknown Species';
     final String date = tree['planted_at'];
     final String uuid = tree['uuid'];
 
