@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/species_api.dart';
+import 'package:fyp_hbs/home/species/model/species.dart';
 
 class CreateSpeciesPage extends StatefulWidget {
-  const CreateSpeciesPage({super.key});
+  final Species? species;
+  const CreateSpeciesPage({super.key, this.species});
 
   @override
   _CreateSpeciesPageState createState() => _CreateSpeciesPageState();
@@ -14,56 +16,77 @@ class _CreateSpeciesPageState extends State<CreateSpeciesPage> {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController codeController = TextEditingController();
   final TextEditingController descriptionController = TextEditingController();
-  bool isActive = true;
   bool isLoading = false;
 
-  void _submitForm() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        isLoading = true;
-      });
-
-      try {
-        final response = await SpeciesApi.createSpecies(
-          name: nameController.text.trim(),
-          code: codeController.text.trim(),
-          description:
-              descriptionController.text.trim().isEmpty
-                  ? null
-                  : descriptionController.text.trim(),
-          isActive: isActive,
-        );
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(response["message"] ?? "Species created")),
-          );
-          Navigator.pop(context, true);
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(e.toString())));
-        }
-      } finally {
-        if (mounted) {
-          setState(() {
-            isLoading = false;
-          });
-        }
-      }
+    @override
+  void initState() {
+    super.initState();
+    if (widget.species != null) {
+      nameController.text = widget.species!.name;
+      codeController.text = widget.species!.code;
+      descriptionController.text = widget.species!.description ?? '';
     }
   }
 
+  void _submitForm() async {
+  if (_formKey.currentState!.validate()) {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      Map<String, dynamic> response;
+
+      if (widget.species == null) {
+        response = await SpeciesApi.createSpecies(
+          name: nameController.text.trim(),
+          code: codeController.text.trim(),
+          description: descriptionController.text.trim().isEmpty
+              ? null
+              : descriptionController.text.trim(),
+        );
+      } else {
+        response = await SpeciesApi.editSpecies(
+          id: widget.species!.id.toString(),
+          name: nameController.text.trim(),
+          code: codeController.text.trim(),
+          description: descriptionController.text.trim().isEmpty
+              ? null
+              : descriptionController.text.trim(),
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(response["message"] ?? "Success")),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+}
+
   @override
   Widget build(BuildContext context) {
+        final isEditing = widget.species != null;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text(
-          'Add Species',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          isEditing ? 'Edit Species' : 'Create Species',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         centerTitle: false,
         leading: const BackButton(),
@@ -110,25 +133,6 @@ class _CreateSpeciesPageState extends State<CreateSpeciesPage> {
                   filled: true,
                   fillColor: Colors.white,
                 ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Is Active?',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  Switch(
-                    value: isActive,
-                    onChanged: (value) {
-                      setState(() {
-                        isActive = value;
-                      });
-                    },
-                    activeColor: AppColors.hunterGreen,
-                  ),
-                ],
               ),
 
               const SizedBox(height: 16),

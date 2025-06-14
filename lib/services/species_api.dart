@@ -10,7 +10,6 @@ class SpeciesApi {
     required String name,
     required String code,
     String? description,
-    required bool isActive,
   }) async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -27,7 +26,6 @@ class SpeciesApi {
           "name": name,
           "code": code,
           "description": description,
-          "is_active": isActive,
         }),
       );
 
@@ -63,6 +61,66 @@ class SpeciesApi {
         return data.map((json) => Species.fromJson(json)).toList();
       } else {
         throw Exception(body['message'] ?? 'Failed to load species');
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
+
+  // Edit species
+  static Future<Map<String, dynamic>> editSpecies({
+    required String id,
+    required String name,
+    required String code,
+    String? description,
+  }) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.put(
+        Uri.parse("${Config.apiBaseUrl}/species/$id"),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          "name": name,
+          "code": code,
+          "description": description,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return data;
+      } else {
+        throw Exception(data["message"] ?? "Failed to update species");
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
+
+  // Delete species
+  static Future<void> deleteSpecies(String id) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.delete(
+        Uri.parse("${Config.apiBaseUrl}/species/$id"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        final body = jsonDecode(response.body);
+        throw Exception(body['message'] ?? 'Failed to delete species');
       }
     } catch (e) {
       throw Exception("Error: ${e.toString()}");

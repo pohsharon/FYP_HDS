@@ -51,6 +51,19 @@ class _SpeciesListPageState extends State<SpeciesListPage> {
           'Species List',
           style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.white),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(
+              right: 16.0,
+            ), // Adjust the right spacing here
+            child: Tooltip(
+              message:
+                  'Tap once to view description, long press to edit or delete',
+              child: Icon(Icons.info_outline, color: Colors.grey),
+            ),
+          ),
+        ],
+
         backgroundColor: AppColors.pakistanGreen,
         elevation: 0,
         leading: const BackButton(color: Colors.black),
@@ -72,14 +85,7 @@ class _SpeciesListPageState extends State<SpeciesListPage> {
                         itemCount: _filteredSpecies.length,
                         itemBuilder: (context, index) {
                           final species = _filteredSpecies[index];
-                          return _buildSpeciesCard(
-                            context,
-                            name: species.name,
-                            code: species.code,
-                            description: species.description ?? '',
-                            treeCount: species.treeCount.toString(),
-                            status: species.isActive ? 'Inactive' : 'Active',
-                          );
+                          return _buildSpeciesCard(context, species);
                         },
                       ),
             ),
@@ -102,7 +108,6 @@ class _SpeciesListPageState extends State<SpeciesListPage> {
                 hintText: 'Search Species Code',
                 hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: const Icon(Icons.filter_alt_outlined),
                 filled: true,
                 fillColor: AppColors.white,
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -148,22 +153,10 @@ class _SpeciesListPageState extends State<SpeciesListPage> {
     );
   }
 
-  Widget _buildSpeciesCard(
-    BuildContext context, {
-    required String name,
-    required String code,
-    required String description,
-    required String treeCount,
-    required String status,
-  }) {
-    Color statusColor =
-        status == 'Active' ? AppColors.successLight : AppColors.dangerLight;
-    Color statusTextColor =
-        status == 'Active' ? AppColors.successActive : AppColors.dangerActive;
-
+  Widget _buildSpeciesCard(BuildContext context, Species species) {
     return GestureDetector(
       onTap: () {
-        if (description.trim().isEmpty) {
+        if ((species.description ?? '').trim().isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('No description available.'),
@@ -175,8 +168,8 @@ class _SpeciesListPageState extends State<SpeciesListPage> {
             context: context,
             builder:
                 (context) => AlertDialog(
-                  title: Text(name),
-                  content: Text(description),
+                  title: Text(species.name),
+                  content: Text(species.description ?? ''),
                   actions: [
                     TextButton(
                       child: const Text('Close'),
@@ -186,6 +179,98 @@ class _SpeciesListPageState extends State<SpeciesListPage> {
                 ),
           );
         }
+      },
+      onLongPress: () {
+        showModalBottomSheet(
+          context: context,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder:
+              (_) => Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 8), // Add spacing at the top
+                    ListTile(
+                      leading: const Icon(Icons.edit),
+                      title: const Text('Edit'),
+                      onTap: () async {
+                        Navigator.pop(context); // Close the bottom sheet
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CreateSpeciesPage(species: species),
+                          ),
+                        );
+                        if (result == true) fetchSpecies();
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.delete),
+                      title: const Text('Delete'),
+                      onTap: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder:
+                              (context) => AlertDialog(
+                                title: const Text('Confirm Delete'),
+                                content: const Text(
+                                  'Are you sure you want to delete this species?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.pop(context, true),
+                                    child: const Text(
+                                      'Delete',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                        );
+
+                        if (confirm == true) {
+                          try {
+                            final response = await SpeciesApi.deleteSpecies(
+                              species.id.toString(),
+                            );
+
+                            if (context.mounted) {
+                              fetchSpecies();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Deleted successfully")),
+                              );
+                              Navigator.pop(
+                                context,
+                                true,
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Delete failed: ${e.toString()}",
+                                  ),
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+        );
       },
       child: Card(
         color: AppColors.white,
@@ -207,51 +292,25 @@ class _SpeciesListPageState extends State<SpeciesListPage> {
                     Row(
                       children: [
                         Text(
-                          name,
+                          species.name,
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: statusColor,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            status,
-                            style: TextStyle(
-                              color: statusTextColor,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          code,
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      species.code,
+                      style: const TextStyle(color: Colors.grey, fontSize: 11),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 4),
               Text(
-                treeCount,
+                species.treeCount.toString(),
                 style: const TextStyle(
                   color: AppColors.gray800,
                   fontSize: 15,
