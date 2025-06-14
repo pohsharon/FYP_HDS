@@ -245,7 +245,8 @@ class _TreePageState extends State<TreePage> {
     BuildContext context, {
     required Map<String, dynamic> tree, // ✅ Accept tree map
   }) {
-    final String id = tree['tree_tag'];
+    final String tag = tree['tree_tag'];
+    final String id = tree['id'].toString();
     final String type = tree['species']['name'];
     final String date = tree['planted_at'];
     final String uuid = tree['uuid'];
@@ -284,7 +285,7 @@ class _TreePageState extends State<TreePage> {
                   Row(
                     children: [
                       Text(
-                        id,
+                        tag,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -350,7 +351,7 @@ class _TreePageState extends State<TreePage> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => TreeDetailsPage(treeID: uuid),
+                    builder: (context) => TreeDetailsPage(treeID: id),
                   ),
                 );
               },

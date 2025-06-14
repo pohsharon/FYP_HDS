@@ -39,6 +39,43 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     }
   }
 
+  Widget _buildTreeImage(String? thumbnail) {
+    if (thumbnail != null && thumbnail.isNotEmpty) {
+      try {
+        // Remove prefix if it exists
+        final base64Str =
+            thumbnail.startsWith("data:image")
+                ? thumbnail.split(',').last
+                : thumbnail;
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(0),
+          child: Image.memory(
+            base64Decode(base64Str),
+            height: 200,
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
+        );
+      } catch (e) {
+        return _buildDefaultImage();
+      }
+    } else {
+      return _buildDefaultImage();
+    }
+  }
+
+  Widget _buildDefaultImage() {
+    return Container(
+      height: 200,
+      width: double.infinity,
+      color: Colors.grey[200],
+      child: const Center(
+        child: Text('No image available', style: TextStyle(color: Colors.grey)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -52,11 +89,11 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     final String treeTag = tree!['tree_tag'] ?? 'Unknown';
     final String treeType = tree!['species']?['name'] ?? 'Unknown Type';
     final String treeDate = tree!['planted_at'] ?? 'Unknown Date';
-    final String treeImage = tree!['thumbnail_base64'] ?? '';
+    final String treeImage = tree!['thumbnail'] ?? '';
     final String uuid = tree!['uuid'] ?? 'Unknown UUID';
     final String floweringPeriod = tree!['flowering_period']?.toString() ?? '-';
-    final double height = tree!['height']?.toDouble() ?? 0;
-    final double width = tree!['width']?.toDouble() ?? 0;
+    final double height = double.tryParse(tree!['height'].toString()) ?? 0;
+    final double width = double.tryParse(tree!['width'].toString()) ?? 0;
 
     return DefaultTabController(
       length: 4,
@@ -79,23 +116,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
         backgroundColor: AppColors.background,
         body: Column(
           children: [
-            Stack(
-              children: [
-                treeImage.isNotEmpty
-                    ? Image.memory(
-                      base64Decode(treeImage),
-                      width: double.infinity,
-                      height: 270,
-                      fit: BoxFit.cover,
-                    )
-                    : Image.asset(
-                      'assets/images/durianImage.jpeg',
-                      width: double.infinity,
-                      height: 270,
-                      fit: BoxFit.fitWidth,
-                    ),
-              ],
-            ),
+            Stack(children: [_buildTreeImage(treeImage)]),
             Container(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -131,13 +152,13 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (context) => MapPage(
-                          ),
-                        ),
+                        MaterialPageRoute(builder: (context) => MapPage()),
                       );
                     },
-                    child: const Icon(Icons.location_on, color: AppColors.pakistanGreen),
+                    child: const Icon(
+                      Icons.location_on,
+                      color: AppColors.pakistanGreen,
+                    ),
                   ),
                 ],
               ),

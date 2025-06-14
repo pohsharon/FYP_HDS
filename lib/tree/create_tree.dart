@@ -63,7 +63,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
       });
 
       final bytes = await pickedFile.readAsBytes();
-      _base64Image = base64Encode(bytes);
+      _base64Image = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+
     }
   }
 
