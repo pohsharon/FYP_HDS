@@ -24,7 +24,7 @@ class UserApi {
         },
         body: jsonEncode({
           "name": name,
-          "email": email, 
+          "email": email,
           "password": "hosbadurian",
           "phone": phone,
           "role_id": role_id,
@@ -63,6 +63,45 @@ class UserApi {
       }
     } catch (e) {
       throw Exception("Error: ${e.toString()}");
+    }
+  }
+
+  static deleteUser(String string) {}
+
+  static Future<void> updateUser({
+    required int userId,
+    required String name,
+    required String phone,
+    String? email,
+    required int role_id,
+    required bool isActive,
+  }) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.put(
+        Uri.parse("${Config.apiBaseUrl}/users/$userId"),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          "name": name,
+          "email": email,
+          "phone": phone,
+          "role": role_id,
+          "is_active": isActive,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode != 200) {
+        throw Exception(data['message'] ?? 'Failed to update user');
+      }
+    } catch (e) {
+      throw Exception('Error: ${e.toString()}');
     }
   }
 }

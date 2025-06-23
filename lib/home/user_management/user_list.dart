@@ -57,6 +57,95 @@ class _UserListPageState extends State<UserListPage> {
             ],
           ),
         ),
+        onLongPress: () {
+          showModalBottomSheet(
+            context: context,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder:
+                (_) => Padding(
+                  padding: const EdgeInsets.only(top: 16, bottom: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(height: 8), // Add spacing at the top
+                      ListTile(
+                        leading: const Icon(Icons.edit),
+                        title: const Text('Edit'),
+                        onTap: () async {
+                          Navigator.pop(context); // Close the bottom sheet
+                          final result = await showAddUserSheet(
+                            context,
+                            user: user,
+                          );
+                          if (result == true) fetchUsers();
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.delete),
+                        title: const Text('Delete'),
+                        onTap: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder:
+                                (context) => AlertDialog(
+                                  title: const Text('Confirm Delete'),
+                                  content: const Text(
+                                    'Are you sure you want to delete this species?',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed:
+                                          () => Navigator.pop(context, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    TextButton(
+                                      onPressed:
+                                          () => Navigator.pop(context, true),
+                                      child: const Text(
+                                        'Delete',
+                                        style: TextStyle(color: Colors.red),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                          );
+
+                          if (confirm == true) {
+                            try {
+                              final response = await UserApi.deleteUser(
+                                user['id'].toString(),
+                              );
+
+                              if (context.mounted) {
+                                fetchUsers();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text("Deleted successfully"),
+                                  ),
+                                );
+                                Navigator.pop(context, true);
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      "Delete failed: ${e.toString()}",
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+          );
+        },
       ),
     );
   }
@@ -71,14 +160,11 @@ class _UserListPageState extends State<UserListPage> {
           'User Management',
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-         actions: [
+        actions: [
           Padding(
-            padding: const EdgeInsets.only(
-              right: 16.0,
-            ),
+            padding: const EdgeInsets.only(right: 16.0),
             child: Tooltip(
-              message:
-                  'Long press to edit user details',
+              message: 'Long press to edit user details',
               child: Icon(Icons.info_outline, color: Colors.grey),
             ),
           ),
@@ -120,7 +206,10 @@ class _UserListPageState extends State<UserListPage> {
 
                     ElevatedButton.icon(
                       onPressed: () async {
-                        final shouldRefresh = await showAddUserSheet(context);
+                        final shouldRefresh = await showAddUserSheet(
+                          context,
+                          user: {},
+                        );
                         if (shouldRefresh == true) {
                           fetchUsers();
                         }
@@ -151,16 +240,16 @@ class _UserListPageState extends State<UserListPage> {
                 ),
                 if (deactivatedUsers.isNotEmpty) ...[
                   const SizedBox(height: 20),
-                   Padding(
-                      padding: const EdgeInsets.only(left: 10),
-                      child: const Text(
-                        'Deactivated Users',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 10),
+                    child: const Text(
+                      'Deactivated Users',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
                     ),
+                  ),
                   const SizedBox(height: 8),
                   ...deactivatedUsers.map(
                     (user) => _buildUserCard(context, user),

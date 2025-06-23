@@ -4,17 +4,36 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/services/user_api.dart';
 
-
-Future<bool?> showAddUserSheet(BuildContext context) {
+Future<bool?> showAddUserSheet(
+  BuildContext context, {
+  required Map<String, dynamic> user,
+}) {
   final _formKey = GlobalKey<FormState>();
-  final nameController = TextEditingController();
-  final phoneController = TextEditingController();
-  final emailController = TextEditingController();
-  String selectedRole = 'Worker';
-  bool isActive = true; // default active
-  final ImagePicker _picker = ImagePicker();
+  bool isEditing = user.isNotEmpty;
+  final nameController = TextEditingController(
+    text: isEditing ? user['name'] ?? '' : '',
+  );
+  final phoneController = TextEditingController(
+    text: isEditing ? user['phone'] ?? '' : '',
+  );
+  final emailController = TextEditingController(
+    text: isEditing ? user['email'] ?? '' : '',
+  );
+  String selectedRole =
+      isEditing && user['roles'] != null && user['roles'].isNotEmpty
+          ? user['roles'][0]
+          : 'Worker';
+  bool isActive = isEditing ? (user['is_active'] == 1) : true;
 
-  File? _selectedImage;
+  if (isEditing) {
+    nameController.text = user['name'] ?? '';
+    phoneController.text = user['phone'] ?? '';
+    emailController.text = user['email'] ?? '';
+    isActive = user['is_active'] == 1;
+    if (user['roles'] != null && user['roles'].isNotEmpty) {
+      selectedRole = user['roles'][0];
+    }
+  }
 
   return showModalBottomSheet(
     context: context,
@@ -26,17 +45,6 @@ Future<bool?> showAddUserSheet(BuildContext context) {
     builder: (context) {
       return StatefulBuilder(
         builder: (context, setState) {
-          // Future<void> _pickImage() async {
-          //   final pickedFile = await _picker.pickImage(
-          //     source: ImageSource.gallery,
-          //   );
-          //   if (pickedFile != null) {
-          //     setState(() {
-          //       _selectedImage = File(pickedFile.path);
-          //     });
-          //   }
-          // }
-
           return Padding(
             padding: EdgeInsets.only(
               left: 20,
@@ -47,24 +55,19 @@ Future<bool?> showAddUserSheet(BuildContext context) {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  "Add User",
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                Text(
+                  isEditing ? "Edit User" : "Add User",
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  isEditing ? "Update" : "Add",
+                  style: const TextStyle(color: Colors.white),
                 ),
                 const SizedBox(height: 16),
 
-                // GestureDetector(
-                //   onTap: _pickImage,
-                //   child: CircleAvatar(
-                //     radius: 40,
-                //     backgroundColor: Colors.grey.shade300,
-                //     backgroundImage: _selectedImage != null ? FileImage(_selectedImage!) : null,
-                //     child: _selectedImage == null
-                //         ? const Icon(Icons.add_a_photo, color: Colors.white, size: 30)
-                //         : null,
-                //   ),
-                // ),
-                // const SizedBox(height: 16),
                 Form(
                   key: _formKey,
                   child: Column(
@@ -177,27 +180,44 @@ Future<bool?> showAddUserSheet(BuildContext context) {
                             try {
                               int roleId = selectedRole == 'Manager' ? 2 : 3;
 
-                              await UserApi.createUser(
-                                name: nameController.text,
-                                phone: phoneController.text,
-                                role_id: roleId,
-                                email:
-                                    emailController.text.isEmpty
-                                        ? null
-                                        : emailController.text,
-                                isActive: isActive,
-                              );
+                              if (isEditing) {
+                                await UserApi.updateUser(
+                                  userId: user['id'],
+                                  name: nameController.text,
+                                  phone: phoneController.text,
+                                  email:
+                                      emailController.text.isEmpty
+                                          ? null
+                                          : emailController.text,
+                                  isActive: isActive,
+                                  role_id: roleId,
+                                );
+                              } else {
+                                await UserApi.createUser(
+                                  name: nameController.text,
+                                  phone: phoneController.text,
+                                  role_id: roleId,
+                                  email:
+                                      emailController.text.isEmpty
+                                          ? null
+                                          : emailController.text,
+                                  isActive: isActive,
+                                );
+                              }
 
-                              // Close the bottom sheet first
-                              Navigator.of(context, rootNavigator: true).pop(true);
+                              Navigator.of(
+                                context,
+                                rootNavigator: true,
+                              ).pop(true);
 
-                              // Then show a success SnackBar
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
+                                SnackBar(
                                   content: Text(
-                                    "User added successfully. Default password: hosbadurian",
+                                    isEditing
+                                        ? "User updated successfully"
+                                        : "User added successfully. Default password: hosbadurian",
                                   ),
-                                  duration: Duration(seconds: 4),
+                                  duration: const Duration(seconds: 4),
                                   behavior: SnackBarBehavior.floating,
                                 ),
                               );
