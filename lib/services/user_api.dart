@@ -66,7 +66,27 @@ class UserApi {
     }
   }
 
-  static deleteUser(String string) {}
+  static Future<void> deleteUser(String userId) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.delete(
+        Uri.parse('${Config.apiBaseUrl}/users/$userId'),
+        headers: {
+          'Accept': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        final data = jsonDecode(response.body);
+        throw Exception(data['message'] ?? 'Failed to delete user');
+      }
+    } catch (e) {
+      throw Exception('Error deleting user: ${e.toString()}');
+    }
+  }
 
   static Future<void> updateUser({
     required int userId,

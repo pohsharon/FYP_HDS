@@ -57,94 +57,11 @@ class _UserListPageState extends State<UserListPage> {
             ],
           ),
         ),
-        onLongPress: () {
-          showModalBottomSheet(
-            context: context,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            builder:
-                (_) => Padding(
-                  padding: const EdgeInsets.only(top: 16, bottom: 16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const SizedBox(height: 8), // Add spacing at the top
-                      ListTile(
-                        leading: const Icon(Icons.edit),
-                        title: const Text('Edit'),
-                        onTap: () async {
-                          Navigator.pop(context); // Close the bottom sheet
-                          final result = await showAddUserSheet(
-                            context,
-                            user: user,
-                          );
-                          if (result == true) fetchUsers();
-                        },
-                      ),
-                      ListTile(
-                        leading: const Icon(Icons.delete),
-                        title: const Text('Delete'),
-                        onTap: () async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder:
-                                (context) => AlertDialog(
-                                  title: const Text('Confirm Delete'),
-                                  content: const Text(
-                                    'Are you sure you want to delete this species?',
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed:
-                                          () => Navigator.pop(context, false),
-                                      child: const Text('Cancel'),
-                                    ),
-                                    TextButton(
-                                      onPressed:
-                                          () => Navigator.pop(context, true),
-                                      child: const Text(
-                                        'Delete',
-                                        style: TextStyle(color: Colors.red),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                          );
-
-                          if (confirm == true) {
-                            try {
-                              final response = await UserApi.deleteUser(
-                                user['id'].toString(),
-                              );
-
-                              if (context.mounted) {
-                                fetchUsers();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text("Deleted successfully"),
-                                  ),
-                                );
-                                Navigator.pop(context, true);
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      "Delete failed: ${e.toString()}",
-                                    ),
-                                  ),
-                                );
-                              }
-                            }
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-          );
+        onLongPress: () async {
+          final shouldRefresh = await showAddUserSheet(context, user: user);
+          if (shouldRefresh == true) {
+            fetchUsers();
+          }
         },
       ),
     );
