@@ -57,6 +57,51 @@ class _CreateBuyerPageState extends State<CreateBuyerPage> {
           style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         backgroundColor: AppColors.pakistanGreen,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.white),
+            onPressed: () async {
+              if (widget.buyer != null) {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Delete Company'),
+                    content: const Text('Are you sure you want to delete this company?'),
+                    backgroundColor: Colors.white,
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  try {
+                    await BuyerApi.deleteBuyer(widget.buyer!['id'].toString());
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Tree deleted successfully')),
+                    );
+                    Navigator.pop(context, 'deleted');
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error deleting buyer: $e')),
+                    );
+                  }
+                }
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No tree to delete')),
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 0),
@@ -156,7 +201,7 @@ class _CreateBuyerPageState extends State<CreateBuyerPage> {
                         );
                       }
 
-                      Navigator.pop(context, true);
+                      Navigator.pop(context, 'edited');
                     } catch (e) {
                       if (!mounted) return;
                       ScaffoldMessenger.of(

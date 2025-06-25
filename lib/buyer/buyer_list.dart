@@ -168,18 +168,7 @@ class _BuyerPageState extends State<BuyerPage> {
         padding: const EdgeInsets.all(15),
         child: Row(
           children: [
-            SizedBox(
-              width: 50,
-              height: 50,
-              child: ClipOval(
-                child: Image.asset(
-                  'assets/images/buyer.jpeg',
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             // Tree info
             Expanded(
               child: Column(
@@ -216,13 +205,20 @@ class _BuyerPageState extends State<BuyerPage> {
             const SizedBox(),
             // View Button
             OutlinedButton(
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => BuyerDetailsPage(buyer: buyer),
                   ),
                 );
+
+                if (result == true) {
+                  _loadBuyers(); // ✅ Refresh the list after deletion
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Buyer deleted successfully')),
+                  );
+                }
               },
 
               style: OutlinedButton.styleFrom(

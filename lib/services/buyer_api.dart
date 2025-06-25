@@ -130,4 +130,27 @@ class BuyerApi {
       throw Exception('Error: ${e.toString()}');
     }
   }
+
+  static Future<void> deleteBuyer(String buyerId) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.delete(
+        Uri.parse("${Config.apiBaseUrl}/buyers/$buyerId"),
+        headers: {
+          'Accept': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(data['message'] ?? 'Failed to delete buyer');
+      }
+    } catch (e) {
+      throw Exception('Error: ${e.toString()}');
+    }
+  }
 }

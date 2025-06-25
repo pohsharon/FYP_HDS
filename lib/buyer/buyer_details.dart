@@ -56,14 +56,19 @@ class _BuyerDetailsPageState extends State<BuyerDetailsPage> {
             IconButton(
               icon: const Icon(Icons.edit, color: Colors.white),
               onPressed: () async {
-                final updated = await Navigator.push(
+                final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => CreateBuyerPage(buyer: _buyer),
                   ),
                 );
-                if (updated == true) {
-                  _loadBuyerDetails(); // safely reload with UUID
+
+                if (!mounted) return;
+
+                if (result == 'edited') {
+                  _loadBuyerDetails(); // ✅ just reload details
+                } else if (result == 'deleted') {
+                  Navigator.pop(context, true); // ✅ bubble up to BuyerListPage
                 }
               },
             ),
