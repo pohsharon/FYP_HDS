@@ -1,8 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:qr_code_scanner/qr_code_scanner.dart';
+import 'package:qr_code_scanner/qr_code_scanner.dart' as qr;
 import 'package:torch_light/torch_light.dart';
+import 'package:fyp_hbs/tree/tree_details.dart';
+// import 'package:google_mlkit_commons/google_mlkit_commons.dart';
+// import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart' as mlkit;
 
 class QRScannerPage extends StatefulWidget {
   const QRScannerPage({super.key});
@@ -13,7 +16,7 @@ class QRScannerPage extends StatefulWidget {
 
 class _QRScannerPageState extends State<QRScannerPage> {
   final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
-  QRViewController? controller;
+  qr.QRViewController? controller;
   bool isTorchOn = false;
 
   @override
@@ -26,14 +29,18 @@ class _QRScannerPageState extends State<QRScannerPage> {
     }
   }
 
-  void _onQRViewCreated(QRViewController controller) {
+  void _onQRViewCreated(qr.QRViewController controller) {
     this.controller = controller;
     controller.scannedDataStream.listen((scanData) {
       controller.pauseCamera();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Scanned: ${scanData.code}")),
-      );
-      // TODO: Handle the scanned result here
+      final uuid = scanData.code;
+
+      if (uuid != null && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: uuid)),
+        );
+      }
     });
   }
 
@@ -48,23 +55,47 @@ class _QRScannerPageState extends State<QRScannerPage> {
         isTorchOn = !isTorchOn;
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Flashlight error: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Flashlight error: $e')));
     }
   }
 
   Future<void> _pickImageFromGallery() async {
-    final picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+  // final picker = ImagePicker();
+  // final XFile? pickedImage = await picker.pickImage(source: ImageSource.gallery);
+  // if (pickedImage == null) return;
 
-    if (image != null) {
-      // TODO: Decode QR from the selected image using your own logic or a package like 'google_mlkit_barcode_scanning'
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Image selected, implement QR decoding logic.')),
-      );
-    }
-  }
+  // final inputImage = InputImage.fromFilePath(pickedImage.path);
+  // final barcodeScanner = mlkit.BarcodeScanner(formats: [mlkit.BarcodeFormat.qrCode]);
+
+  // try {
+  //   final barcodes = await barcodeScanner.processImage(inputImage);
+  //   if (barcodes.isNotEmpty) {
+  //     final String? uuid = barcodes.first.rawValue;
+  //     if (uuid != null) {
+  //       Navigator.push(
+  //         context,
+  //         MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: uuid)),
+  //       );
+  //     } else {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(content: Text('QR code not recognized.')),
+  //       );
+  //     }
+  //   } else {
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       const SnackBar(content: Text('No QR code found in the image.')),
+  //     );
+  //   }
+  // } catch (e) {
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(content: Text('Error scanning QR code: $e')),
+  //   );
+  // } finally {
+  //   barcodeScanner.close();
+  // }
+}
 
   @override
   void dispose() {
@@ -77,10 +108,10 @@ class _QRScannerPageState extends State<QRScannerPage> {
     return Scaffold(
       body: Stack(
         children: [
-          QRView(
+          qr.QRView(
             key: qrKey,
             onQRViewCreated: _onQRViewCreated,
-            overlay: QrScannerOverlayShape(
+            overlay: qr.QrScannerOverlayShape(
               borderColor: Colors.green,
               borderRadius: 10,
               borderLength: 30,
@@ -107,13 +138,17 @@ class _QRScannerPageState extends State<QRScannerPage> {
                   onPressed: _toggleFlashlight,
                   icon: Icon(isTorchOn ? Icons.flash_off : Icons.flash_on),
                   label: Text(isTorchOn ? 'Flash Off' : 'Flash On'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.black87),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black87,
+                  ),
                 ),
                 ElevatedButton.icon(
                   onPressed: _pickImageFromGallery,
                   icon: const Icon(Icons.image),
                   label: const Text('Gallery'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.black87),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black87,
+                  ),
                 ),
               ],
             ),

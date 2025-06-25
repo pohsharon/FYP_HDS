@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-
 import 'package:fyp_hbs/services/tree_api.dart';
 
 class CreateTreePage extends StatefulWidget {
@@ -142,16 +141,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      // appBar: AppBar(
-      //   title: Text(
-      //     widget.tree != null ? 'Edit Tree' : 'Add Tree',
-      //     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
-      //   ),
-
-      //   centerTitle: false,
-      //   leading: const BackButton(),
-      //   backgroundColor: AppColors.background,
-      // ),
       appBar: AppBar(
         title: Text(
           widget.tree != null ? 'Edit Tree' : 'Add Tree',

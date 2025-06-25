@@ -52,17 +52,23 @@ class _UserListPageState extends State<UserListPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(roleText),
               if (isOwner) const Icon(Icons.lock, size: 16, color: Colors.grey),
+              Text(roleText),
             ],
           ),
         ),
-        onLongPress: () async {
-          final shouldRefresh = await showAddUserSheet(context, user: user);
-          if (shouldRefresh == true) {
-            fetchUsers();
-          }
-        },
+        onTap:
+            isOwner
+                ? null
+                : () async {
+                  final shouldRefresh = await showAddUserSheet(
+                    context,
+                    user: user,
+                  );
+                  if (shouldRefresh == true) {
+                    fetchUsers();
+                  }
+                },
       ),
     );
   }
@@ -81,7 +87,7 @@ class _UserListPageState extends State<UserListPage> {
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: Tooltip(
-              message: 'Long press to edit user details',
+              message: 'Press to edit user details',
               child: Icon(Icons.info_outline, color: Colors.grey),
             ),
           ),
@@ -152,7 +158,7 @@ class _UserListPageState extends State<UserListPage> {
                   (user) => _buildUserCard(
                     context,
                     user,
-                    isOwner: user['roles']?.contains('Owner') ?? false,
+                    isOwner: user['roles']?.contains('Super-Admin') ?? false,
                   ),
                 ),
                 if (deactivatedUsers.isNotEmpty) ...[

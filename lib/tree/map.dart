@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:fyp_hbs/services/tree_api.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -15,10 +16,6 @@ class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
   LatLng? _currentLocation;
 
-  // Dummy tree IDs – replace with actual API data
-  final List<String> _treeIds = ['T001', 'T002', 'T003'];
-
-  // Seksyen 17
   final LatLngBounds farmBounds = LatLngBounds(
     const LatLng(3.110831, 101.626978),
     const LatLng(3.130831, 101.646978),
@@ -32,16 +29,12 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _getCurrentLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return;
-    }
+    if (!serviceEnabled) return;
 
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
       permission = await Geolocator.requestPermission();
-      if (permission != LocationPermission.always && permission != LocationPermission.whileInUse) {
-        return;
-      }
+      if (permission != LocationPermission.always && permission != LocationPermission.whileInUse) return;
     }
 
     Geolocator.getPositionStream(
@@ -53,40 +46,46 @@ class _MapPageState extends State<MapPage> {
       final LatLng newLocation = LatLng(position.latitude, position.longitude);
 
       if (mounted) {
-        setState(() {
-          _currentLocation = newLocation;
-        });
+        setState(() => _currentLocation = newLocation);
         _mapController.move(newLocation, _mapController.camera.zoom);
       }
     });
   }
 
-  void _showAddTreeDialog() {
+  Future<void> _showAddTreeDialog() async {
+    List<Map<String, dynamic>> treeList = [];
     String? selectedTreeId;
+
+    try {
+      treeList = await TreeApi.fetchTrees();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to load tree list: $e")),
+      );
+      return;
+    }
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Enter Tree ID'),
+          title: const Text('Select Tree'),
+          backgroundColor: AppColors.white,
           content: DropdownButtonFormField<String>(
+            hint: const Text("Select Tree Tag"),
             value: selectedTreeId,
-            hint: const Text("Select Tree ID"),
-            items: _treeIds.map((id) {
+            items: treeList.map((tree) {
               return DropdownMenuItem(
-                value: id,
-                child: Text(id),
+                value: tree['tree_tag'].toString(),
+                child: Text(tree['tree_tag'] ?? 'Unnamed'),
               );
             }).toList(),
-            onChanged: (value) {
-              selectedTreeId = value;
-            },
+            onChanged: (value) => selectedTreeId = value,
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(); // Close dialog
-              },
+              onPressed: () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
@@ -105,11 +104,9 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _saveTreeLocation(String treeId, LatLng location) async {
-    // Replace with your actual API call
+    // Replace this with your real save logic
     print("✅ Saving tree $treeId at ${location.latitude}, ${location.longitude}");
-
-    // Example API call:
-    // await TreeApi.saveLocation(treeId, location.latitude, location.longitude);
+    // await TreeApi.saveTreeLocation(treeId, location.latitude, location.longitude);
   }
 
   @override
@@ -156,12 +153,11 @@ class _MapPageState extends State<MapPage> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddTreeDialog,
-        label: const Text('Add Tree', style: TextStyle(color: Colors.white),),
+        label: const Text('Add Tree', style: TextStyle(color: Colors.white)),
         icon: const Icon(Icons.add_location_alt, color: Colors.white),
         backgroundColor: AppColors.hunterGreen,
       ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat, // ✅ center bottom
-
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }

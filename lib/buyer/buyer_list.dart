@@ -65,23 +65,13 @@ class _BuyerPageState extends State<BuyerPage> {
                   buyers.isEmpty
                       ? const Center(child: Text("No buyers found"))
                       : isLoading
-                          ? const Center(child: CircularProgressIndicator())
+                      ? const Center(child: CircularProgressIndicator())
                       : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         itemCount: buyers.length,
                         itemBuilder: (context, index) {
                           final buyer = buyers[index];
-                          return _buildBuyerCard(
-                            context,
-                            id: buyer['uuid'] ?? '',
-                            company: buyer['company_name'] ?? '',
-                            pic: buyer['contact_name'] ?? '',
-                            phone: buyer['contact_number'] ?? '',
-                            email: buyer['email'] ?? '',
-                            location: buyer['address'] ?? '',
-                            state:
-                                'Malaysia', // hardcoded or add 'state' if available
-                          );
+                          return _buildBuyerCard(context, buyer: buyer);
                         },
                       ),
             ),
@@ -157,14 +147,15 @@ class _BuyerPageState extends State<BuyerPage> {
 
   Widget _buildBuyerCard(
     BuildContext context, {
-    required String id,
-    required String company,
-    required String pic,
-    required String phone,
-    required String email,
-    required String location,
-    required String state,
+    required Map<String, dynamic> buyer,
   }) {
+    final String company = buyer['company_name'] ?? '';
+    final String location = buyer['address'] ?? '';
+    final String pic = buyer['contact_name'] ?? '';
+    final String phone = buyer['contact_number']?.toString() ?? '';
+    final String email = buyer['email'] ?? '';
+    final String uuid = buyer['uuid'] ?? '';
+    final String id = buyer['id']?.toString() ?? '';
     return Card(
       color: AppColors.white,
       shape: RoundedRectangleBorder(
@@ -217,18 +208,6 @@ class _BuyerPageState extends State<BuyerPage> {
                         ),
                       ),
                       const SizedBox(width: 4),
-                      const Text(
-                        ",",
-                        style: TextStyle(color: Colors.grey, fontSize: 11),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        state,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 11,
-                        ),
-                      ),
                     ],
                   ),
                 ],
@@ -240,7 +219,9 @@ class _BuyerPageState extends State<BuyerPage> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => BuyerDetailsPage()),
+                  MaterialPageRoute(
+                    builder: (context) => BuyerDetailsPage(buyer: buyer),
+                  ),
                 );
               },
 

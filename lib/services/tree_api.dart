@@ -176,31 +176,50 @@ class TreeApi {
   }
 
   static Future<void> deleteTree(String id) async {
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  final token = prefs.getString('token');
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
 
-  final response = await http.delete(
-    Uri.parse("${Config.apiBaseUrl}/trees/$id"),
-    headers: {
-      "Accept": "application/json",
-      if (token != null) "Authorization": "Bearer $token",
-    },
-  );
+    final response = await http.delete(
+      Uri.parse("${Config.apiBaseUrl}/trees/$id"),
+      headers: {
+        "Accept": "application/json",
+        if (token != null) "Authorization": "Bearer $token",
+      },
+    );
 
-  if (response.statusCode == 200) {
-    return;
-  }
-
-  if (response.body.trim().isNotEmpty) {
-    try {
-      final data = jsonDecode(response.body);
-      throw Exception(data["message"] ?? "Failed to delete tree");
-    } catch (e) {
-      throw Exception("Unexpected error: ${response.body}");
+    if (response.statusCode == 200) {
+      return;
     }
+
+    if (response.body.trim().isNotEmpty) {
+      try {
+        final data = jsonDecode(response.body);
+        throw Exception(data["message"] ?? "Failed to delete tree");
+      } catch (e) {
+        throw Exception("Unexpected error: ${response.body}");
+      }
+    }
+
+    throw Exception("Failed to delete tree (No response body)");
   }
 
-  throw Exception("Failed to delete tree (No response body)");
-}
+  // static Future<List<Map<String, dynamic>>> getTreeTagList() async {
+  //   SharedPreferences prefs = await SharedPreferences.getInstance();
+  //   final token = prefs.getString('token');
 
+  //   final response = await http.get(
+  //     Uri.parse("${Config.apiBaseUrl}/trees"),
+  //     headers: {
+  //       "Accept": "application/json",
+  //       if (token != null) "Authorization": "Bearer $token",
+  //     },
+  //   );
+
+  //   if (response.statusCode == 200) {
+  //     final data = jsonDecode(response.body);
+  //     return List<Map<String, dynamic>>.from(data['data']);
+  //   } else {
+  //     throw Exception("Failed to fetch tree tags");
+  //   }
+  // }
 }

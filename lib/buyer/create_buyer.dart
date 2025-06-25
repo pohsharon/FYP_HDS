@@ -5,7 +5,8 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/buyer_api.dart';
 
 class CreateBuyerPage extends StatefulWidget {
-  const CreateBuyerPage({super.key});
+  final Map<String, dynamic>? buyer;
+  const CreateBuyerPage({super.key, this.buyer});
 
   @override
   _CreateBuyerPageState createState() => _CreateBuyerPageState();
@@ -13,17 +14,6 @@ class CreateBuyerPage extends StatefulWidget {
 
 class _CreateBuyerPageState extends State<CreateBuyerPage> {
   final _formKey = GlobalKey<FormState>();
-  // final ImagePicker _picker = ImagePicker();
-  // File? _selectedImage;
-
-  // Future<void> _pickImage() async {
-  //   final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-  //   if (pickedFile != null) {
-  //     setState(() {
-  //       _selectedImage = File(pickedFile.path);
-  //     });
-  //   }
-  // }
 
   final TextEditingController _companyNameController = TextEditingController();
   final TextEditingController _contactNameController = TextEditingController();
@@ -31,6 +21,19 @@ class _CreateBuyerPageState extends State<CreateBuyerPage> {
       TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.buyer != null) {
+      final buyer = widget.buyer!;
+      _companyNameController.text = buyer['company_name'] ?? '';
+      _contactNameController.text = buyer['contact_name'] ?? '';
+      _contactNumberController.text = buyer['contact_number']?.toString() ?? '';
+      _emailController.text = buyer['email'] ?? '';
+      _addressController.text = buyer['address'] ?? '';
+    }
+  }
 
   @override
   void dispose() {
@@ -49,13 +52,11 @@ class _CreateBuyerPageState extends State<CreateBuyerPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text(
-          'Add Company',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          widget.buyer == null ? 'Add Company' : 'Edit Company',
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        centerTitle: false,
-        leading: const BackButton(),
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.pakistanGreen,
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 0),
@@ -63,20 +64,7 @@ class _CreateBuyerPageState extends State<CreateBuyerPage> {
           key: _formKey,
           child: ListView(
             children: [
-              // Center(
-              //   child: GestureDetector(
-              //     onTap: _pickImage,
-              //     child: CircleAvatar(
-              //       radius: 50,
-              //       backgroundColor: Colors.grey[300],
-              //       backgroundImage: _selectedImage != null ? FileImage(_selectedImage!) : null,
-              //       child: _selectedImage == null
-              //           ? const Icon(Icons.camera_alt, size: 40, color: Colors.grey)
-              //           : null,
-              //     ),
-              //   ),
-              // ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 40),
               TextFormField(
                 controller: _companyNameController,
                 decoration: const InputDecoration(
@@ -135,23 +123,42 @@ class _CreateBuyerPageState extends State<CreateBuyerPage> {
                 onPressed: () async {
                   if (_formKey.currentState!.validate()) {
                     try {
-                      final response = await BuyerApi.createBuyer(
-                        companyName: _companyNameController.text,
-                        contactName: _contactNameController.text,
-                        contactNumber: _contactNumberController.text,
-                        email: _emailController.text,
-                        address: _addressController.text,
-                      );
-
-                      if (context.mounted) {
+                      if (widget.buyer == null) {
+                        // Create
+                        await BuyerApi.createBuyer(
+                          companyName: _companyNameController.text,
+                          contactName: _contactNameController.text,
+                          contactNumber: _contactNumberController.text,
+                          email: _emailController.text,
+                          address: _addressController.text,
+                        );
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Buyer created successfully!'),
                           ),
                         );
-                        Navigator.pop(context, true);
+                      } else {
+                        // Update
+                        await BuyerApi.updateBuyer(
+                          buyerId: widget.buyer!['id'].toString(),
+                          companyName: _companyNameController.text,
+                          contactName: _contactNameController.text,
+                          contactNumber: _contactNumberController.text,
+                          email: _emailController.text,
+                          address: _addressController.text,
+                        );
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Buyer updated successfully!'),
+                          ),
+                        );
                       }
+
+                      Navigator.pop(context, true);
                     } catch (e) {
+                      if (!mounted) return;
                       ScaffoldMessenger.of(
                         context,
                       ).showSnackBar(SnackBar(content: Text(e.toString())));

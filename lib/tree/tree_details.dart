@@ -27,16 +27,24 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
 
   Future<void> _loadTreeDetails() async {
     try {
-      final data = await TreeApi.getTreeById(widget.treeID);
+      final data = await TreeApi.getTreeByUuid(widget.treeID);
       setState(() {
         tree = data;
         isLoading = false;
       });
-    } catch (e) {
-      setState(() => isLoading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error loading tree: $e')));
+    } catch (e1) {
+      try {
+        final data = await TreeApi.getTreeById(widget.treeID);
+        setState(() {
+          tree = data;
+          isLoading = false;
+        });
+      } catch (e2) {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading tree: $e2')));
+      }
     }
   }
 
