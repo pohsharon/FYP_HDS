@@ -113,6 +113,26 @@ class TreeApi {
     }
   }
 
+  static Future<Map<String, dynamic>> getTreeByUuid(String uuid) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    final url = "${Config.apiBaseUrl}/trees/uuid/$uuid";
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {
+        "Accept": "application/json",
+        if (token != null) "Authorization": "Bearer $token",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to fetch tree details");
+    }
+  }
+
   static Future<void> updateTree({
     required String id,
     required String speciesId,

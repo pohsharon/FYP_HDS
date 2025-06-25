@@ -83,15 +83,22 @@ class _CreateSpeciesPageState extends State<CreateSpeciesPage> {
         final isEditing = widget.species != null;
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(
+      // appBar: AppBar(
+      //   title: Text(
+      //     isEditing ? 'Edit Species' : 'Create Species',
+      //     style: const TextStyle(fontWeight: FontWeight.bold),
+      //   ),
+      //   centerTitle: false,
+      //   leading: const BackButton(),
+      //   backgroundColor: AppColors.background,
+      // ),
+       appBar: AppBar(
+         title: Text(
           isEditing ? 'Edit Species' : 'Create Species',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        centerTitle: false,
-        leading: const BackButton(),
-        backgroundColor: AppColors.background,
-      ),
+          backgroundColor: AppColors.pakistanGreen,
+        ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
         child: Form(
