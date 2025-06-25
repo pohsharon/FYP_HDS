@@ -342,18 +342,18 @@ class _TreePageState extends State<TreePage> {
             ),
             // View Button
             OutlinedButton(
-              onPressed: () {
-                // Navigator.pushNamed(
-                //   context,
-                //   '/tree-details',
-                //   arguments: tree['id'].toString(),
-                // );
-                Navigator.push(
+              onPressed: () async {
+                final shouldRefresh = await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => TreeDetailsPage(treeID: id),
+                    builder:
+                        (_) => TreeDetailsPage(treeID: tree['id'].toString()),
                   ),
                 );
+
+                if (shouldRefresh == true) {
+                  fetchTrees();
+                }
               },
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.hunterGreen,

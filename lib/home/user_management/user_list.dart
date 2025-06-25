@@ -42,7 +42,7 @@ class _UserListPageState extends State<UserListPage> {
           isOwner ? '${user['name']} (Me)' : user['name'] ?? '',
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        subtitle: Text(user['email'] ?? '-'),
+        subtitle: Text(user['phone'] ?? '-'),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(

@@ -4,6 +4,7 @@ import 'package:fyp_hbs/services/tree_api.dart';
 import 'dart:convert';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/tree/map.dart';
+import 'package:fyp_hbs/tree/create_tree.dart';
 
 class TreeDetailsPage extends StatefulWidget {
   final String treeID;
@@ -107,8 +108,15 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
           actions: [
             IconButton(
               icon: const Icon(Icons.edit, color: Colors.white),
-              onPressed: () {
-                // Navigate to edit page or show edit dialog
+              onPressed: () async {
+                final updated = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => CreateTreePage(tree: tree)),
+                );
+
+                if (updated == true) {
+                  _loadTreeDetails();
+                }
               },
             ),
           ],
@@ -116,18 +124,90 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
         backgroundColor: AppColors.background,
         body: Column(
           children: [
-            Stack(children: [_buildTreeImage(treeImage)]),
+            GestureDetector(
+              onTap: () {
+                if (treeImage.isNotEmpty) {
+                  showDialog(
+                    context: context,
+                    builder:
+                        (_) => Dialog(
+                          backgroundColor: Colors.white,
+                          child: InteractiveViewer(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.memory(
+                                base64Decode(treeImage.split(',').last),
+                                fit: BoxFit.fill,
+                              ),
+                            ),
+                          ),
+                        ),
+                  );
+                }
+              },
+              child: _buildTreeImage(treeImage),
+            ),
             Container(
               padding: const EdgeInsets.all(16),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  QrImageView(
-                    data: tree!['uuid'] ?? 'N/A',
-                    version: QrVersions.auto,
-                    size: 70,
-                    gapless: true,
+                  GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder:
+                            (_) => Dialog(
+                              backgroundColor: Colors.transparent,
+                              insetPadding: const EdgeInsets.symmetric(
+                                horizontal: 30,
+                                vertical: 100,
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.15),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    QrImageView(
+                                      data: uuid,
+                                      version: QrVersions.auto,
+                                      size: 300,
+                                      gapless: true,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      uuid,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                      );
+                    },
+                    child: QrImageView(
+                      data: uuid,
+                      version: QrVersions.auto,
+                      size: 70,
+                      gapless: true,
+                    ),
                   ),
+
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(

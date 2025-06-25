@@ -4,10 +4,13 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
+
 import 'package:fyp_hbs/services/tree_api.dart';
 
 class CreateTreePage extends StatefulWidget {
-  const CreateTreePage({super.key});
+  final Map<String, dynamic>? tree;
+
+  const CreateTreePage({super.key, this.tree});
 
   @override
   _CreateTreePageState createState() => _CreateTreePageState();
@@ -25,13 +28,27 @@ class _CreateTreePageState extends State<CreateTreePage> {
 
   File? _selectedImage;
   String? _base64Image;
+  String? _existingBase64Thumbnail;
 
   bool isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchSpecies();
+    _fetchSpecies().then((_) {
+      if (widget.tree != null) {
+        final tree = widget.tree!;
+        plantingDateController.text = tree['planted_at'] ?? '';
+        heightController.text = tree['height']?.toString() ?? '';
+        widthController.text = tree['width']?.toString() ?? '';
+        floweringPeriodController.text =
+            tree['flowering_period']?.toString() ?? '';
+        selectedSpeciesId = tree['species']?['id']?.toString();
+
+        _existingBase64Thumbnail = tree['thumbnail'];
+        _base64Image = _existingBase64Thumbnail;
+      }
+    });
   }
 
   Future<void> _fetchSpecies() async {
@@ -60,11 +77,11 @@ class _CreateTreePageState extends State<CreateTreePage> {
     if (pickedFile != null) {
       setState(() {
         _selectedImage = File(pickedFile.path);
+        _existingBase64Thumbnail = null;
       });
 
       final bytes = await pickedFile.readAsBytes();
       _base64Image = 'data:image/jpeg;base64,${base64Encode(bytes)}';
-
     }
   }
 
@@ -79,17 +96,37 @@ class _CreateTreePageState extends State<CreateTreePage> {
     try {
       setState(() => isLoading = true);
 
-      final result = await TreeApi.createTree(
-        speciesId: selectedSpeciesId!,
-        plantedAt: plantingDateController.text,
-        height: double.parse(heightController.text),
-        diameter: double.parse(widthController.text),
-        floweringPeriod: floweringPeriodController.text,
-        imageBase64: _base64Image ?? "",
-      );
+      if (widget.tree == null) {
+        // Create mode
+        await TreeApi.createTree(
+          speciesId: selectedSpeciesId!,
+          plantedAt: plantingDateController.text,
+          height: double.parse(heightController.text),
+          diameter: double.parse(widthController.text),
+          floweringPeriod: floweringPeriodController.text,
+          imageBase64: _base64Image ?? '',
+        );
+      } else {
+        // Update mode
+        await TreeApi.updateTree(
+          id: widget.tree!['id'].toString(),
+          speciesId: selectedSpeciesId!,
+          plantedAt: plantingDateController.text,
+          height: double.parse(heightController.text),
+          diameter: double.parse(widthController.text),
+          floweringPeriod: floweringPeriodController.text,
+          imageBase64: _base64Image ?? '', // Send only if updated
+        );
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tree created successfully')),
+        SnackBar(
+          content: Text(
+            widget.tree == null
+                ? 'Tree created successfully'
+                : 'Tree updated successfully',
+          ),
+        ),
       );
       Navigator.pop(context, true);
     } catch (e) {
@@ -105,14 +142,68 @@ class _CreateTreePageState extends State<CreateTreePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
+      // appBar: AppBar(
+      //   title: Text(
+      //     widget.tree != null ? 'Edit Tree' : 'Add Tree',
+      //     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+      //   ),
+
+      //   centerTitle: false,
+      //   leading: const BackButton(),
+      //   backgroundColor: AppColors.background,
+      // ),
       appBar: AppBar(
-        title: const Text(
-          'Add Tree',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          widget.tree != null ? 'Edit Tree' : 'Add Tree',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        centerTitle: false,
-        leading: const BackButton(),
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.pakistanGreen,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.white),
+            onPressed: () async {
+              if (widget.tree != null) {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Delete Tree'),
+                    content: const Text('Are you sure you want to delete this tree?'),
+                    backgroundColor: Colors.white,
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  try {
+                    await TreeApi.deleteTree(widget.tree!['id'].toString());
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Tree deleted successfully')),
+                    );
+                    Navigator.pop(context);
+                    Navigator.pop(context, true);
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error deleting tree: $e')),
+                    );
+                  }
+                }
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No tree to delete')),
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
@@ -122,29 +213,67 @@ class _CreateTreePageState extends State<CreateTreePage> {
             children: [
               GestureDetector(
                 onTap: _pickImage,
-                child:
-                    _selectedImage != null
-                        ? ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.file(
-                            _selectedImage!,
-                            height: 180,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                          ),
-                        )
-                        : Container(
-                          height: 180,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.grey),
-                          ),
-                          child: const Center(
-                            child: Text('Tap to select tree image'),
+                child: Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child:
+                          _selectedImage != null
+                              ? Image.file(
+                                _selectedImage!,
+                                height: 180,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              )
+                              : _existingBase64Thumbnail != null
+                              ? Image.memory(
+                                base64Decode(
+                                  _existingBase64Thumbnail!.split(',').last,
+                                ),
+                                height: 180,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              )
+                              : Container(
+                                height: 180,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.grey),
+                                ),
+                                child: const Center(
+                                  child: Text('Tap to select tree image'),
+                                ),
+                              ),
+                    ),
+                    if (_selectedImage != null ||
+                        _existingBase64Thumbnail != null)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedImage = null;
+                              _existingBase64Thumbnail = null;
+                              _base64Image = null;
+                            });
+                          },
+                          child: const CircleAvatar(
+                            radius: 14,
+                            backgroundColor: Colors.black54,
+                            child: Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                           ),
                         ),
+                      ),
+                  ],
+                ),
               ),
+
               const SizedBox(height: 16),
 
               DropdownButtonFormField<String>(
