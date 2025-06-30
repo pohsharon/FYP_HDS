@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:qr_code_scanner/qr_code_scanner.dart' as qr;
 import 'package:torch_light/torch_light.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
+import 'package:qr_code_tools/qr_code_tools.dart'; 
 // import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 // import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart' as mlkit;
 
@@ -61,49 +62,45 @@ class _QRScannerPageState extends State<QRScannerPage> {
     }
   }
 
-  Future<void> _pickImageFromGallery() async {
-  final picker = ImagePicker();
-  final XFile? pickedImage = await picker.pickImage(source: ImageSource.gallery);
-  if (pickedImage == null) return;
-  else  ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Image selected from gallery')),);
+Future<void> _pickImageFromGallery() async {
+  try {
+    final picker = ImagePicker();
+    final XFile? pickedImage = await picker.pickImage(source: ImageSource.gallery);
 
-  // final inputImage = InputImage.fromFilePath(pickedImage.path);
-  // final barcodeScanner = mlkit.BarcodeScanner(formats: [mlkit.BarcodeFormat.qrCode]);
+    if (pickedImage == null) {
+      debugPrint('No image selected.');
+      return;
+    }
 
-  // try {
-  //   final barcodes = await barcodeScanner.processImage(inputImage);
-  //   if (barcodes.isNotEmpty) {
-  //     final String? uuid = barcodes.first.rawValue;
-  //     if (uuid != null) {
-  //       Navigator.push(
-  //         context,
-  //         MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: uuid)),
-  //       );
-  //     } else {
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         const SnackBar(content: Text('QR code not recognized.')),
-  //       );
-  //     }
-  //   } else {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       const SnackBar(content: Text('No QR code found in the image.')),
-  //     );
-  //   }
-  // } catch (e) {
-  //   ScaffoldMessenger.of(context).showSnackBar(
-  //     SnackBar(content: Text('Error scanning QR code: $e')),
-  //   );
-  // } finally {
-  //   barcodeScanner.close();
-  // }
+    String? result = await QrCodeToolsPlugin.decodeFrom(pickedImage.path);
+
+    if (result != null && result.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TreeDetailsPage(treeID: result),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ Could not decode any QR from the image.')),
+      );
+    }
+  } catch (e) {
+    debugPrint('Error decoding QR: $e');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('❌ Error decoding QR: $e')),
+    );
+  }
 }
 
-  @override
-  void dispose() {
-    controller?.dispose();
-    super.dispose();
-  }
+@override
+void dispose() {
+  // Only call dispose on controllers you actually defined.
+  // Example: textController?.dispose();
+  super.dispose();
+}
+
 
   @override
   Widget build(BuildContext context) {
