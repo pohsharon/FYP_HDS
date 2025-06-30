@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:fyp_hbs/nav.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/buyer_api.dart';
@@ -183,6 +184,7 @@ class _CreateBuyerPageState extends State<CreateBuyerPage> {
                             content: Text('Buyer created successfully!'),
                           ),
                         );
+                        Navigator.pop(context, true);
                       } else {
                         // Update
                         await BuyerApi.updateBuyer(
@@ -199,9 +201,10 @@ class _CreateBuyerPageState extends State<CreateBuyerPage> {
                             content: Text('Buyer updated successfully!'),
                           ),
                         );
+                        Navigator.pop(context, 'edited');
                       }
 
-                      Navigator.pop(context, 'edited');
+                      
                     } catch (e) {
                       if (!mounted) return;
                       ScaffoldMessenger.of(

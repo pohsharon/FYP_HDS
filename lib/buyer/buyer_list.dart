@@ -53,6 +53,16 @@ class _BuyerPageState extends State<BuyerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Buyers', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: AppColors.pakistanGreen,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadBuyers,
+          ),
+        ],
+      ),
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(

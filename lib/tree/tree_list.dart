@@ -137,6 +137,21 @@ class _TreePageState extends State<TreePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text("Trees", style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        )),
+        backgroundColor: AppColors.pakistanGreen,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              fetchTrees();
+            },
+          ),
+        ],
+      ),
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(

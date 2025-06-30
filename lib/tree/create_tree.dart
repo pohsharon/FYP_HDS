@@ -358,7 +358,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 controller: floweringPeriodController,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  labelText: 'Flowering Period (days)',
+                  labelText: 'Flowering Period',
                   filled: true,
                   fillColor: Colors.white,
                 ),

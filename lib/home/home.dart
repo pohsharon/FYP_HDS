@@ -14,7 +14,7 @@ class HomePage extends StatelessWidget {
           'Home Page',
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        backgroundColor: AppColors.hunterGreen,
+        backgroundColor: AppColors.pakistanGreen,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),

@@ -203,6 +203,35 @@ class TreeApi {
     throw Exception("Failed to delete tree (No response body)");
   }
 
+  static Future<void> addTreeLocation({
+    required String treeId,
+    required double latitude,
+    required double longitude,
+  }) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    final response = await http.put(
+      Uri.parse("${Config.apiBaseUrl}/trees/location/$treeId"),
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        if (token != null) "Authorization": "Bearer $token",
+      },
+      body: jsonEncode({
+        "latitude": latitude,
+        "longitude": longitude,
+      }),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return;
+    } else {
+      final data = jsonDecode(response.body);
+      throw Exception(data["message"] ?? "Failed to add tree location");
+    }
+  }
+
   // static Future<List<Map<String, dynamic>>> getTreeTagList() async {
   //   SharedPreferences prefs = await SharedPreferences.getInstance();
   //   final token = prefs.getString('token');

@@ -62,9 +62,11 @@ class _QRScannerPageState extends State<QRScannerPage> {
   }
 
   Future<void> _pickImageFromGallery() async {
-  // final picker = ImagePicker();
-  // final XFile? pickedImage = await picker.pickImage(source: ImageSource.gallery);
-  // if (pickedImage == null) return;
+  final picker = ImagePicker();
+  final XFile? pickedImage = await picker.pickImage(source: ImageSource.gallery);
+  if (pickedImage == null) return;
+  else  ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Image selected from gallery')),);
 
   // final inputImage = InputImage.fromFilePath(pickedImage.path);
   // final barcodeScanner = mlkit.BarcodeScanner(formats: [mlkit.BarcodeFormat.qrCode]);

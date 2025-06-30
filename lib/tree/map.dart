@@ -4,6 +4,7 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
+import 'package:fyp_hbs/tree/tree_details.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -15,6 +16,7 @@ class MapPage extends StatefulWidget {
 class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
   LatLng? _currentLocation;
+  List<Map<String, dynamic>> treesWithLocation = [];
 
   final LatLngBounds farmBounds = LatLngBounds(
     const LatLng(3.110831, 101.626978),
@@ -25,6 +27,27 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
     _getCurrentLocation();
+    _fetchTreeMarkers();
+  }
+
+  Future<void> _fetchTreeMarkers() async {
+    try {
+      final allTrees = await TreeApi.fetchTrees();
+      setState(() {
+        treesWithLocation =
+            allTrees.where((tree) {
+              final lat = tree['latitude'];
+              final lng = tree['longitude'];
+              return lat != null && lng != null;
+            }).toList();
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to load tree markers: $e")),
+        );
+      }
+    }
   }
 
   Future<void> _getCurrentLocation() async {
@@ -32,9 +55,12 @@ class _MapPageState extends State<MapPage> {
     if (!serviceEnabled) return;
 
     LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
       permission = await Geolocator.requestPermission();
-      if (permission != LocationPermission.always && permission != LocationPermission.whileInUse) return;
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse)
+        return;
     }
 
     Geolocator.getPositionStream(
@@ -60,9 +86,9 @@ class _MapPageState extends State<MapPage> {
       treeList = await TreeApi.fetchTrees();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to load tree list: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Failed to load tree list: $e")));
       return;
     }
 
@@ -72,41 +98,27 @@ class _MapPageState extends State<MapPage> {
         return AlertDialog(
           title: const Text('Select Tree'),
           backgroundColor: AppColors.white,
-          content: DropdownButtonFormField<String>(
-            hint: const Text("Select Tree Tag"),
-            value: selectedTreeId,
-            items: treeList.map((tree) {
-              return DropdownMenuItem(
-                value: tree['tree_tag'].toString(),
-                child: Text(tree['tree_tag'] ?? 'Unnamed'),
+          content: StatefulBuilder(
+            builder: (context, setState) {
+              return DropdownButtonFormField<String>(
+                hint: const Text("Select Tree Tag"),
+                value: selectedTreeId,
+                items:
+                    treeList.map((tree) {
+                      return DropdownMenuItem(
+                        value: tree['id'].toString(),
+                        child: Text(tree['tree_tag'] ?? 'Unnamed'),
+                      );
+                    }).toList(),
+                onChanged: (value) {
+                  setState(() => selectedTreeId = value);
+                },
               );
-            }).toList(),
-            onChanged: (value) => selectedTreeId = value,
+            },
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (selectedTreeId != null && _currentLocation != null) {
-                  await _saveTreeLocation(selectedTreeId!, _currentLocation!);
-                  Navigator.of(context).pop();
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
         );
       },
     );
-  }
-
-  Future<void> _saveTreeLocation(String treeId, LatLng location) async {
-    // Replace this with your real save logic
-    print("✅ Saving tree $treeId at ${location.latitude}, ${location.longitude}");
-    // await TreeApi.saveTreeLocation(treeId, location.latitude, location.longitude);
   }
 
   @override
@@ -134,19 +146,78 @@ class _MapPageState extends State<MapPage> {
             subdomains: const ['a', 'b', 'c'],
             userAgentPackageName: 'com.example.app',
           ),
+
           if (_currentLocation != null)
             MarkerLayer(
               markers: [
-                Marker(
-                  point: _currentLocation!,
-                  width: 40,
-                  height: 40,
-                  child: const Icon(
-                    Icons.my_location,
-                    color: Colors.blue,
-                    size: 40,
+                // 🧭 Current Location Marker
+                if (_currentLocation != null)
+                  Marker(
+                    point: _currentLocation!,
+                    width: 50,
+                    height: 50,
+                    child: const Icon(
+                      Icons.my_location,
+                      color: Colors.blue,
+                      size: 40,
+                    ),
                   ),
-                ),
+                // 🌳 Tree Markers
+                ...treesWithLocation
+                    .map((tree) {
+                      final lat = double.tryParse(tree['latitude'].toString());
+                      final lng = double.tryParse(tree['longitude'].toString());
+                      if (lat == null || lng == null) return null;
+
+                      return Marker(
+                        point: LatLng(lat, lng),
+                        width: 80,
+                        height: 80,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (context) => TreeDetailsPage(
+                                      treeID:
+                                          tree['uuid'] ?? tree['id'].toString(),
+                                    ),
+                              ),
+                            );
+                          },
+                          child: FittedBox(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  color: Colors.white,
+                                  child: Text(
+                                    tree['tree_tag'] ?? 'Unknown',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.location_on,
+                                  color: Colors.red,
+                                  size: 24,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    })
+                    .whereType<Marker>()
+                    .toList(),
               ],
             ),
         ],
