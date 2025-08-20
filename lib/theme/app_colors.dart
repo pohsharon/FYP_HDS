@@ -19,7 +19,7 @@ class AppColors {
   static const Color white = Color(0xFFFFFFFF); // White
   static const Color black = Color(0xFF000000); // Black
   static const Color gray100 = Color(0xFFF9F9F9); // Light Grey
-  static const Color gray200 = Color(0xFF1F1F2E); // Medium Light Grey
+  static const Color gray200 = Color(0xFFF1F1F2); // Medium Light Grey
   static const Color gray300 = Color(0xFFE1E3EA); // Medium Grey
   static const Color gray400 = Color(0xFFD8D8E5); // Dark Grey
   static const Color gray500 = Color(0xFFA1A5B7); // Darker Grey

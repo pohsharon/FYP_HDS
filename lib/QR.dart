@@ -5,8 +5,6 @@ import 'package:qr_code_scanner/qr_code_scanner.dart' as qr;
 import 'package:torch_light/torch_light.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:qr_code_tools/qr_code_tools.dart'; 
-// import 'package:google_mlkit_commons/google_mlkit_commons.dart';
-// import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart' as mlkit;
 
 class QRScannerPage extends StatefulWidget {
   const QRScannerPage({super.key});

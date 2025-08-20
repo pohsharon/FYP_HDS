@@ -68,61 +68,63 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
   }
 
   @override
-Widget build(BuildContext context) {
-  final LatLng initialLocation = LatLng(widget.treeLatitude, widget.treeLongitude);
+  Widget build(BuildContext context) {
+    final LatLng initialLocation = LatLng(
+      widget.treeLatitude,
+      widget.treeLongitude,
+    );
 
-  return Scaffold(
-    appBar: AppBar(
-      title: const Text(
-        "Tree Location",
-        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-      ),
-      backgroundColor: AppColors.pakistanGreen,
-    ),
-    body: FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        initialCenter: initialLocation,
-        initialZoom: 18,
-        cameraConstraint: CameraConstraint.contain(bounds: farmBounds),
-      ),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          subdomains: const ['a', 'b', 'c'],
-          userAgentPackageName: 'com.example.app',
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          "Tree Location",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
-        MarkerLayer(
-          markers: [
-            if (_currentLocation != null)
+        backgroundColor: AppColors.pakistanGreen,
+      ),
+      body: FlutterMap(
+        mapController: _mapController,
+        options: MapOptions(
+          initialCenter: initialLocation,
+          initialZoom: 18,
+          cameraConstraint: CameraConstraint.contain(bounds: farmBounds),
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            subdomains: const ['a', 'b', 'c'],
+            userAgentPackageName: 'com.example.app',
+          ),
+          MarkerLayer(
+            markers: [
+              if (_currentLocation != null)
+                Marker(
+                  point: _currentLocation!,
+                  width: 50,
+                  height: 50,
+                  child: const Icon(
+                    Icons.my_location,
+                    color: Colors.blue,
+                    size: 40,
+                  ),
+                ),
               Marker(
-                point: _currentLocation!,
+                point: LatLng(widget.treeLatitude, widget.treeLongitude),
                 width: 50,
                 height: 50,
-                child: const Icon(
-                  Icons.my_location,
-                  color: Colors.blue,
-                  size: 40,
+                child: Tooltip(
+                  message: widget.treeTag,
+                  child: const Icon(
+                    Icons.location_on,
+                    color: Colors.red,
+                    size: 40,
+                  ),
                 ),
               ),
-            Marker(
-              point: LatLng(widget.treeLatitude, widget.treeLongitude),
-              width: 50,
-              height: 50,
-              child: Tooltip(
-                message: widget.treeTag,
-                child: const Icon(
-                  Icons.location_on,
-                  color: Colors.red,
-                  size: 40,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
-
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

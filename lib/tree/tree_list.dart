@@ -5,6 +5,7 @@ import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
 import 'package:fyp_hbs/tree/map.dart';
+import 'package:fyp_hbs/authentication/login.dart';
 
 class TreePage extends StatefulWidget {
   const TreePage({super.key});
@@ -138,18 +139,47 @@ class _TreePageState extends State<TreePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Trees", style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: Colors.white,
-        )),
+        title: const Text(
+          "Trees",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        ),
         backgroundColor: AppColors.pakistanGreen,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              fetchTrees();
-            },
+  icon: const Icon(Icons.logout),
+  onPressed: () async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
           ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true) {
+      // Clear authentication data here (e.g., SharedPreferences)
+      // Example:
+      // final prefs = await SharedPreferences.getInstance();
+      // await prefs.clear();
+
+      // Navigate to login page and remove all previous routes
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => LoginPage()),
+        (route) => false,
+      );
+    }
+  },
+),
         ],
       ),
       backgroundColor: AppColors.background,
@@ -160,17 +190,24 @@ class _TreePageState extends State<TreePage> {
             _buildSearchBar(context),
             const SizedBox(height: 16),
             Expanded(
-              child:
-                  _filteredTrees.isEmpty
-                      ? const Center(child: Text("Loading..."))
-                      : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _filteredTrees.length,
-                        itemBuilder: (context, index) {
-                          final tree = _filteredTrees[index];
-                          return _buildTreeCard(context, tree: tree);
-                        },
-                      ),
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  fetchTrees();
+                  // Wait for fetchTrees to complete and set state
+                  await Future.delayed(const Duration(milliseconds: 500));
+                },
+                child:
+                    _filteredTrees.isEmpty
+                        ? const Center(child: Text("Loading..."))
+                        : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _filteredTrees.length,
+                          itemBuilder: (context, index) {
+                            final tree = _filteredTrees[index];
+                            return _buildTreeCard(context, tree: tree);
+                          },
+                        ),
+              ),
             ),
           ],
         ),

@@ -218,10 +218,7 @@ class TreeApi {
         "Accept": "application/json",
         if (token != null) "Authorization": "Bearer $token",
       },
-      body: jsonEncode({
-        "latitude": latitude,
-        "longitude": longitude,
-      }),
+      body: jsonEncode({"latitude": latitude, "longitude": longitude}),
     );
 
     if (response.statusCode == 200 || response.statusCode == 201) {

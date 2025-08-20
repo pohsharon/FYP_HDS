@@ -52,67 +52,150 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _getCurrentLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
+    if (!serviceEnabled) {
+      _setFallbackLocation();
+      return;
+    }
 
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied ||
         permission == LocationPermission.deniedForever) {
       permission = await Geolocator.requestPermission();
       if (permission != LocationPermission.always &&
-          permission != LocationPermission.whileInUse)
+          permission != LocationPermission.whileInUse) {
+        _setFallbackLocation();
         return;
+      }
     }
 
-    Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 5,
-      ),
-    ).listen((Position position) {
-      final LatLng newLocation = LatLng(position.latitude, position.longitude);
+    try {
+      Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: 5,
+        ),
+      ).listen((Position position) {
+        final LatLng newLocation = LatLng(
+          position.latitude,
+          position.longitude,
+        );
 
-      if (mounted) {
-        setState(() => _currentLocation = newLocation);
-        _mapController.move(newLocation, _mapController.camera.zoom);
-      }
-    });
+        if (mounted) {
+          setState(() => _currentLocation = newLocation);
+          _mapController.move(newLocation, _mapController.camera.zoom);
+        }
+      });
+    } catch (e) {
+      debugPrint("❌ Error getting location stream: $e");
+      _setFallbackLocation();
+    }
   }
 
-  Future<void> _showAddTreeDialog() async {
+  void _setFallbackLocation() {
+    final fallbackLocation = LatLng(3.120821, 101.636978);
+    if (mounted) {
+      setState(() {
+        _currentLocation = fallbackLocation;
+      });
+      _mapController.move(fallbackLocation, _mapController.camera.zoom);
+    }
+  }
+
+  Future<bool?> _showAddTreeDialog() async {
+    final parentContext = context;
+
     List<Map<String, dynamic>> treeList = [];
     String? selectedTreeId;
 
     try {
       treeList = await TreeApi.fetchTrees();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(
-        context,
+        parentContext,
       ).showSnackBar(SnackBar(content: Text("Failed to load tree list: $e")));
-      return;
+      return false;
     }
 
-    showDialog(
-      context: context,
-      builder: (context) {
+    return showDialog<bool>(
+      context: parentContext,
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Select Tree'),
           backgroundColor: AppColors.white,
           content: StatefulBuilder(
             builder: (context, setState) {
-              return DropdownButtonFormField<String>(
-                hint: const Text("Select Tree Tag"),
-                value: selectedTreeId,
-                items:
-                    treeList.map((tree) {
-                      return DropdownMenuItem(
-                        value: tree['id'].toString(),
-                        child: Text(tree['tree_tag'] ?? 'Unnamed'),
-                      );
-                    }).toList(),
-                onChanged: (value) {
-                  setState(() => selectedTreeId = value);
-                },
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    hint: const Text("Select Tree Tag"),
+                    value: selectedTreeId,
+                    items:
+                        treeList.map((tree) {
+                          return DropdownMenuItem(
+                            value: tree['id'].toString(),
+                            child: Text(tree['tree_tag'] ?? 'Unnamed'),
+                          );
+                        }).toList(),
+                    onChanged: (value) {
+                      setState(() => selectedTreeId = value);
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed:
+                        selectedTreeId == null
+                            ? null
+                            : () async {
+                              try {
+                                final position =
+                                    await Geolocator.getCurrentPosition(
+                                      desiredAccuracy: LocationAccuracy.high,
+                                    );
+
+                                await TreeApi.addTreeLocation(
+                                  treeId: selectedTreeId!,
+                                  latitude: position.latitude,
+                                  longitude: position.longitude,
+                                );
+
+                                if (mounted) {
+                                  ScaffoldMessenger.of(
+                                    parentContext,
+                                  ).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        "Tree location saved successfully!",
+                                      ),
+                                    ),
+                                  );
+                                  Navigator.pop(
+                                    dialogContext,
+                                    true,
+                                  ); // ✅ Return true
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(
+                                    parentContext,
+                                  ).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "Failed to save location: $e",
+                                      ),
+                                    ),
+                                  );
+                                  Navigator.pop(
+                                    dialogContext,
+                                    false,
+                                  ); // ✅ Return false
+                                }
+                              }
+                            },
+                    child: const Text("Save"),
+                  ),
+                ],
               );
             },
           ),
@@ -223,11 +306,17 @@ class _MapPageState extends State<MapPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showAddTreeDialog,
+        onPressed: () async {
+          final result = await _showAddTreeDialog();
+          if (result == true) {
+            _fetchTreeMarkers(); // ✅ Refresh markers after success
+          }
+        },
         label: const Text('Add Tree', style: TextStyle(color: Colors.white)),
         icon: const Icon(Icons.add_location_alt, color: Colors.white),
         backgroundColor: AppColors.hunterGreen,
       ),
+
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }

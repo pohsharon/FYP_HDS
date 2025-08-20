@@ -5,6 +5,7 @@ import 'package:fyp_hbs/buyer/buyer_list.dart';
 import 'package:fyp_hbs/home/home.dart';
 import 'package:fyp_hbs/QR.dart';
 import 'package:fyp_hbs/settings.dart';
+import 'package:fyp_hbs/fruit/fruit_list.dart';
 
 class Nav extends StatefulWidget {
   const Nav({super.key});
@@ -19,6 +20,7 @@ class _NavState extends State<Nav> {
   static const List<Widget> _pages = <Widget>[
     // HomePage(),
     TreePage(),
+    FruitPage(),
     BuyerPage()];
     // SettingsPage(),  ];
 
@@ -59,7 +61,7 @@ class _NavState extends State<Nav> {
               // _buildTabIcon(Icons.home, 'Home', 0),
               _buildTabIcon(Icons.nature, 'Tree', 0),
               const SizedBox(width: 48), 
-              _buildTabIcon(Icons.bar_chart, 'Buyer', 1),
+              _buildTabIcon(Icons.bar_chart, 'Fruit', 1),
               // _buildTabIcon(Icons.settings, 'Settings', 3),
             ],
           ),
