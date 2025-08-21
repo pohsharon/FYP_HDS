@@ -133,12 +133,14 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
           ],
         ),
         backgroundColor: AppColors.background,
-        body: Column(
-          children: [
-            GestureDetector(
-              onTap: () {
-                if (treeImage.isNotEmpty) {
-                  showDialog(
+        body: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onTap: () {
+                  if (treeImage.isNotEmpty) {
+                    showDialog(
                     context: context,
                     builder:
                         (_) => Dialog(
@@ -296,19 +298,22 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
               indicatorColor: AppColors.hunterGreen,
               indicatorWeight: 3,
             ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  HealthTabPage(treeTag: treeTag, treeUuid: uuid),
-                  const _TabContent(title: "No fertilization records found."),
-                  const _TabContent(title: "No pesticide records found."),
-                  const _TabContent(title: "No harvest records found."),
-                ],
-              ),
-            ),
+            SizedBox(
+  height: MediaQuery.of(context).size.height * 0.35, // adjust as needed
+  child: TabBarView(
+    children: [
+      HealthTabPage(treeTag: treeTag, treeUuid: uuid),
+      const _TabContent(title: "No fertilization records found."),
+      const _TabContent(title: "No pesticide records found."),
+      const _TabContent(title: "No harvest records found."),
+    ],
+  ),
+),
+
           ],
         ),
       ),
+      )
     );
   }
 }

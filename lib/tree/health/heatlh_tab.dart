@@ -19,16 +19,16 @@ class HealthTabPage extends StatefulWidget {
 class _HealthTabPageState extends State<HealthTabPage> {
   String searchQuery = '';
 
-  @override
+@override
 Widget build(BuildContext context) {
-  return Padding(
+  return SingleChildScrollView(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-    child: ListView(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
         _buildSearchAndAddButton(),
         const SizedBox(height: 16),
-        // Use a FutureBuilder for the health records
         FutureBuilder<List<Map<String, dynamic>>>(
           future: HealthApi.fetchHealthRecords(widget.treeUuid),
           builder: (context, snapshot) {
@@ -118,17 +118,24 @@ Widget build(BuildContext context) {
   }
 
   Widget _buildRecordCard(Map<String, dynamic> record) {
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case "recovered":
-        return AppColors.success; // define in your AppColors
-      case "severe":
-        return AppColors.danger;     // define in your AppColors
-      case "medium":
-        return AppColors.warning; // define in your AppColors
-      default:
-        return AppColors.gray700;
-    }
+  // Format date if needed
+  String recordedAt = record['recorded_at'] ?? "";
+  String status = record['status'] ?? "";
+
+  // Status color logic
+  Color statusColor;
+  switch (status) {
+    case "Recovered":
+      statusColor = AppColors.success;
+      break;
+    case "Severe":
+      statusColor = AppColors.danger;
+      break;
+    case "Medium":
+      statusColor = AppColors.warning;
+      break;
+    default:
+      statusColor = AppColors.gray600;
   }
 
   return Card(
@@ -142,40 +149,62 @@ Widget build(BuildContext context) {
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  record['disease']['diseaseName'] ?? "Unknown Disease",
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-              ),
+              // Disease name
               Text(
-                record['recorded_at'] ?? "",
+                record['disease']['diseaseName'],
                 style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.infoActive,
                   fontWeight: FontWeight.bold,
+                  fontSize: 16,
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                record['status'] ?? "Unknown",
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: _getStatusColor(record['status'] ?? ""),
+              // Date chip (right after disease name)
+              if (recordedAt.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.gray200,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    recordedAt,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.infoActive,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              const Spacer(),
+              // Status chip (on the far right)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(
-            record['treatment'] ?? "",
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.gray700,
+          if ((record['treatment'] ?? "").isNotEmpty)
+            Text(
+              record['treatment'],
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.gray700,
+              ),
             ),
-          ),
         ],
       ),
     ),
