@@ -62,4 +62,44 @@ class HealthApi {
       throw Exception("Error: ${e.toString()}");
     }
   }
+
+  static Future<List<Map<String, dynamic>>> fetchHealthRecords(String treeUuid) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    final response = await http.get(
+      Uri.parse("${Config.apiBaseUrl}/trees/$treeUuid/health-records"),
+      headers: {
+        "Accept": "application/json",
+        if (token != null) "Authorization": "Bearer $token",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data["data"]);
+    } else {
+      throw Exception("Failed to fetch health records: ${response.body}");
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchTreeHealthRecords(String treeUuid) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    final response = await http.get(
+      Uri.parse("${Config.apiBaseUrl}/trees/$treeUuid/health-records"),
+      headers: {
+        "Accept": "application/json",
+        if (token != null) "Authorization": "Bearer $token",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data["data"]);
+    } else {
+      throw Exception("Failed to fetch health records: ${response.body}");
+    }
+  }
 }
