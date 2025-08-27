@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
-import 'package:fyp_hbs/tree/health/heatlh_tab.dart';
+import 'package:fyp_hbs/tree/health/health_tab.dart';
 import 'dart:convert';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/tree/map_individual_tree.dart';

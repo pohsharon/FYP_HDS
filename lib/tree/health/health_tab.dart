@@ -12,6 +12,7 @@ class HealthTabPage extends StatefulWidget {
     required this.treeUuid,
   });
 
+
   @override
   State<HealthTabPage> createState() => _HealthTabPageState();
 }
@@ -103,8 +104,10 @@ Widget build(BuildContext context) {
               context,
               MaterialPageRoute(
                 builder: (_) => CreateHealthInfoPage(
+
                   treeTag: widget.treeTag,
                   treeUuid: widget.treeUuid,
+                  existingRecord: null,
                 ),
               ),
             );
@@ -138,7 +141,21 @@ Widget build(BuildContext context) {
       statusColor = AppColors.gray600;
   }
 
-  return Card(
+  return GestureDetector(
+  onTap: () async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CreateHealthInfoPage(
+          treeTag: widget.treeTag,
+          treeUuid: widget.treeUuid,
+          existingRecord: record,
+        ),
+      ),
+    );
+    if (result == true) setState(() {});
+  },
+  child: Card(
     color: AppColors.white,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     margin: const EdgeInsets.only(bottom: 12),
@@ -208,6 +225,7 @@ Widget build(BuildContext context) {
         ],
       ),
     ),
+  )
   );
 }
 

@@ -5,8 +5,8 @@ import '../config.dart';
 
 class HealthApi {
   static Future<List<Map<String, dynamic>>> fetchDiseases() async {
-     SharedPreferences prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
 
     final response = await http.get(
       Uri.parse("${Config.apiBaseUrl}/diseases"),
@@ -26,7 +26,7 @@ class HealthApi {
 
   static Future<Map<String, dynamic>> createHealthRecord({
     required String treeUuid,
-    required String diseaseId,
+    required int diseaseId,
     required String date,
     required String status,
     required String treatment,
@@ -63,7 +63,9 @@ class HealthApi {
     }
   }
 
-  static Future<List<Map<String, dynamic>>> fetchHealthRecords(String treeUuid) async {
+  static Future<List<Map<String, dynamic>>> fetchHealthRecords(
+    String treeUuid,
+  ) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
@@ -83,7 +85,9 @@ class HealthApi {
     }
   }
 
-  static Future<List<Map<String, dynamic>>> fetchTreeHealthRecords(String treeUuid) async {
+  static Future<List<Map<String, dynamic>>> fetchTreeHealthRecords(
+    String treeUuid,
+  ) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
@@ -100,6 +104,37 @@ class HealthApi {
       return List<Map<String, dynamic>>.from(data["data"]);
     } else {
       throw Exception("Failed to fetch health records: ${response.body}");
+    }
+  }
+
+  static Future<void> updateHealthRecord({
+    required String id,
+    required String treeUuid,
+    required int diseaseId,
+    required String date,
+    required String status,
+    required String treatment,
+  }) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    final response = await http.put(
+      Uri.parse('${Config.apiBaseUrl}/health-records/$id'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'tree_uuid': treeUuid,
+        'disease_id': diseaseId,
+        'recorded_at': date,
+        'status': status,
+        'treatment': treatment,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to update health record: ${response.body}');
     }
   }
 }

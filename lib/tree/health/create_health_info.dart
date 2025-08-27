@@ -8,11 +8,13 @@ import 'package:fyp_hbs/tree/health/create_disease.dart';
 class CreateHealthInfoPage extends StatefulWidget {
   final String treeTag;
   final String treeUuid;
+  final Map<String, dynamic>? existingRecord;
 
   const CreateHealthInfoPage({
     super.key,
     required this.treeTag,
     required this.treeUuid,
+    required this.existingRecord,
   });
 
   @override
@@ -25,7 +27,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
   final dateController = TextEditingController();
   final treatmentController = TextEditingController();
 
-  String? selectedDiseaseId;
+  int? selectedDiseaseId;
   String? selectedStatus;
   bool isLoading = false;
 
@@ -34,6 +36,19 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
     dateController.dispose();
     treatmentController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.existingRecord != null) {
+      final record = widget.existingRecord!;
+      dateController.text = record['recorded_at'] ?? '';
+      treatmentController.text = record['treatment'] ?? '';
+      selectedDiseaseId = record['disease']['id'];
+      selectedStatus = record['status'];
+    }
   }
 
   Future<void> _saveHealthInfo() async {
@@ -47,16 +62,35 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
     try {
       setState(() => isLoading = true);
 
-      await HealthApi.createHealthRecord(
-        treeUuid: widget.treeUuid,
-        diseaseId: selectedDiseaseId!,
-        date: dateController.text,
-        status: selectedStatus!,
-        treatment: treatmentController.text,
-      );
+      if (widget.existingRecord != null) {
+        // update existing
+        await HealthApi.updateHealthRecord(
+          id: widget.existingRecord!['id'].toString(),
+          treeUuid: widget.treeUuid,
+          diseaseId: selectedDiseaseId!,
+          date: dateController.text,
+          status: selectedStatus!,
+          treatment: treatmentController.text,
+        );
+      } else {
+        // create new
+        await HealthApi.createHealthRecord(
+          treeUuid: widget.treeUuid,
+          diseaseId: selectedDiseaseId!,
+          date: dateController.text,
+          status: selectedStatus!,
+          treatment: treatmentController.text,
+        );
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Health record saved successfully')),
+        SnackBar(
+          content: Text(
+            widget.existingRecord != null
+                ? 'Health record updated successfully'
+                : 'Health record saved successfully',
+          ),
+        ),
       );
       Navigator.pop(context, true);
     } catch (e) {
@@ -115,7 +149,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                       );
                       if (picked != null) {
                         dateController.text = DateFormat(
-                          'd/M/yyyy',
+                          'yyyy-MM-dd',
                         ).format(picked);
                       }
                     },
@@ -137,12 +171,12 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                   final diseaseList = snapshot.data!;
 
                   return DropdownButtonFormField<String>(
-                    value: selectedDiseaseId,
+                    value: selectedDiseaseId?.toString(),
                     items:
                         diseaseList.map((d) {
                             return DropdownMenuItem(
                               value: d['id'].toString(),
-                              child: Text(d['diseaseName']??""),
+                              child: Text(d['diseaseName'] ?? ""),
                             );
                           }).toList()
                           ..add(
@@ -163,9 +197,9 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                                 ),
                           ),
                         );
-                        setState(() {}); // Refresh after adding new disease
+                        setState(() {});
                       } else {
-                        setState(() => selectedDiseaseId = value);
+                        setState(() => selectedDiseaseId = int.parse(value!));
                       }
                     },
                     decoration: const InputDecoration(
