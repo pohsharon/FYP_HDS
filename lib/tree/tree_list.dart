@@ -146,40 +146,41 @@ class _TreePageState extends State<TreePage> {
         backgroundColor: AppColors.pakistanGreen,
         actions: [
           IconButton(
-  icon: const Icon(Icons.logout),
-  onPressed: () async {
-    final shouldLogout = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirm Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final shouldLogout = await showDialog<bool>(
+                context: context,
+                builder:
+                    (context) => AlertDialog(
+                      title: const Text('Confirm Logout'),
+                      content: const Text('Are you sure you want to logout?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Logout'),
+                        ),
+                      ],
+                    ),
+              );
 
-    if (shouldLogout == true) {
-      // Clear authentication data here (e.g., SharedPreferences)
-      // Example:
-      // final prefs = await SharedPreferences.getInstance();
-      // await prefs.clear();
+              if (shouldLogout == true) {
+                // Clear authentication data here (e.g., SharedPreferences)
+                // Example:
+                // final prefs = await SharedPreferences.getInstance();
+                // await prefs.clear();
 
-      // Navigate to login page and remove all previous routes
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => LoginPage()),
-        (route) => false,
-      );
-    }
-  },
-),
+                // Navigate to login page and remove all previous routes
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => LoginPage()),
+                  (route) => false,
+                );
+              }
+            },
+          ),
         ],
       ),
       backgroundColor: AppColors.background,
@@ -328,7 +329,7 @@ class _TreePageState extends State<TreePage> {
               height: 70,
               child: QrImageView(data: uuid, version: QrVersions.auto),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             // Tree info
             Expanded(
               child: Column(
@@ -342,25 +343,6 @@ class _TreePageState extends State<TreePage> {
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        //   padding: const EdgeInsets.symmetric(
-                        //     horizontal: 8,
-                        //     vertical: 4,
-                        //   ),
-                        //   decoration: BoxDecoration(
-                        //     color: statusColor,
-                        //     borderRadius: BorderRadius.circular(12),
-                        //   ),
-                        //   child: Text(
-                        //     status,
-                        //     style: TextStyle(
-                        //       color: statusTextColor,
-                        //       fontSize: 10,
-                        //       fontWeight: FontWeight.w600,
-                        //     ),
-                        //   ),
                       ),
                     ],
                   ),

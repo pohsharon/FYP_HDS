@@ -229,23 +229,62 @@ class TreeApi {
     }
   }
 
-  // static Future<List<Map<String, dynamic>>> getTreeTagList() async {
-  //   SharedPreferences prefs = await SharedPreferences.getInstance();
-  //   final token = prefs.getString('token');
+  static Future<List<Map<String, dynamic>>> fetchEvents() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
 
-  //   final response = await http.get(
-  //     Uri.parse("${Config.apiBaseUrl}/trees"),
-  //     headers: {
-  //       "Accept": "application/json",
-  //       if (token != null) "Authorization": "Bearer $token",
-  //     },
-  //   );
+      final response = await http.get(
+        Uri.parse("${Config.apiBaseUrl}/harvest-events"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
 
-  //   if (response.statusCode == 200) {
-  //     final data = jsonDecode(response.body);
-  //     return List<Map<String, dynamic>>.from(data['data']);
-  //   } else {
-  //     throw Exception("Failed to fetch tree tags");
-  //   }
-  // }
+      if (response.statusCode == 200) {
+        final decoded = json.decode(response.body);
+
+        // if it's wrapped
+        if (decoded is Map && decoded.containsKey("data")) {
+          return List<Map<String, dynamic>>.from(decoded["data"]);
+        }
+
+        // if it's directly a list
+        if (decoded is List) {
+          return List<Map<String, dynamic>>.from(decoded);
+        }
+
+        throw Exception("Unexpected response format: $decoded");
+      } else {
+        throw Exception("Failed to load events");
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getHarvestsByTreeId(
+    String treeUuid,
+  ) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      final response = await http.get(
+        Uri.parse("${Config.apiBaseUrl}/trees/$treeUuid/harvest-events"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['data']);
+      } else {
+        throw Exception("Failed to fetch harvests");
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
 }

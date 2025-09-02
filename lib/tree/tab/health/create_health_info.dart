@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/health_api.dart';
 import 'package:fyp_hbs/services/disease_api.dart';
-import 'package:fyp_hbs/tree/health/create_disease.dart';
+import 'package:fyp_hbs/tree/tab/health/create_disease.dart';
 
 class CreateHealthInfoPage extends StatefulWidget {
   final String treeTag;

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
-import 'package:fyp_hbs/tree/health/health_tab.dart';
+import 'package:fyp_hbs/tree/tab/health/health_tab.dart';
+import 'package:fyp_hbs/tree/tab/harvest/harvest_tab.dart';
 import 'dart:convert';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/tree/map_individual_tree.dart';
@@ -105,7 +106,8 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     final double height = double.tryParse(tree!['height'].toString()) ?? 0;
     final double width = double.tryParse(tree!['width'].toString()) ?? 0;
     final double latitude = double.tryParse(tree!['latitude'].toString()) ?? 0;
-    final double longitude = double.tryParse(tree!['longitude'].toString()) ?? 0;
+    final double longitude =
+        double.tryParse(tree!['longitude'].toString()) ?? 0;
 
     return DefaultTabController(
       length: 4,
@@ -141,179 +143,200 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                 onTap: () {
                   if (treeImage.isNotEmpty) {
                     showDialog(
-                    context: context,
-                    builder:
-                        (_) => Dialog(
-                          backgroundColor: Colors.white,
-                          child: InteractiveViewer(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.memory(
-                                base64Decode(treeImage.split(',').last),
-                                fit: BoxFit.fill,
+                      context: context,
+                      builder:
+                          (_) => Dialog(
+                            backgroundColor: Colors.white,
+                            child: InteractiveViewer(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.memory(
+                                  base64Decode(treeImage.split(',').last),
+                                  fit: BoxFit.fill,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                  );
-                }
-              },
-              child: _buildTreeImage(treeImage),
-            ),
-            Container(
-  padding: const EdgeInsets.all(16),
-  child: Row(
-    crossAxisAlignment: CrossAxisAlignment.center,
-    children: [
-      GestureDetector(
-        onTap: () {
-          showDialog(
-            context: context,
-            builder: (_) => Dialog(
-              backgroundColor: Colors.transparent,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 30, vertical: 100),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+                    );
+                  }
+                },
+                child: _buildTreeImage(treeImage),
+              ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    QrImageView(
-                      data: uuid,
-                      version: QrVersions.auto,
-                      size: 300,
-                      gapless: true,
+                    GestureDetector(
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder:
+                              (_) => Dialog(
+                                backgroundColor: Colors.transparent,
+                                insetPadding: const EdgeInsets.symmetric(
+                                  horizontal: 30,
+                                  vertical: 100,
+                                ),
+                                child: Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.15),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      QrImageView(
+                                        data: uuid,
+                                        version: QrVersions.auto,
+                                        size: 300,
+                                        gapless: true,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        uuid,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                        );
+                      },
+                      child: QrImageView(
+                        data: uuid,
+                        version: QrVersions.auto,
+                        size: 80,
+                        gapless: true,
+                      ),
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      uuid,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontWeight: FontWeight.w500,
+
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            treeTag,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            treeType,
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.pin_drop,
+                                size: 14,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Lat: ${latitude.toStringAsFixed(5)}, Lon: ${longitude.toStringAsFixed(5)}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (context) => MapIndividualTreePage(
+                                  treeLatitude: latitude,
+                                  treeLongitude: longitude,
+                                  treeTag: treeTag,
+                                  treeUuid: uuid,
+                                ),
+                          ),
+                        );
+                      },
+                      child: const Icon(
+                        Icons.location_on,
+                        color: AppColors.pakistanGreen,
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-          );
-        },
-        child: QrImageView(
-          data: uuid,
-          version: QrVersions.auto,
-          size: 80,
-          gapless: true,
-        ),
-      ),
 
-      const SizedBox(width: 8),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              treeTag,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              treeType,
-              style: const TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(Icons.pin_drop, size: 14, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text(
-                  'Lat: ${latitude.toStringAsFixed(5)}, Lon: ${longitude.toStringAsFixed(5)}',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Wrap(
+                  spacing: 16,
+                  runSpacing: 16,
+                  children: [
+                    _InfoCard(label: "Planting Date", value: treeDate),
+                    _InfoCard(
+                      label: "Flowering Period",
+                      value: floweringPeriod,
+                    ),
+                    _InfoCard(label: "Height", value: "$height m"),
+                    _InfoCard(label: "Width", value: "$width m"),
+                  ],
                 ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => MapIndividualTreePage(
-              treeLatitude: latitude,
-              treeLongitude: longitude,
-              treeTag: treeTag,
-              treeUuid: uuid,
-            )),
-          );
-        },
-        child: const Icon(
-          Icons.location_on,
-          color: AppColors.pakistanGreen,
-        ),
-      ),
-    ],
-  ),
-),
-
-
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  _InfoCard(label: "Planting Date", value: treeDate),
-                  _InfoCard(label: "Flowering Period", value: floweringPeriod),
-                  _InfoCard(label: "Height", value: "$height m"),
-                  _InfoCard(label: "Width", value: "$width m"),
-                ],
               ),
-            ),
-            const SizedBox(height: 16),
-            const TabBar(
-              labelColor: AppColors.hunterGreen,
-              unselectedLabelColor: AppColors.hunterGreen,
-              tabs: [
-                Tab(text: "Health"),
-                Tab(text: "Fertilization"),
-                Tab(text: "Pesticide"),
-                Tab(text: "Harvest"),
-              ],
-              labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
-              unselectedLabelStyle: TextStyle(fontSize: 11),
-              indicatorColor: AppColors.hunterGreen,
-              indicatorWeight: 3,
-            ),
-            SizedBox(
-  height: MediaQuery.of(context).size.height * 0.35, // adjust as needed
-  child: TabBarView(
-    children: [
-      HealthTabPage(treeTag: treeTag, treeUuid: uuid),
-      const _TabContent(title: "No fertilization records found."),
-      const _TabContent(title: "No pesticide records found."),
-      const _TabContent(title: "No harvest records found."),
-    ],
-  ),
-),
+              const SizedBox(height: 16),
+              const TabBar(
+                labelColor: AppColors.hunterGreen,
+                unselectedLabelColor: AppColors.hunterGreen,
+                tabs: [
+                  Tab(text: "Health"),
+                  Tab(text: "Agrochemical"),
+                  Tab(text: "Growth Log"),
+                  Tab(text: "Harvest"),
+                ],
+                labelStyle: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+                unselectedLabelStyle: TextStyle(fontSize: 11),
+                indicatorColor: AppColors.hunterGreen,
+                indicatorWeight: 3,
+              ),
+              SizedBox(
+                height:
+                    MediaQuery.of(context).size.height *
+                    0.35, // adjust as needed
+                child: TabBarView(
+                  children: [
+                    HealthTabPage(treeTag: treeTag, treeUuid: uuid),
+                    const _TabContent(title: "No agrochemicals records found."),
+                    const _TabContent(title: "No growth log found."),
+                    HarvestTabPage(treeUuid: uuid),
 
-          ],
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      )
     );
   }
 }

@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/tree/tree_list.dart';
-import 'package:fyp_hbs/buyer/buyer_list.dart';
-import 'package:fyp_hbs/home/home.dart';
 import 'package:fyp_hbs/QR.dart';
-import 'package:fyp_hbs/settings.dart';
 import 'package:fyp_hbs/fruit/fruit_list.dart';
 
 class Nav extends StatefulWidget {
@@ -18,11 +15,9 @@ class _NavState extends State<Nav> {
   int _selectedIndex = 0;
 
   static const List<Widget> _pages = <Widget>[
-    // HomePage(),
     TreePage(),
-    FruitPage(),
-    BuyerPage()];
-    // SettingsPage(),  ];
+    FruitPage()
+  ];
 
   final Color activeColor = AppColors.hunterGreen;
   final Color inactiveColor = AppColors.black;
