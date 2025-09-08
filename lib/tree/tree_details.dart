@@ -3,6 +3,7 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
 import 'package:fyp_hbs/tree/tab/health/health_tab.dart';
 import 'package:fyp_hbs/tree/tab/harvest/harvest_tab.dart';
+import 'package:fyp_hbs/tree/tab/agrochemical/agrochemical_tab.dart';
 import 'dart:convert';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/tree/map_individual_tree.dart';
@@ -326,10 +327,9 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                 child: TabBarView(
                   children: [
                     HealthTabPage(treeTag: treeTag, treeUuid: uuid),
-                    const _TabContent(title: "No agrochemicals records found."),
+                    AgrochemicalTabPage(treeUuid: uuid),
                     const _TabContent(title: "No growth log found."),
                     HarvestTabPage(treeUuid: uuid),
-
                   ],
                 ),
               ),
