@@ -139,6 +139,35 @@ class _TreePageState extends State<TreePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.settings),
+          onPressed: () {
+            showModalBottomSheet(
+              context: context,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              builder: (context) {
+                return Column(
+                  mainAxisSize: MainAxisSize.max,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.lock),
+                      title: const Text('Change Password'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        // TODO: Navigate to change password page
+                        // Navigator.push(context, MaterialPageRoute(builder: (_) => ChangePasswordPage()));
+                      },
+                    ),
+                    // Add more actions here if needed
+                   
+                  ],
+                );
+              },
+            );
+          },
+        ),
         title: const Text(
           "Trees",
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),

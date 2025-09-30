@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/tree/map_individual_tree.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
+import 'package:fyp_hbs/tree/tab/growthlog/growthlog_tab.dart';
 
 class TreeDetailsPage extends StatefulWidget {
   final String treeID;
@@ -328,7 +329,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                   children: [
                     HealthTabPage(treeTag: treeTag, treeUuid: uuid),
                     AgrochemicalTabPage(treeUuid: uuid),
-                    const _TabContent(title: "No growth log found."),
+                    GrowthLogTabPage(treeUuid: uuid),
                     HarvestTabPage(treeUuid: uuid),
                   ],
                 ),

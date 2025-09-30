@@ -35,7 +35,7 @@ class _LoginPageState extends State<LoginPage> {
                     backgroundColor: AppColors.hunterGreen,
                     child: CircleAvatar(
                       radius: 70,
-                      backgroundImage: AssetImage('assets/images/logo.jpeg'),
+                      backgroundImage: AssetImage('assets/images/logo.png'),
                       backgroundColor: Colors.white,
                     ),
                   ),

@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:fyp_hbs/authentication/otp_verification.dart';
-import 'package:fyp_hbs/nav.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-import 'package:fyp_hbs/authentication/reset_password.dart';
+import 'package:pin_code_fields/pin_code_fields.dart';
 
-class ForgotPasswordPage extends StatelessWidget {
-  const ForgotPasswordPage({super.key});
+class OTPVerificationPage extends StatelessWidget {
+  const OTPVerificationPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final TextEditingController phoneController = TextEditingController();
+    final TextEditingController otpController = TextEditingController();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -31,9 +29,7 @@ class ForgotPasswordPage extends StatelessWidget {
               // OTP Illustration
               SizedBox(
                 height: 140,
-                child: Image.asset(
-                  'assets/images/OTP.png',
-                ), 
+                child: Image.asset('assets/images/OTP.png'),
               ),
               const SizedBox(height: 24),
               const Text(
@@ -47,7 +43,7 @@ class ForgotPasswordPage extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const Text(
-                "We will send you a one time password to\nyour phone number",
+                "You will receive a one time password on your phone number",
                 style: TextStyle(
                   color: Colors.grey,
                   fontSize: 16,
@@ -56,31 +52,36 @@ class ForgotPasswordPage extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              // Phone Number Field
-              TextField(
-                controller: phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: InputDecoration(
-                  labelText: 'Phone Number',
-                  prefixText: '+60 ',
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),              
+              // OTP Field (4 boxes)
+              PinCodeTextField(
+                appContext: context,
+                length: 4,
+                controller: otpController,
+                keyboardType: TextInputType.number,
+                animationType: AnimationType.fade,
+                pinTheme: PinTheme(
+                  shape: PinCodeFieldShape.box,
+                  borderRadius: BorderRadius.circular(8),
+                  fieldHeight: 60,
+                  fieldWidth: 60,
+                  activeFillColor: Colors.white,
+                  selectedFillColor: Colors.white,
+                  inactiveFillColor: Colors.white,
+                  activeColor: AppColors.hunterGreen,
+                  selectedColor: AppColors.hunterGreen,
+                  inactiveColor: AppColors.gray400,
+                  borderWidth: 1.5,
                 ),
+                backgroundColor: Colors.transparent,
+                enableActiveFill: true,
+                onChanged: (value) {},
               ),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const OTPVerificationPage(),
-                      ),
-                    );
+                    // TODO: Implement OTP logic
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.hunterGreen,
@@ -90,7 +91,7 @@ class ForgotPasswordPage extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    'Get OTP',
+                    'Verify',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 18,
