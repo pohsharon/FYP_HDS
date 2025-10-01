@@ -4,7 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 
 class AuthService {
-  static Future<Map<String, dynamic>> login(String phoneNumber, String password) async {
+  static Future<Map<String, dynamic>> login(
+    String phoneNumber,
+    String password,
+  ) async {
     try {
       final response = await http.post(
         Uri.parse("${Config.apiBaseUrl}/login"),
@@ -12,26 +15,24 @@ class AuthService {
           "Content-Type": "application/json",
           "Accept": "application/json",
         },
-        body: jsonEncode({
-          "phone": phoneNumber, 
-          "password": password
-        }),
+        body: jsonEncode({"phone": phoneNumber, "password": password}),
       );
 
       final data = jsonDecode(response.body);
-      
-      if (response.statusCode == 200) {
-        if (data.containsKey("token")) {
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          await prefs.setString("token", data["token"]);
-          await prefs.setString("user", jsonEncode(data["user"])); // Store user data
-        }
+
+      // ✅ Successful login
+      if (response.statusCode == 200 && data.containsKey("token")) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString("token", data["token"]);
+        await prefs.setString("user", jsonEncode(data["user"]));
         return data;
-      } else {
-        throw Exception(data["message"] ?? "Login failed");
       }
+
+      // ❌ Invalid credentials or other server-side error
+      return {"message": data["message"] ?? "Invalid credentials"};
     } catch (e) {
-      throw Exception("Error: ${e.toString()}");
+      // 🌐 Network or unexpected error
+      return {"message": "Network error. Please try again later."};
     }
   }
 }

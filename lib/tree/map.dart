@@ -30,25 +30,31 @@ class _MapPageState extends State<MapPage> {
     _fetchTreeMarkers();
   }
 
-  Future<void> _fetchTreeMarkers() async {
-    try {
-      final allTrees = await TreeApi.fetchTrees();
-      setState(() {
-        treesWithLocation =
-            allTrees.where((tree) {
-              final lat = tree['latitude'];
-              final lng = tree['longitude'];
-              return lat != null && lng != null;
-            }).toList();
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Failed to load tree markers: $e")),
-        );
-      }
+Future<void> _fetchTreeMarkers() async {
+  try {
+    final allTrees = await TreeApi.fetchTrees(); // already a List
+
+    setState(() async {
+      final response = await TreeApi.fetchTrees(); // returns Map?
+final treeList = response['data'];           // this is List<Map>
+treesWithLocation = treeList.map((tree) => {
+      ...tree,
+      'latitude': tree['latitude'] ?? 0.0,
+      'longitude': tree['longitude'] ?? 0.0,
+    }).toList();
+
+
+    });
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to load tree markers: $e")),
+      );
     }
   }
+}
+
+
 
   Future<void> _getCurrentLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -108,7 +114,7 @@ class _MapPageState extends State<MapPage> {
     String? selectedTreeId;
 
     try {
-      treeList = await TreeApi.fetchTrees();
+      treeList = (await TreeApi.fetchTrees()) as List<Map<String, dynamic>>; // already a List<Map<String, dynamic>>
     } catch (e) {
       if (!mounted) return false;
       ScaffoldMessenger.of(
@@ -225,8 +231,7 @@ class _MapPageState extends State<MapPage> {
         ),
         children: [
           TileLayer(
-            urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            subdomains: const ['a', 'b', 'c'],
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
             userAgentPackageName: 'com.example.app',
           ),
 

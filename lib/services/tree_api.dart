@@ -69,29 +69,28 @@ class TreeApi {
     }
   }
 
-  static Future<List<Map<String, dynamic>>> fetchTrees() async {
-    try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
+  static Future<Map<String, dynamic>> fetchTrees({int page = 1}) async {
+  final prefs = await SharedPreferences.getInstance();
+  final token = prefs.getString('token');
 
-      final response = await http.get(
-        Uri.parse("${Config.apiBaseUrl}/trees"),
-        headers: {
-          "Accept": "application/json",
-          if (token != null) "Authorization": "Bearer $token",
-        },
-      );
-      final data = jsonDecode(response.body);
+  final response = await http.get(
+    Uri.parse("${Config.apiBaseUrl}/trees?page=$page"),
+    headers: {
+      "Accept": "application/json",
+      if (token != null) "Authorization": "Bearer $token",
+    },
+  );
 
-      if (response.statusCode == 200) {
-        return List<Map<String, dynamic>>.from(data['data']);
-      } else {
-        throw Exception(data["message"] ?? "Failed to fetch trees");
-      }
-    } catch (e) {
-      throw Exception("Error: ${e.toString()}");
-    }
+  if (response.statusCode == 200) {
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    // ✅ return full decoded object (casted properly)
+    return decoded;
+  } else {
+    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+    throw Exception(decoded['message'] ?? 'Failed to fetch trees');
   }
+}
+
 
   static Future<Map<String, dynamic>> getTreeById(String id) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();

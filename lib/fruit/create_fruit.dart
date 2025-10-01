@@ -37,17 +37,22 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
   }
 
   Future<void> _fetchTrees() async {
-    try {
-      final fetchedTrees = await TreeApi.fetchTrees();
-      setState(() {
-        trees = fetchedTrees;
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error fetching trees: $e")));
-    }
+  try {
+    final fetchedTrees = await TreeApi.fetchTrees();
+
+    // Extract the 'data' list from the fetchedTrees Map
+    final treeList = List<Map<String, dynamic>>.from(fetchedTrees['data']);
+
+    setState(() {
+      trees = treeList; // assign only the list part to your trees variable
+    });
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Error fetching trees: $e")),
+    );
   }
+}
+
 
   Future<void> _fetchEvents() async {
     try {

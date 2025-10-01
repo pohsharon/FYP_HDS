@@ -21,33 +21,65 @@ class _TreePageState extends State<TreePage> {
   List<dynamic> _filteredTrees = [];
   List<String> _speciesList = [];
   String? _selectedSpecies;
+  final ScrollController _scrollController = ScrollController();
+
+  int _currentPage = 1;
+  int _lastPage = 1;
+  bool _isLoadingMore = false;
 
   @override
   void initState() {
     super.initState();
-    fetchTrees();
+    fetchTrees(page: 1);
+
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent - 200 &&
+          !_isLoadingMore &&
+          _currentPage < _lastPage) {
+        // Load next page when near bottom
+        _loadMoreTrees();
+      }
+    });
   }
 
-  void fetchTrees() async {
-    try {
-      trees = await TreeApi.fetchTrees();
-      final speciesSet = <String>{};
-      for (var tree in trees) {
-        final speciesName = tree['species']?['name'] ?? 'Unknown Species';
-        if (speciesName != null) {
-          speciesSet.add(speciesName);
-        }
-      }
+  Future<void> fetchTrees({int page = 1, bool isLoadMore = false}) async {
+  try {
+    final response = await TreeApi.fetchTrees(page: page);
 
-      setState(() {
-        _treesFuture = Future.value(trees);
-        _allTrees = trees;
-        _filteredTrees = trees;
-        _speciesList = speciesSet.toList();
-      });
-    } catch (e) {
-      print('Failed to fetch trees: $e');
-    }
+    final pagination = response['data'] as Map<String, dynamic>;
+    final List<dynamic> treeList = pagination['data'] ?? [];
+    final int lastPage = pagination['last_page'] ?? 1;
+
+    final cleanedTrees = treeList.map((tree) {
+      final t = tree as Map<String, dynamic>;
+      return {
+        ...t,
+        'latitude': t['latitude'] ?? 0.0,
+        'longitude': t['longitude'] ?? 0.0,
+      };
+    }).toList();
+
+    setState(() {
+      _lastPage = lastPage;
+      if (isLoadMore) {
+        _filteredTrees.addAll(cleanedTrees);
+      } else {
+        _filteredTrees = cleanedTrees;
+        _allTrees = cleanedTrees;
+      }
+    });
+
+    _currentPage = page;
+  } catch (e) {
+    print("Failed to fetch trees: $e");
+  }
+}
+
+  Future<void> _loadMoreTrees() async {
+    setState(() => _isLoadingMore = true);
+    await fetchTrees(page: _currentPage + 1, isLoadMore: true);
+    setState(() => _isLoadingMore = false);
   }
 
   void filterTrees(String query) {
@@ -160,8 +192,8 @@ class _TreePageState extends State<TreePage> {
                         // Navigator.push(context, MaterialPageRoute(builder: (_) => ChangePasswordPage()));
                       },
                     ),
+
                     // Add more actions here if needed
-                   
                   ],
                 );
               },
@@ -230,11 +262,25 @@ class _TreePageState extends State<TreePage> {
                     _filteredTrees.isEmpty
                         ? const Center(child: Text("Loading..."))
                         : ListView.builder(
+                          controller: _scrollController,
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: _filteredTrees.length,
+                          itemCount:
+                              _filteredTrees.length +
+                              1, // +1 for loading indicator
                           itemBuilder: (context, index) {
-                            final tree = _filteredTrees[index];
-                            return _buildTreeCard(context, tree: tree);
+                            if (index < _filteredTrees.length) {
+                              final tree = _filteredTrees[index];
+                              return _buildTreeCard(context, tree: tree);
+                            } else if (_isLoadingMore) {
+                              return const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                            } else {
+                              return const SizedBox.shrink(); // empty at the end
+                            }
                           },
                         ),
               ),
