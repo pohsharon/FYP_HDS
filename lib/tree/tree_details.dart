@@ -9,6 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/tree/map_individual_tree.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:fyp_hbs/tree/tab/growthlog/growthlog_tab.dart';
+import '../config.dart';
 
 class TreeDetailsPage extends StatefulWidget {
   final String treeID;
@@ -54,25 +55,21 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
 
   Widget _buildTreeImage(String? thumbnail) {
     if (thumbnail != null && thumbnail.isNotEmpty) {
-      try {
-        // Remove prefix if it exists
-        final base64Str =
-            thumbnail.startsWith("data:image")
-                ? thumbnail.split(',').last
-                : thumbnail;
+      // Build full URL to Supabase image
+      final imageUrl = '${Config.supabaseBaseUrl}$thumbnail';
 
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(0),
-          child: Image.memory(
-            base64Decode(base64Str),
-            height: 200,
-            width: double.infinity,
-            fit: BoxFit.cover,
-          ),
-        );
-      } catch (e) {
-        return _buildDefaultImage();
-      }
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(0),
+        child: Image.network(
+          imageUrl,
+          height: 200,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return _buildDefaultImage();
+          },
+        ),
+      );
     } else {
       return _buildDefaultImage();
     }
@@ -149,13 +146,16 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                       builder:
                           (_) => Dialog(
                             backgroundColor: Colors.white,
-                            child: InteractiveViewer(
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.memory(
-                                  base64Decode(treeImage.split(',').last),
-                                  fit: BoxFit.fill,
-                                ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                '${Config.supabaseBaseUrl}$treeImage',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return const Center(
+                                    child: Text('Image failed to load'),
+                                  );
+                                },
                               ),
                             ),
                           ),

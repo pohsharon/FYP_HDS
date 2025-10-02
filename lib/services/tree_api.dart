@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
+import 'package:http_parser/http_parser.dart';
 
 class TreeApi {
   static Future<Map<String, dynamic>> createTree({
@@ -10,38 +13,46 @@ class TreeApi {
     required double height,
     required double diameter,
     required String floweringPeriod,
-    required String imageBase64,
+    File? imageFile,
   }) async {
-    try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
+    final uri = Uri.parse("${Config.apiBaseUrl}/trees");
+    var request = http.MultipartRequest('POST', uri);
 
-      final response = await http.post(
-        Uri.parse("${Config.apiBaseUrl}/trees"),
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          if (token != null) "Authorization": "Bearer $token",
-        },
-        body: jsonEncode({
-          "species_id": speciesId,
-          "planted_at": plantedAt,
-          "height": height,
-          "diameter": diameter,
-          "flowering_period": floweringPeriod,
-          "thumbnail": imageBase64,
-        }),
+    // Add fields
+    request.fields['species_id'] = speciesId;
+    request.fields['planted_at'] = plantedAt;
+    request.fields['height'] = height.toString();
+    request.fields['diameter'] = diameter.toString();
+    request.fields['flowering_period'] = floweringPeriod;
+
+    // Add image if present
+    if (imageFile != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath('thumbnail', imageFile.path),
       );
+    }
 
+    // Add headers (Authorization, Accept)
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    request.headers['Accept'] = 'application/json';
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    // Try to decode JSON, else throw readable error
+    try {
       final data = jsonDecode(response.body);
-
       if (response.statusCode == 200 || response.statusCode == 201) {
         return data;
       } else {
-        throw Exception(data["message"] ?? "Failed to create tree");
+        throw Exception(data['message'] ?? 'Failed to create tree');
       }
     } catch (e) {
-      throw Exception("Error: ${e.toString()}");
+      throw Exception('Failed to create tree: ${response.body}');
     }
   }
 
@@ -70,27 +81,26 @@ class TreeApi {
   }
 
   static Future<Map<String, dynamic>> fetchTrees({int page = 1}) async {
-  final prefs = await SharedPreferences.getInstance();
-  final token = prefs.getString('token');
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
 
-  final response = await http.get(
-    Uri.parse("${Config.apiBaseUrl}/trees?page=$page"),
-    headers: {
-      "Accept": "application/json",
-      if (token != null) "Authorization": "Bearer $token",
-    },
-  );
+    final response = await http.get(
+      Uri.parse("${Config.apiBaseUrl}/trees?page=$page"),
+      headers: {
+        "Accept": "application/json",
+        if (token != null) "Authorization": "Bearer $token",
+      },
+    );
 
-  if (response.statusCode == 200) {
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    // ✅ return full decoded object (casted properly)
-    return decoded;
-  } else {
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    throw Exception(decoded['message'] ?? 'Failed to fetch trees');
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      // ✅ return full decoded object (casted properly)
+      return decoded;
+    } else {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      throw Exception(decoded['message'] ?? 'Failed to fetch trees');
+    }
   }
-}
-
 
   static Future<Map<String, dynamic>> getTreeById(String id) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();

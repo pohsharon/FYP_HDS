@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
+import '../config.dart';
 
 class CreateTreePage extends StatefulWidget {
   final Map<String, dynamic>? tree;
@@ -26,8 +27,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
   String? selectedSpeciesId;
 
   File? _selectedImage;
-  String? _base64Image;
-  String? _existingBase64Thumbnail;
+  String? _existingThumbnailPath;
 
   bool isLoading = false;
 
@@ -43,9 +43,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
         floweringPeriodController.text =
             tree['flowering_period']?.toString() ?? '';
         selectedSpeciesId = tree['species']?['id']?.toString();
-
-        _existingBase64Thumbnail = tree['thumbnail'];
-        _base64Image = _existingBase64Thumbnail;
+        _existingThumbnailPath = tree['thumbnail'];
       }
     });
   }
@@ -70,25 +68,18 @@ class _CreateTreePageState extends State<CreateTreePage> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 70,
+      imageQuality: 20,
     );
 
     if (pickedFile != null) {
       setState(() {
         _selectedImage = File(pickedFile.path);
-        _existingBase64Thumbnail = null;
       });
-
-      final bytes = await pickedFile.readAsBytes();
-      _base64Image = 'data:image/jpeg;base64,${base64Encode(bytes)}';
     }
   }
 
   Future<void> _saveTree() async {
     if (!_formKey.currentState!.validate() || selectedSpeciesId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please complete the form')));
       return;
     }
 
@@ -96,17 +87,17 @@ class _CreateTreePageState extends State<CreateTreePage> {
       setState(() => isLoading = true);
 
       if (widget.tree == null) {
-        // Create mode
+        // Create
         await TreeApi.createTree(
           speciesId: selectedSpeciesId!,
           plantedAt: plantingDateController.text,
           height: double.parse(heightController.text),
           diameter: double.parse(widthController.text),
           floweringPeriod: floweringPeriodController.text,
-          imageBase64: _base64Image ?? '',
+          imageFile: _selectedImage, // ✅ send File
         );
       } else {
-        // Update mode
+        // Update
         await TreeApi.updateTree(
           id: widget.tree!['id'].toString(),
           speciesId: selectedSpeciesId!,
@@ -114,7 +105,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
           height: double.parse(heightController.text),
           diameter: double.parse(widthController.text),
           floweringPeriod: floweringPeriodController.text,
-          imageBase64: _base64Image ?? '', // Send only if updated
         );
       }
 
@@ -154,28 +144,36 @@ class _CreateTreePageState extends State<CreateTreePage> {
               if (widget.tree != null) {
                 final confirm = await showDialog<bool>(
                   context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Delete Tree'),
-                    content: const Text('Are you sure you want to delete this tree?'),
-                    backgroundColor: Colors.white,
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text('Cancel'),
+                  builder:
+                      (context) => AlertDialog(
+                        title: const Text('Delete Tree'),
+                        content: const Text(
+                          'Are you sure you want to delete this tree?',
+                        ),
+                        backgroundColor: Colors.white,
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
                       ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text('Delete', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
-                  ),
                 );
 
                 if (confirm == true) {
                   try {
                     await TreeApi.deleteTree(widget.tree!['id'].toString());
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Tree deleted successfully')),
+                      const SnackBar(
+                        content: Text('Tree deleted successfully'),
+                      ),
                     );
                     Navigator.pop(context);
                     Navigator.pop(context, true);
@@ -214,11 +212,11 @@ class _CreateTreePageState extends State<CreateTreePage> {
                                 width: double.infinity,
                                 fit: BoxFit.cover,
                               )
-                              : _existingBase64Thumbnail != null
-                              ? Image.memory(
-                                base64Decode(
-                                  _existingBase64Thumbnail!.split(',').last,
-                                ),
+                              : (_existingThumbnailPath != null &&
+                                  _existingThumbnailPath!.isNotEmpty)
+                              ? Image.network(
+                                // build full URL to Laravel storage
+                                '${Config.apiBaseUrl.replaceFirst('/api', '')}/storage/$_existingThumbnailPath',
                                 height: 180,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
@@ -236,7 +234,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
                               ),
                     ),
                     if (_selectedImage != null ||
-                        _existingBase64Thumbnail != null)
+                        (_existingThumbnailPath != null &&
+                            _existingThumbnailPath!.isNotEmpty))
                       Positioned(
                         top: 8,
                         right: 8,
@@ -244,8 +243,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
                           onTap: () {
                             setState(() {
                               _selectedImage = null;
-                              _existingBase64Thumbnail = null;
-                              _base64Image = null;
+                              _existingThumbnailPath = null; // clear preview
                             });
                           },
                           child: const CircleAvatar(
