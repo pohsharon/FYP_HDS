@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_map/flutter_map.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -30,31 +31,33 @@ class _MapPageState extends State<MapPage> {
     _fetchTreeMarkers();
   }
 
-Future<void> _fetchTreeMarkers() async {
-  try {
-    final allTrees = await TreeApi.fetchTrees(); // already a List
+  Future<void> _fetchTreeMarkers() async {
+    try {
+      final response = await TreeApi.fetchTrees(); // Fetch only once
+      final treeList = response['data'] as List<dynamic>;
 
-    setState(() async {
-      final response = await TreeApi.fetchTrees(); // returns Map?
-final treeList = response['data'];           // this is List<Map>
-treesWithLocation = treeList.map((tree) => {
-      ...tree,
-      'latitude': tree['latitude'] ?? 0.0,
-      'longitude': tree['longitude'] ?? 0.0,
-    }).toList();
+      final markers =
+          treeList.map<Map<String, dynamic>>((tree) {
+            return {
+              ...tree as Map<String, dynamic>,
+              'latitude': tree['latitude'] ?? 0.0,
+              'longitude': tree['longitude'] ?? 0.0,
+            };
+          }).toList();
 
-
-    });
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to load tree markers: $e")),
-      );
+      if (mounted) {
+        setState(() {
+          treesWithLocation = markers;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to load tree markers: $e")),
+        );
+      }
     }
   }
-}
-
-
 
   Future<void> _getCurrentLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -114,7 +117,11 @@ treesWithLocation = treeList.map((tree) => {
     String? selectedTreeId;
 
     try {
-      treeList = (await TreeApi.fetchTrees()) as List<Map<String, dynamic>>; // already a List<Map<String, dynamic>>
+      treeList =
+          (await TreeApi.fetchTrees())
+              as List<
+                Map<String, dynamic>
+              >; // already a List<Map<String, dynamic>>
     } catch (e) {
       if (!mounted) return false;
       ScaffoldMessenger.of(
@@ -222,92 +229,120 @@ treesWithLocation = treeList.map((tree) => {
         ),
         backgroundColor: AppColors.pakistanGreen,
       ),
-      body: FlutterMap(
-        mapController: _mapController,
-        options: MapOptions(
-          initialCenter: initialLocation,
-          initialZoom: 16,
-          cameraConstraint: CameraConstraint.contain(bounds: farmBounds),
-        ),
+      body: Stack(
         children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.example.app',
-          ),
-
-          if (_currentLocation != null)
-            MarkerLayer(
-              markers: [
-                // 🧭 Current Location Marker
-                if (_currentLocation != null)
-                  Marker(
-                    point: _currentLocation!,
-                    width: 50,
-                    height: 50,
-                    child: const Icon(
-                      Icons.my_location,
-                      color: Colors.blue,
-                      size: 40,
-                    ),
-                  ),
-                // 🌳 Tree Markers
-                ...treesWithLocation
-                    .map((tree) {
-                      final lat = double.tryParse(tree['latitude'].toString());
-                      final lng = double.tryParse(tree['longitude'].toString());
-                      if (lat == null || lng == null) return null;
-
-                      return Marker(
-                        point: LatLng(lat, lng),
-                        width: 80,
-                        height: 80,
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder:
-                                    (context) => TreeDetailsPage(
-                                      treeID:
-                                          tree['uuid'] ?? tree['id'].toString(),
-                                    ),
-                              ),
-                            );
-                          },
-                          child: FittedBox(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 4,
-                                    vertical: 2,
-                                  ),
-                                  color: Colors.white,
-                                  child: Text(
-                                    tree['tree_tag'] ?? 'Unknown',
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                ),
-                                const Icon(
-                                  Icons.location_on,
-                                  color: Colors.red,
-                                  size: 24,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    })
-                    .whereType<Marker>()
-                    .toList(),
-              ],
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: initialLocation,
+              initialZoom: 16,
+              cameraConstraint: CameraConstraint.contain(bounds: farmBounds),
             ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.fyp_hbs',
+              ),
+              if (_currentLocation != null)
+                MarkerLayer(
+                  markers: [
+                    // 🧭 Current Location Marker
+                    if (_currentLocation != null)
+                      Marker(
+                        point: _currentLocation!,
+                        width: 50,
+                        height: 50,
+                        child: const Icon(
+                          Icons.my_location,
+                          color: Colors.blue,
+                          size: 40,
+                        ),
+                      ),
+                    // 🌳 Tree Markers
+                    ...treesWithLocation
+                        .map((tree) {
+                          final lat = double.tryParse(
+                            tree['latitude'].toString(),
+                          );
+                          final lng = double.tryParse(
+                            tree['longitude'].toString(),
+                          );
+                          if (lat == null || lng == null) return null;
+
+                          return Marker(
+                            point: LatLng(lat, lng),
+                            width: 80,
+                            height: 80,
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (context) => TreeDetailsPage(
+                                          treeID:
+                                              tree['uuid'] ??
+                                              tree['id'].toString(),
+                                        ),
+                                  ),
+                                );
+                              },
+                              child: FittedBox(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 2,
+                                      ),
+                                      color: Colors.white,
+                                      child: Text(
+                                        tree['tree_tag'] ?? 'Unknown',
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                    ),
+                                    const Icon(
+                                      Icons.location_on,
+                                      color: Colors.red,
+                                      size: 24,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        })
+                        .whereType<Marker>()
+                        .toList(),
+                  ],
+                ),
+            ],
+          ),
+          Positioned(
+            right: 10,
+            bottom: 10,
+            child: GestureDetector(
+              onTap: () {
+                launchUrl(Uri.parse('https://www.openstreetmap.org/copyright'));
+              },
+              child: Container(
+                color: Colors.white70,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 4,
+                ),
+                child: const Text(
+                  '© OpenStreetMap contributors',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -321,7 +356,6 @@ treesWithLocation = treeList.map((tree) => {
         icon: const Icon(Icons.add_location_alt, color: Colors.white),
         backgroundColor: AppColors.hunterGreen,
       ),
-
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }

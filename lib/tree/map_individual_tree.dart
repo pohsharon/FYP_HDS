@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MapIndividualTreePage extends StatefulWidget {
   final double treeLatitude;
@@ -82,46 +83,66 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
         ),
         backgroundColor: AppColors.pakistanGreen,
       ),
-      body: FlutterMap(
-        mapController: _mapController,
-        options: MapOptions(
-          initialCenter: initialLocation,
-          initialZoom: 18,
-          cameraConstraint: CameraConstraint.contain(bounds: farmBounds),
-        ),
+      body: Stack(
         children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            subdomains: const ['a', 'b', 'c'],
-            userAgentPackageName: 'com.example.app',
-          ),
-          MarkerLayer(
-            markers: [
-              if (_currentLocation != null)
-                Marker(
-                  point: _currentLocation!,
-                  width: 50,
-                  height: 50,
-                  child: const Icon(
-                    Icons.my_location,
-                    color: Colors.blue,
-                    size: 40,
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: initialLocation,
+              initialZoom: 18,
+              cameraConstraint: CameraConstraint.contain(bounds: farmBounds),
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.fyp_hbs',
+              ),
+              MarkerLayer(
+                markers: [
+                  if (_currentLocation != null)
+                    Marker(
+                      point: _currentLocation!,
+                      width: 50,
+                      height: 50,
+                      child: const Icon(
+                        Icons.my_location,
+                        color: Colors.blue,
+                        size: 40,
+                      ),
+                    ),
+                  Marker(
+                    point: LatLng(widget.treeLatitude, widget.treeLongitude),
+                    width: 50,
+                    height: 50,
+                    child: Tooltip(
+                      message: widget.treeTag,
+                      child: const Icon(
+                        Icons.location_on,
+                        color: Colors.red,
+                        size: 40,
+                      ),
+                    ),
                   ),
-                ),
-              Marker(
-                point: LatLng(widget.treeLatitude, widget.treeLongitude),
-                width: 50,
-                height: 50,
-                child: Tooltip(
-                  message: widget.treeTag,
-                  child: const Icon(
-                    Icons.location_on,
-                    color: Colors.red,
-                    size: 40,
-                  ),
-                ),
+                ],
               ),
             ],
+          ),
+          Positioned(
+            right: 10,
+            bottom: 10,
+            child: GestureDetector(
+              onTap: () {
+                launchUrl(Uri.parse('https://www.openstreetmap.org/copyright'));
+              },
+              child: Container(
+                color: Colors.white70,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: const Text(
+                  '© OpenStreetMap contributors',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
           ),
         ],
       ),
