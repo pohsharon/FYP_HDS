@@ -58,7 +58,7 @@ class TreeApi {
 
   static Future<List<Map<String, dynamic>>> fetchSpecies() async {
     try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
 
       final response = await http.get(
@@ -68,12 +68,32 @@ class TreeApi {
           if (token != null) "Authorization": "Bearer $token",
         },
       );
-      final data = jsonDecode(response.body);
+
+      final decoded = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
-        return List<Map<String, dynamic>>.from(data['data']);
+        // Normalize to a list whether the API returns { data: [...] } or directly [...]
+        List<dynamic> items;
+        if (decoded is Map && decoded.containsKey('data')) {
+          items = (decoded['data'] as List<dynamic>);
+        } else if (decoded is List) {
+          items = decoded;
+        } else {
+          throw Exception('Unexpected response format for species');
+        }
+
+        // Convert each item to a Map<String, dynamic>
+        return items.map<Map<String, dynamic>>((item) {
+          if (item is Map) return Map<String, dynamic>.from(item);
+          if (item is String) return {'id': null, 'name': item};
+          return {'id': null, 'name': item?.toString() ?? ''};
+        }).toList();
       } else {
-        throw Exception(data["message"] ?? "Failed to fetch species");
+        final message =
+            (decoded is Map)
+                ? decoded["message"] ?? "Failed to fetch species"
+                : "Failed to fetch species";
+        throw Exception(message);
       }
     } catch (e) {
       throw Exception("Error: ${e.toString()}");
@@ -95,6 +115,27 @@ class TreeApi {
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body) as Map<String, dynamic>;
       // ✅ return full decoded object (casted properly)
+      return decoded;
+    } else {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      throw Exception(decoded['message'] ?? 'Failed to fetch trees');
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchAllTrees() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    final response = await http.get(
+      Uri.parse("${Config.apiBaseUrl}/trees?page=all"),
+      headers: {
+        "Accept": "application/json",
+        if (token != null) "Authorization": "Bearer $token",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
       return decoded;
     } else {
       final decoded = jsonDecode(response.body) as Map<String, dynamic>;
@@ -149,38 +190,52 @@ class TreeApi {
     required double height,
     required double diameter,
     required String floweringPeriod,
-    String? imageBase64,
+    File? imageFile,
   }) async {
     try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final uri = Uri.parse("${Config.apiBaseUrl}/trees/$id");
+      var request = http.MultipartRequest('POST', uri);
+
+      // Method override for PUT if your Laravel route uses PUT/PATCH
+      request.fields['_method'] = 'PUT';
+
+      // Add fields
+      request.fields['species_id'] = speciesId;
+      request.fields['planted_at'] = plantedAt;
+      request.fields['height'] = height.toString();
+      request.fields['diameter'] = diameter.toString();
+      request.fields['flowering_period'] = floweringPeriod;
+
+      // Add image if present
+      if (imageFile != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath('thumbnail', imageFile.path),
+        );
+      }
+
+      // Add headers
+      final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
+      request.headers['Accept'] = 'application/json';
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
 
-      final response = await http.put(
-        Uri.parse("${Config.apiBaseUrl}/trees/$id"),
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          if (token != null) "Authorization": "Bearer $token",
-        },
-        body: jsonEncode({
-          "species_id": speciesId,
-          "planted_at": plantedAt,
-          "height": height,
-          "diameter": diameter,
-          "flowering_period": floweringPeriod,
-          if (imageBase64 != null) "thumbnail": imageBase64,
-        }),
-      );
+      // Send request
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
 
+      // Decode JSON
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200 || response.statusCode == 204) {
+        print("Tree updated successfully");
         return;
       } else {
         throw Exception(data["message"] ?? "Failed to update tree");
       }
     } catch (e) {
-      throw Exception("Error: ${e.toString()}");
+      throw Exception("Error updating tree: ${e.toString()}");
     }
   }
 
@@ -213,7 +268,7 @@ class TreeApi {
   }
 
   static Future<void> addTreeLocation({
-    required String treeId,
+    required String treeUuid,
     required double latitude,
     required double longitude,
   }) async {
@@ -221,7 +276,7 @@ class TreeApi {
     final token = prefs.getString('token');
 
     final response = await http.put(
-      Uri.parse("${Config.apiBaseUrl}/trees/location/$treeId"),
+      Uri.parse("${Config.apiBaseUrl}/trees/location/$treeUuid"),
       headers: {
         "Content-Type": "application/json",
         "Accept": "application/json",

@@ -368,7 +368,7 @@ class _FruitPageState extends State<FruitPage> {
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 22,
-                    color: AppColors.hunterGreen,
+                    color: Colors.black,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -438,7 +438,7 @@ class _FruitPageState extends State<FruitPage> {
               label,
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
-                color: AppColors.hunterGreen,
+                color: AppColors.black,
                 fontSize: 15,
               ),
             ),
@@ -451,7 +451,7 @@ class _FruitPageState extends State<FruitPage> {
                       child: Text(
                         value,
                         style: const TextStyle(
-                          color: AppColors.mossGreen,
+                          color: AppColors.gray600,
                           decoration: TextDecoration.underline,
                           fontSize: 15,
                         ),
@@ -460,7 +460,7 @@ class _FruitPageState extends State<FruitPage> {
                     : Text(
                       value,
                       style: const TextStyle(
-                        color: AppColors.mossGreen,
+                        color: AppColors.gray600,
                         fontSize: 15,
                       ),
                     ),

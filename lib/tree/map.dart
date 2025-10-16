@@ -33,15 +33,18 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _fetchTreeMarkers() async {
     try {
-      final response = await TreeApi.fetchTrees(); // Fetch only once
-      final treeList = response['data'] as List<dynamic>;
+      final response = await TreeApi.fetchAllTrees();
+
+      // Navigate to the nested list
+      final treeList = response['data']['data'] as List<dynamic>;
 
       final markers =
           treeList.map<Map<String, dynamic>>((tree) {
+            final treeMap = tree as Map<String, dynamic>;
             return {
-              ...tree as Map<String, dynamic>,
-              'latitude': tree['latitude'] ?? 0.0,
-              'longitude': tree['longitude'] ?? 0.0,
+              ...treeMap,
+              'latitude': treeMap['latitude'] ?? 0.0,
+              'longitude': treeMap['longitude'] ?? 0.0,
             };
           }).toList();
 
@@ -117,11 +120,12 @@ class _MapPageState extends State<MapPage> {
     String? selectedTreeId;
 
     try {
+      // 👇 Adjust to fetch the nested list
+      final response = await TreeApi.fetchAllTrees();
       treeList =
-          (await TreeApi.fetchTrees())
-              as List<
-                Map<String, dynamic>
-              >; // already a List<Map<String, dynamic>>
+          (response['data']['data'] as List<dynamic>)
+              .map((tree) => tree as Map<String, dynamic>)
+              .toList();
     } catch (e) {
       if (!mounted) return false;
       ScaffoldMessenger.of(
@@ -147,7 +151,7 @@ class _MapPageState extends State<MapPage> {
                     items:
                         treeList.map((tree) {
                           return DropdownMenuItem(
-                            value: tree['id'].toString(),
+                            value: tree['uuid'].toString(),
                             child: Text(tree['tree_tag'] ?? 'Unnamed'),
                           );
                         }).toList(),
@@ -168,7 +172,7 @@ class _MapPageState extends State<MapPage> {
                                     );
 
                                 await TreeApi.addTreeLocation(
-                                  treeId: selectedTreeId!,
+                                  treeUuid: selectedTreeId!,
                                   latitude: position.latitude,
                                   longitude: position.longitude,
                                 );
@@ -183,10 +187,7 @@ class _MapPageState extends State<MapPage> {
                                       ),
                                     ),
                                   );
-                                  Navigator.pop(
-                                    dialogContext,
-                                    true,
-                                  ); // ✅ Return true
+                                  Navigator.pop(dialogContext, true);
                                 }
                               } catch (e) {
                                 if (mounted) {
@@ -199,10 +200,7 @@ class _MapPageState extends State<MapPage> {
                                       ),
                                     ),
                                   );
-                                  Navigator.pop(
-                                    dialogContext,
-                                    false,
-                                  ); // ✅ Return false
+                                  Navigator.pop(dialogContext, false);
                                 }
                               }
                             },
@@ -281,8 +279,7 @@ class _MapPageState extends State<MapPage> {
                                     builder:
                                         (context) => TreeDetailsPage(
                                           treeID:
-                                              tree['uuid'] ??
-                                              tree['id'].toString(),
+                                              tree['uuid']
                                         ),
                                   ),
                                 );

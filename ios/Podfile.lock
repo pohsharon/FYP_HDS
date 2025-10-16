@@ -18,6 +18,8 @@ PODS:
     - FlutterMacOS
   - torch_light (0.0.1):
     - Flutter
+  - url_launcher_ios (0.0.1):
+    - Flutter
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
@@ -28,6 +30,7 @@ DEPENDENCIES:
   - qr_code_tools (from `.symlinks/plugins/qr_code_tools/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - torch_light (from `.symlinks/plugins/torch_light/ios`)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
 
 SPEC REPOS:
   trunk:
@@ -50,6 +53,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   torch_light:
     :path: ".symlinks/plugins/torch_light/ios"
+  url_launcher_ios:
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
@@ -61,6 +66,7 @@ SPEC CHECKSUMS:
   qr_code_tools: 81a52b19190422a5ce108223f64b5ea81865b342
   shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
   torch_light: d093d579a221a59ef8a6b8c0eca20d52f7178087
+  url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
 
 PODFILE CHECKSUM: 4e3d500109cf1c9437b41588d4581c6d443f40cb
 

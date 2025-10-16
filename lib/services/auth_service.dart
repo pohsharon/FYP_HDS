@@ -35,4 +35,33 @@ class AuthService {
       return {"message": "Network error. Please try again later."};
     }
   }
+
+  static Future<Map<String, dynamic>> checkPhone(String phone) async {
+  try {
+    phone = phone.trim();
+    if (!phone.startsWith('0')) phone = '0$phone';
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    final uri = Uri.parse("${Config.apiBaseUrl}/check-phone/$phone");
+    final response = await http.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to check phone: ${response.statusCode}');
+    }
+  } catch (e) {
+    print('Error checking phone: $e');
+    return {'exists': false, 'message': 'Network error'};
+  }
+}
 }

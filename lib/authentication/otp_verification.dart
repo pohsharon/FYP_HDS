@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fyp_hbs/authentication/reset_password.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
 
@@ -81,7 +82,12 @@ class OTPVerificationPage extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
-                    // TODO: Implement OTP logic
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ResetPasswordPage(),
+                      ),
+                    );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.hunterGreen,

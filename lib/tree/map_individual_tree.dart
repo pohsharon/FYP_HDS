@@ -3,9 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:fyp_hbs/services/tree_api.dart';
-import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:fyp_hbs/services/tree_api.dart'; // ✅ make sure this import exists
 
 class MapIndividualTreePage extends StatefulWidget {
   final double treeLatitude;
@@ -28,6 +27,8 @@ class MapIndividualTreePage extends StatefulWidget {
 class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
   final MapController _mapController = MapController();
   LatLng? _currentLocation;
+  bool _locationNotSaved = false;
+  bool _isSaving = false; // ✅ track saving state
 
   final LatLngBounds farmBounds = LatLngBounds(
     const LatLng(3.110831, 101.626978),
@@ -49,8 +50,7 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
         permission == LocationPermission.deniedForever) {
       permission = await Geolocator.requestPermission();
       if (permission != LocationPermission.always &&
-          permission != LocationPermission.whileInUse)
-        return;
+          permission != LocationPermission.whileInUse) return;
     }
 
     Geolocator.getPositionStream(
@@ -62,18 +62,62 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
       final LatLng newLocation = LatLng(position.latitude, position.longitude);
 
       if (mounted) {
-        setState(() => _currentLocation = newLocation);
-        _mapController.move(newLocation, _mapController.camera.zoom);
+        setState(() {
+          _currentLocation = newLocation;
+
+          // 🌱 If tree location is not saved, mark it and center on user
+          if (widget.treeLatitude == 0.0 && widget.treeLongitude == 0.0) {
+            _locationNotSaved = true;
+            _mapController.move(newLocation, 18);
+          }
+        });
       }
     });
   }
 
+  Future<void> _saveTreeLocation() async {
+    if (_currentLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Current location not detected yet.")),
+      );
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      await TreeApi.addTreeLocation(
+        treeUuid: widget.treeUuid,
+        latitude: _currentLocation!.latitude,
+        longitude: _currentLocation!.longitude,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Tree location saved successfully!")),
+      );
+
+      setState(() {
+        _locationNotSaved = false; // ✅ hide button and message
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to save location: $e")),
+      );
+    } finally {
+      setState(() => _isSaving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final LatLng initialLocation = LatLng(
-      widget.treeLatitude,
-      widget.treeLongitude,
-    );
+    final bool treeHasLocation =
+        widget.treeLatitude != 0.0 && widget.treeLongitude != 0.0;
+
+    final LatLng initialLocation = treeHasLocation
+        ? LatLng(widget.treeLatitude, widget.treeLongitude)
+        : (_currentLocation ?? const LatLng(3.120821, 101.636978));
 
     return Scaffold(
       appBar: AppBar(
@@ -99,6 +143,7 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
               ),
               MarkerLayer(
                 markers: [
+                  // 🧭 Current user location marker
                   if (_currentLocation != null)
                     Marker(
                       point: _currentLocation!,
@@ -110,23 +155,88 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
                         size: 40,
                       ),
                     ),
-                  Marker(
-                    point: LatLng(widget.treeLatitude, widget.treeLongitude),
-                    width: 50,
-                    height: 50,
-                    child: Tooltip(
-                      message: widget.treeTag,
-                      child: const Icon(
-                        Icons.location_on,
-                        color: Colors.red,
-                        size: 40,
+
+                  // 🌳 Tree marker (only if saved)
+                  if (treeHasLocation)
+                    Marker(
+                      point: LatLng(widget.treeLatitude, widget.treeLongitude),
+                      width: 50,
+                      height: 50,
+                      child: Tooltip(
+                        message: widget.treeTag,
+                        child: const Icon(
+                          Icons.location_on,
+                          color: Colors.red,
+                          size: 40,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ],
           ),
+
+          // ℹ️ Message overlay if location not saved
+          if (_locationNotSaved)
+            Positioned(
+              top: 16,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    "⚠️ Tree location not saved yet. Showing your current location.",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+
+          // 💾 Save Tree Location button
+          if (_locationNotSaved)
+            Positioned(
+              bottom: 80,
+              left: 20,
+              right: 20,
+              child: ElevatedButton.icon(
+                onPressed: _isSaving ? null : _saveTreeLocation,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save),
+                label: Text(
+                  _isSaving ? "Saving..." : "Save Tree Location",
+                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.pakistanGreen,
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+
+          // Copyright
           Positioned(
             right: 10,
             bottom: 10,
@@ -136,7 +246,8 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
               },
               child: Container(
                 color: Colors.white70,
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: const Text(
                   '© OpenStreetMap contributors',
                   style: TextStyle(fontSize: 12),
