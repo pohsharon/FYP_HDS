@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'create_health_info.dart';
 import 'package:fyp_hbs/services/health_api.dart';
+import 'disease_list.dart';
 
 class HealthTabPage extends StatefulWidget {
   final String treeTag;
@@ -61,64 +62,91 @@ Widget build(BuildContext context) {
 }
 
   Widget _buildSearchAndAddButton() {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            onChanged: (value) => setState(() => searchQuery = value),
-            decoration: InputDecoration(
-              hintText: 'Search Disease',
-              hintStyle: TextStyle(
-                    color: AppColors.gray600,
-                    fontSize: 14,
-                  ),
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: GestureDetector(
-                onTap: () => setState(() => searchQuery = ''),
-                child: const Icon(Icons.filter_alt_outlined),
+  return Row(
+    children: [
+      // List icon button
+      IconButton(
+        icon: const Icon(Icons.list_alt_rounded, color: AppColors.hunterGreen),
+        tooltip: 'View Disease List',
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const DiseaseListPage(), // <-- navigate to your DiseaseListPage
+            ),
+          );
+        },
+      ),
+      const SizedBox(width: 8),
+
+      // Search bar
+      Expanded(
+        child: TextField(
+          onChanged: (value) => setState(() => searchQuery = value),
+          decoration: InputDecoration(
+            hintText: 'Search Disease',
+            hintStyle: const TextStyle(
+              color: AppColors.gray600,
+              fontSize: 14,
+            ),
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: GestureDetector(
+              onTap: () => setState(() => searchQuery = ''),
+              child: const Icon(Icons.filter_alt_outlined),
+            ),
+            filled: true,
+            fillColor: AppColors.white,
+            contentPadding: const EdgeInsets.symmetric(vertical: 0),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(30),
+              borderSide: BorderSide(
+                color: AppColors.gray400,
+                width: 1.2,
               ),
-               filled: true,
-                  fillColor: AppColors.white,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide(
-                      color: AppColors.gray400,
-                      width: 1.2,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(30),
-                    borderSide: BorderSide(
-                      color: AppColors.hunterGreen,
-                      width: 1.5,
-                    ),
-                  ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(30),
+              borderSide: BorderSide(
+                color: AppColors.hunterGreen,
+                width: 1.5,
+              ),
             ),
           ),
         ),
-        const SizedBox(width: 8),
-        ElevatedButton.icon(
-          onPressed: () async {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => CreateHealthInfoPage(
+      ),
 
-                  treeTag: widget.treeTag,
-                  treeUuid: widget.treeUuid,
-                  existingRecord: null,
-                ),
+      const SizedBox(width: 8),
+
+      // Add button
+      ElevatedButton.icon(
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CreateHealthInfoPage(
+                treeTag: widget.treeTag,
+                treeUuid: widget.treeUuid,
+                existingRecord: null,
               ),
-            );
-            if (result == true) setState(() {}); // refresh
-          },
-          icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text('Add', style: TextStyle(color: Colors.white)),
+            ),
+          );
+          if (result == true) setState(() {}); // refresh
+        },
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text(
+          'Add',
+          style: TextStyle(color: Colors.white),
         ),
-      ],
-    );
-  }
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.hunterGreen,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(30),
+          ),
+        ),
+      ),
+    ],
+  );
+}
 
   Widget _buildRecordCard(Map<String, dynamic> record) {
   // Format date if needed

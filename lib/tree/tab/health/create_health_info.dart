@@ -83,16 +83,42 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
         );
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.existingRecord != null
-                ? 'Health record updated successfully'
-                : 'Health record saved successfully',
+      await showDialog(
+  context: context,
+  barrierDismissible: false,
+  builder: (context) => AlertDialog(
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+    backgroundColor: Colors.white,
+    title: Row(
+      children: const [
+        Icon(Icons.check_circle, color: AppColors.pakistanGreen),
+        SizedBox(width: 8),
+        Text('Success', style: TextStyle(fontWeight: FontWeight.bold)),
+      ],
+    ),
+    content: Text(
+      widget.existingRecord != null
+          ? 'Health record updated successfully.'
+          : 'Health record created successfully.',
+    ),
+    actions: [
+      TextButton(
+        onPressed: () {
+          Navigator.pop(context); // close dialog
+          Navigator.pop(context, true); // go back and refresh parent
+        },
+        child: const Text(
+          'OK',
+          style: TextStyle(
+            color: AppColors.pakistanGreen,
+            fontWeight: FontWeight.bold,
           ),
         ),
-      );
-      Navigator.pop(context, true);
+      ),
+    ],
+  ),
+);
+
     } catch (e) {
       ScaffoldMessenger.of(
         context,
@@ -142,12 +168,25 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                     icon: const Icon(Icons.calendar_today),
                     onPressed: () async {
                       final picked = await showDatePicker(
-                        context: context,
-                        initialDate: DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
-                      );
-                      if (picked != null) {
+  context: context,
+  initialDate: DateTime.now(),
+  firstDate: DateTime(2000),
+  lastDate: DateTime(2100),
+  builder: (BuildContext context, Widget? child) {
+    return Theme(
+      data: ThemeData.light().copyWith(
+        colorScheme: const ColorScheme.light(
+          primary: AppColors.pakistanGreen, // header color
+          onPrimary: Colors.white,          // header text color
+          onSurface: Colors.black,          // body text color
+        ),
+        dialogBackgroundColor: Colors.white, // background color
+      ),
+      child: child!,
+    );
+  },
+);
+    if (picked != null) {
                         dateController.text = DateFormat(
                           'yyyy-MM-dd',
                         ).format(picked);
@@ -171,6 +210,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                   final diseaseList = snapshot.data!;
 
                   return DropdownButtonFormField<String>(
+                    dropdownColor: Colors.white,
                     value: selectedDiseaseId?.toString(),
                     items:
                         diseaseList.map((d) {
@@ -221,6 +261,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
 
               // Status Dropdown
               DropdownButtonFormField<String>(
+                dropdownColor: Colors.white,
                 value: selectedStatus,
                 items:
                     ['Recovered', 'Severe', 'Medium']

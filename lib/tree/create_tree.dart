@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
 import '../config.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class CreateTreePage extends StatefulWidget {
   final Map<String, dynamic>? tree;
@@ -58,9 +59,14 @@ class _CreateTreePageState extends State<CreateTreePage> {
         }
       });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error fetching species: $e')));
+      Flushbar(
+        message: 'Error fetching species: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+      ).show(context);
     }
   }
 
@@ -108,20 +114,29 @@ class _CreateTreePageState extends State<CreateTreePage> {
         );
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.tree == null
-                ? 'Tree created successfully'
-                : 'Tree updated successfully',
-          ),
-        ),
-      );
-      Navigator.pop(context, true);
+      await Flushbar(
+        message: widget.tree == null ? 'Tree created successfully' : 'Tree updated successfully',
+        icon: const Icon(Icons.check_circle, color: Colors.white),
+        backgroundColor: Colors.green.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(12),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
+
+      Future.microtask(() {
+        if (!mounted) return;
+        Navigator.pop(context, true);
+      });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      Flushbar(
+        message: 'Error: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+      ).show(context);
     } finally {
       setState(() => isLoading = false);
     }
@@ -144,49 +159,61 @@ class _CreateTreePageState extends State<CreateTreePage> {
               if (widget.tree != null) {
                 final confirm = await showDialog<bool>(
                   context: context,
-                  builder:
-                      (context) => AlertDialog(
-                        title: const Text('Delete Tree'),
-                        content: const Text(
-                          'Are you sure you want to delete this tree?',
-                        ),
-                        backgroundColor: Colors.white,
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text(
-                              'Delete',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        ],
+                  builder: (context) => AlertDialog(
+                    title: const Text('Delete Tree'),
+                    content: const Text('Are you sure you want to delete this tree?'),
+                    backgroundColor: Colors.white,
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
                       ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
                 );
 
                 if (confirm == true) {
                   try {
                     await TreeApi.deleteTree(widget.tree!['id'].toString());
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Tree deleted successfully'),
-                      ),
-                    );
+
+                    // show flushbar and wait for it to finish before navigating
+                    await Flushbar(
+                      message: 'Tree deleted successfully',
+                      icon: const Icon(Icons.check_circle, color: Colors.white),
+                      backgroundColor: Colors.green.shade700,
+                      duration: const Duration(seconds: 2),
+                      borderRadius: BorderRadius.circular(12),
+                      margin: const EdgeInsets.all(12),
+                      flushbarPosition: FlushbarPosition.TOP,
+                    ).show(context);
+
+                    if (!mounted) return;
                     Navigator.pop(context);
                     Navigator.pop(context, true);
                   } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error deleting tree: $e')),
-                    );
+                    await Flushbar(
+                      message: 'Error deleting tree: $e',
+                      icon: const Icon(Icons.error, color: Colors.white),
+                      backgroundColor: Colors.red.shade700,
+                      duration: const Duration(seconds: 3),
+                      borderRadius: BorderRadius.circular(8),
+                      margin: const EdgeInsets.all(12),
+                    ).show(context);
                   }
                 }
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('No tree to delete')),
-                );
+                await Flushbar(
+                  message: 'No tree to delete',
+                  icon: const Icon(Icons.info, color: Colors.white),
+                  backgroundColor: Colors.grey.shade700,
+                  duration: const Duration(seconds: 2),
+                  borderRadius: BorderRadius.circular(8),
+                  margin: const EdgeInsets.all(12),
+                ).show(context);
               }
             },
           ),

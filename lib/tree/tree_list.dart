@@ -102,7 +102,6 @@ class _TreePageState extends State<TreePage> {
       _speciesList = speciesList; // full list of maps
     });
 
-    print("✅ Loaded species: $_speciesList");
   } catch (e) {
     print("❌ Failed to load species: $e");
   }
@@ -354,9 +353,6 @@ class _TreePageState extends State<TreePage> {
 
               if (result == true) {
                 fetchTrees();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Tree list updated')),
-                );
               }
             },
             child: Container(

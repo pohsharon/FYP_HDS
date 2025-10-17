@@ -39,6 +39,7 @@ class DiseaseApi {
   }
 
   static Future<void> updateDisease({
+    required String id,
     required String diseaseName,
     required String symptoms,
     required String remarks,
@@ -48,7 +49,7 @@ class DiseaseApi {
       final token = prefs.getString('token');
 
       final response = await http.put(
-        Uri.parse("${Config.apiBaseUrl}/diseases"),
+        Uri.parse("${Config.apiBaseUrl}/diseases/$id"),
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
@@ -93,27 +94,40 @@ class DiseaseApi {
   }
 
   static Future<List<Map<String, dynamic>>> fetchDiseases() async {
-    try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
+  try {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
 
-      final response = await http.get(
-        Uri.parse("${Config.apiBaseUrl}/diseases"),
-        headers: {
-          "Accept": "application/json",
-          if (token != null) "Authorization": "Bearer $token",
-        },
-      );
+    final response = await http.get(
+      Uri.parse("${Config.apiBaseUrl}/diseases"),
+      headers: {
+        "Accept": "application/json",
+        if (token != null) "Authorization": "Bearer $token",
+      },
+    );
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = jsonDecode(response.body);
-        return data.map((item) => item as Map<String, dynamic>).toList();
+    final decoded = jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+      // Ensure we correctly extract the "data" field
+      if (decoded is Map && decoded.containsKey('data')) {
+        final List<dynamic> dataList = decoded['data'];
+
+        return dataList
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
       } else {
-        final data = jsonDecode(response.body);
-        throw Exception(data["message"] ?? "Failed to fetch diseases");
+        throw Exception('Unexpected response format: missing "data" key');
       }
-    } catch (e) {
-      throw Exception("Error: ${e.toString()}");
+    } else {
+      final message = (decoded is Map)
+          ? decoded["message"] ?? "Failed to fetch diseases"
+          : "Failed to fetch diseases";
+      throw Exception(message);
     }
+  } catch (e) {
+    throw Exception("Error: ${e.toString()}");
   }
+}
+
 }

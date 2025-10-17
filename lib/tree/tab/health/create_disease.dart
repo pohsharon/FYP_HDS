@@ -1,10 +1,7 @@
-import 'dart:convert';
-import 'dart:io';
-import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/disease_api.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class CreateDiseasePage extends StatefulWidget {
   final Map<String, dynamic>? disease;
@@ -28,19 +25,17 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
   final symptomsController = TextEditingController();
   final remarksController = TextEditingController();
 
-  List<Map<String, dynamic>> speciesList = [];
-  String? selectedSpeciesId;
-
   bool isLoading = false;
 
   @override
   void initState() {
     super.initState();
+    // Pre-fill if editing
     if (widget.disease != null) {
-      final disease = widget.disease!;
-      diseaseNameController.text = disease['disease'] ?? '';
-      symptomsController.text = disease['symptoms']?.toString() ?? '';
-      remarksController.text = disease['remarks']?.toString() ?? '';
+      final d = widget.disease!;
+      diseaseNameController.text = d['diseaseName']?.toString() ?? '';
+      symptomsController.text = d['symptoms']?.toString() ?? '';
+      remarksController.text = d['remarks']?.toString() ?? '';
     }
   }
 
@@ -55,35 +50,34 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
     try {
       setState(() => isLoading = true);
 
-      print({
-        "diseaseName": diseaseNameController.text,
-        "symptoms": symptomsController.text,
-        "remarks": remarksController.text,
-      });
-
       if (widget.disease == null) {
+        // CREATE mode
         await DiseaseApi.createDisease(
           diseaseName: diseaseNameController.text,
           symptoms: symptomsController.text,
           remarks: remarksController.text,
         );
       } else {
+        // UPDATE mode
         await DiseaseApi.updateDisease(
+          id: widget.disease!['id'].toString(),
           diseaseName: diseaseNameController.text,
           symptoms: symptomsController.text,
           remarks: remarksController.text,
         );
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.disease == null
-                ? 'Disease created successfully'
-                : 'Disease updated successfully',
-          ),
-        ),
-      );
+      await Flushbar(
+        message: "Health record updated successfully",
+        icon: const Icon(Icons.check_circle, color: Colors.white),
+        backgroundColor: Colors.green.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(12),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
+
+      if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
       ScaffoldMessenger.of(
@@ -94,71 +88,76 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
     }
   }
 
+  Future<void> _deleteDisease() async {
+    if (widget.disease == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No disease to delete')));
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Disease'),
+            content: const Text(
+              'Are you sure you want to delete this disease?',
+            ),
+            backgroundColor: Colors.white,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
+          ),
+    );
+
+    if (confirm == true) {
+      try {
+        await DiseaseApi.deleteDisease(widget.disease!['id'].toString());
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Disease deleted successfully')),
+        );
+        Navigator.pop(context); // close page
+        Navigator.pop(context, true); // refresh parent
+      } catch (e) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error deleting disease: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isEditing = widget.disease != null;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
-          widget.disease != null ? 'Edit Disease' : 'Add Disease',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          isEditing ? 'Edit Disease' : 'Add Disease',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
         ),
         backgroundColor: AppColors.pakistanGreen,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.delete, color: Colors.white),
-            onPressed: () async {
-              if (widget.disease != null) {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder:
-                      (context) => AlertDialog(
-                        title: const Text('Delete Disease'),
-                        content: const Text(
-                          'Are you sure you want to delete this disease?',
-                        ),
-                        backgroundColor: Colors.white,
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text(
-                              'Delete',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        ],
-                      ),
-                );
-
-                if (confirm == true) {
-                  try {
-                    await DiseaseApi.deleteDisease(
-                      widget.disease!['id'].toString(),
-                    );
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Disease deleted successfully'),
-                      ),
-                    );
-                    Navigator.pop(context);
-                    Navigator.pop(context, true);
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error deleting disease: $e')),
-                    );
-                  }
-                }
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('No disease to delete')),
-                );
-              }
-            },
-          ),
+          if (isEditing)
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.white),
+              onPressed: _deleteDisease,
+            ),
         ],
       ),
       body: Padding(
@@ -167,7 +166,6 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
           key: _formKey,
           child: ListView(
             children: [
-              const SizedBox(height: 16),
               TextFormField(
                 controller: diseaseNameController,
                 decoration: const InputDecoration(
@@ -211,18 +209,18 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
                         value == null || value.isEmpty ? 'Enter remarks' : null,
               ),
               const SizedBox(height: 24),
-
               ElevatedButton(
                 onPressed: isLoading ? null : _saveDisease,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.pakistanGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 child:
                     isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
-                          'Save',
-                          style: TextStyle(color: Colors.white),
+                        : Text(
+                          isEditing ? 'Update Disease' : 'Save',
+                          style: const TextStyle(color: Colors.white),
                         ),
               ),
             ],
