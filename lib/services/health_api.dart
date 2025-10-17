@@ -45,7 +45,7 @@ class HealthApi {
         body: jsonEncode({
           "tree_uuid": treeUuid,
           "disease_id": diseaseId,
-          "date": date,
+          "recorded_at": date,
           "status": status,
           "treatment": treatment,
         }),
