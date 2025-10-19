@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
+import 'dart:io';
 
 class HealthApi {
   static Future<List<Map<String, dynamic>>> fetchDiseases() async {
@@ -30,37 +31,75 @@ class HealthApi {
     required String date,
     required String status,
     required String treatment,
+    File? imageFile,
   }) async {
-    try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
+    final uri = Uri.parse("${Config.apiBaseUrl}/health-records");
+    var request = http.MultipartRequest('POST', uri);
 
-      final response = await http.post(
-        Uri.parse("${Config.apiBaseUrl}/health-records"),
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          if (token != null) "Authorization": "Bearer $token",
-        },
-        body: jsonEncode({
-          "tree_uuid": treeUuid,
-          "disease_id": diseaseId,
-          "recorded_at": date,
-          "status": status,
-          "treatment": treatment,
-        }),
+    request.fields['tree_uuid'] = treeUuid;
+    request.fields['disease_id'] = diseaseId.toString();
+    request.fields['recorded_at'] = date;
+    request.fields['status'] = status;
+    request.fields['treatment'] = treatment;
+
+    if (imageFile != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath('thumbnail', imageFile.path),
       );
+    }
 
+    // Add headers (Authorization, Accept)
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    request.headers['Accept'] = 'application/json';
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    // Try to decode JSON, else throw readable error
+    try {
       final data = jsonDecode(response.body);
-
       if (response.statusCode == 200 || response.statusCode == 201) {
         return data;
       } else {
-        throw Exception(data["message"] ?? "Failed to create health record");
+        throw Exception(data['message'] ?? 'Failed to create tree');
       }
     } catch (e) {
-      throw Exception("Error: ${e.toString()}");
+      throw Exception('Failed to create tree: ${response.body}');
     }
+    // try {
+    //   SharedPreferences prefs = await SharedPreferences.getInstance();
+    //   final token = prefs.getString('token');
+
+    //   final response = await http.post(
+    //     Uri.parse("${Config.apiBaseUrl}/health-records"),
+    //     headers: {
+    //       "Content-Type": "application/json",
+    //       "Accept": "application/json",
+    //       if (token != null) "Authorization": "Bearer $token",
+    //     },
+    //     body: jsonEncode({
+    //       "tree_uuid": treeUuid,
+    //       "disease_id": diseaseId,
+    //       "recorded_at": date,
+    //       "status": status,
+    //       "treatment": treatment,
+    //     }),
+    //   );
+
+    //   final data = jsonDecode(response.body);
+
+    //   if (response.statusCode == 200 || response.statusCode == 201) {
+    //     return data;
+    //   } else {
+    //     throw Exception(data["message"] ?? "Failed to create health record");
+    //   }
+    // } catch (e) {
+    //   throw Exception("Error: ${e.toString()}");
+    // }
   }
 
   static Future<List<Map<String, dynamic>>> fetchHealthRecords(
@@ -114,6 +153,7 @@ class HealthApi {
     required String date,
     required String status,
     required String treatment,
+    
   }) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');

@@ -100,7 +100,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
           height: double.parse(heightController.text),
           diameter: double.parse(widthController.text),
           floweringPeriod: floweringPeriodController.text,
-          imageFile: _selectedImage, // ✅ send File
+          imageFile: _selectedImage,
         );
       } else {
         // Update

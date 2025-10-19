@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
@@ -5,6 +7,8 @@ import 'package:fyp_hbs/services/health_api.dart';
 import 'package:fyp_hbs/services/disease_api.dart';
 import 'package:fyp_hbs/tree/tab/health/create_disease.dart';
 import 'package:another_flushbar/flushbar.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:fyp_hbs/config.dart';
 
 class CreateHealthInfoPage extends StatefulWidget {
   final String treeTag;
@@ -32,6 +36,9 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
   String? selectedStatus;
   bool isLoading = false;
 
+  File? _selectedImage;
+  String? _existingThumbnailPath;
+
   @override
   void dispose() {
     dateController.dispose();
@@ -47,16 +54,24 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
       final record = widget.existingRecord!;
       dateController.text = record['recorded_at'] ?? '';
       treatmentController.text = record['treatment'] ?? '';
-      selectedDiseaseId = record['disease']['id'];
+      selectedDiseaseId = record['disease']?['id'];
       selectedStatus = record['status'];
+      _existingThumbnailPath = record['thumbnail'];
     }
   }
 
   Future<void> _saveHealthInfo() async {
     if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please complete the form')));
+      // show a flushbar instead of snackbar for consistency
+      await Flushbar(
+        message: 'Please complete the form',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
       return;
     }
 
@@ -64,7 +79,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
       setState(() => isLoading = true);
 
       if (widget.existingRecord != null) {
-        // update existing
+        // update existing (optionally support image updates later)
         await HealthApi.updateHealthRecord(
           id: widget.existingRecord!['id'].toString(),
           treeUuid: widget.treeUuid,
@@ -72,6 +87,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
           date: dateController.text,
           status: selectedStatus!,
           treatment: treatmentController.text,
+          // you can add imageFile: _selectedImage if update endpoint accepts multipart
         );
       } else {
         // create new
@@ -81,6 +97,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
           date: dateController.text,
           status: selectedStatus!,
           treatment: treatmentController.text,
+          imageFile: _selectedImage,
         );
       }
 
@@ -115,6 +132,102 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
     }
   }
 
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 60, // increased a bit; adjust as needed
+    );
+
+    if (pickedFile != null) {
+      setState(() {
+        _selectedImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  String _buildFullImageUrl(String path) {
+    final baseUrl = Config.supabaseBaseUrl;
+    return '$baseUrl/$path';
+  }
+
+  Widget _buildImagePreview() {
+    // Use a fixed height container and Stack to allow the close button
+    return GestureDetector(
+      onTap: _pickImage,
+      child: SizedBox(
+        height: 180,
+        width: double.infinity,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child:
+                  _selectedImage != null
+                      ? Image.file(
+                        _selectedImage!,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      )
+                      : (_existingThumbnailPath != null &&
+                          _existingThumbnailPath!.isNotEmpty)
+                      ? Image.network(
+                        _buildFullImageUrl(_existingThumbnailPath!), // ✅ FIXED
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[200],
+                            height: 180,
+                            width: double.infinity,
+                            child: const Center(
+                              child: Text('Image unavailable'),
+                            ),
+                          );
+                        },
+                      )
+                      : Container(
+                        height: 180,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey),
+                        ),
+                        child: const Center(
+                          child: Text('Tap to select tree image'),
+                        ),
+                      ),
+            ),
+
+            if (_selectedImage != null ||
+                (_existingThumbnailPath != null &&
+                    _existingThumbnailPath!.isNotEmpty))
+              Positioned(
+                top: 8,
+                right: 8,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedImage = null;
+                      _existingThumbnailPath = null; // clear preview
+                    });
+                  },
+                  child: const CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Colors.black54,
+                    child: Icon(Icons.close, color: Colors.white, size: 16),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -132,6 +245,9 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
           key: _formKey,
           child: ListView(
             children: [
+              _buildImagePreview(),
+              const SizedBox(height: 16),
+
               TextFormField(
                 initialValue: widget.treeTag,
                 decoration: const InputDecoration(
@@ -156,7 +272,9 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                     onPressed: () async {
                       final picked = await showDatePicker(
                         context: context,
-                        initialDate: DateTime.now(),
+                        initialDate:
+                            DateTime.tryParse(dateController.text) ??
+                            DateTime.now(),
                         firstDate: DateTime(2000),
                         lastDate: DateTime(2100),
                         builder: (BuildContext context, Widget? child) {
@@ -201,19 +319,18 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                   return DropdownButtonFormField<String>(
                     dropdownColor: Colors.white,
                     value: selectedDiseaseId?.toString(),
-                    items:
-                        diseaseList.map((d) {
-                            return DropdownMenuItem(
-                              value: d['id'].toString(),
-                              child: Text(d['diseaseName'] ?? ""),
-                            );
-                          }).toList()
-                          ..add(
-                            const DropdownMenuItem(
-                              value: 'new',
-                              child: Text('Add New Disease'),
-                            ),
-                          ),
+                    items: [
+                      ...diseaseList.map((d) {
+                        return DropdownMenuItem<String>(
+                          value: d['id']?.toString(),
+                          child: Text(d['diseaseName'] ?? ''),
+                        );
+                      }).toList(),
+                      const DropdownMenuItem<String>(
+                        value: 'new',
+                        child: Text('Add New Disease'),
+                      ),
+                    ],
                     onChanged: (value) async {
                       if (value == 'new') {
                         await Navigator.push(
@@ -226,9 +343,9 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                                 ),
                           ),
                         );
-                        setState(() {});
-                      } else {
-                        setState(() => selectedDiseaseId = int.parse(value!));
+                        setState(() {}); // reload after creating new disease
+                      } else if (value != null) {
+                        setState(() => selectedDiseaseId = int.tryParse(value));
                       }
                     },
                     decoration: const InputDecoration(
