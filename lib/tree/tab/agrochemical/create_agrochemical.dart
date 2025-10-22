@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/agrochemical_api.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class CreateAgrochemicalPage extends StatefulWidget {
   final Map<String, dynamic>? agrochemicalRecord;
@@ -51,9 +52,6 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
       });
     } catch (e) {
       setState(() => _isDropdownLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading agrochemicals: $e')),
-      );
     }
   }
 
@@ -70,15 +68,69 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
     }
   }
 
+  // ✅ DELETE with confirmation dialog
+  Future<void> _deleteRecord() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Record?'),
+        content: const Text(
+          'Are you sure you want to delete this agrochemical record?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        setState(() => isLoading = true);
+
+        await AgrochemicalApi.deleteAgrochemicalRecord(
+          widget.agrochemicalRecord!['uuid'],
+        );
+
+        if (!mounted) return;
+        Navigator.pop(context, true); // Refresh previous page
+
+        Flushbar(
+          message: 'Agrochemical record deleted successfully',
+          icon: const Icon(Icons.delete, color: Colors.white),
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+          flushbarPosition: FlushbarPosition.TOP,
+        ).show(context);
+      } catch (e) {
+        Flushbar(
+          message: 'Error deleting record: $e',
+          icon: const Icon(Icons.error, color: Colors.white),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+          flushbarPosition: FlushbarPosition.TOP,
+        ).show(context);
+      } finally {
+        setState(() => isLoading = false);
+      }
+    }
+  }
+
+  // ✅ SAVE (Create / Update)
   Future<void> _saveRecord() async {
     if (!_formKey.currentState!.validate() ||
         selectedAgrochemicalUuid == null ||
-        appliedAt == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please complete all fields')),
-      );
-      return;
-    }
+        appliedAt == null) return;
 
     try {
       setState(() => isLoading = true);
@@ -86,40 +138,24 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
       final formattedDate = DateFormat('yyyy-MM-dd').format(appliedAt!);
 
       if (widget.agrochemicalRecord == null) {
-        // CREATE
         await AgrochemicalApi.createAgrochemicalRecord(
           tree_uuid: widget.treeUuid,
           agrochemical_uuid: selectedAgrochemicalUuid!,
           applied_at: formattedDate,
           description: descriptionController.text,
         );
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Agrochemical record created successfully'),
-          ),
-        );
       } else {
-        // UPDATE (need update API in AgrochemicalApi)
         await AgrochemicalApi.updateAgrochemicalRecord(
+          tree_uuid: widget.treeUuid,
           record_uuid: widget.agrochemicalRecord!['uuid'],
           agrochemical_uuid: selectedAgrochemicalUuid!,
           applied_at: formattedDate,
           description: descriptionController.text,
         );
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Agrochemical record updated successfully'),
-          ),
-        );
       }
 
+      if (!mounted) return;
       Navigator.pop(context, true);
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       setState(() => isLoading = false);
     }
@@ -132,14 +168,20 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(
-          isEdit ? 'Edit Agrochemical Record' : 'Add Agrochemical Record',
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
+        title: Text(isEdit ? 'Edit Agrochemical Record' : 'Add Agrochemical'),
         backgroundColor: AppColors.pakistanGreen,
+        titleTextStyle: const TextStyle(
+          color: Colors.white,
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+        actions: [
+          if (isEdit)
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.white),
+              onPressed: isLoading ? null : _deleteRecord,
+            ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),

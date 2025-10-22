@@ -15,12 +15,108 @@ class AgrochemicalTabPage extends StatefulWidget {
 class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
   String searchQuery = '';
   int? selectedIndex;
+  // Filter state
+  String? _filterAgrochemicalUuid;
+  String? _filterAgrochemicalName;
+  bool _isFilterLoading = false;
+  List<Map<String, dynamic>> _filterOptions = [];
 
   Future<List<Map<String, dynamic>>> fetchAgrochemical() async {
     final response = await AgrochemicalApi.fetchAgrochemicals(
       treeUuid: widget.treeUuid,
     );
     return response;
+  }
+
+  Future<void> _showFilterDialog() async {
+    setState(() => _isFilterLoading = true);
+    try {
+      final options = await AgrochemicalApi.getAgrochemical();
+      _filterOptions = options;
+      setState(() => _isFilterLoading = false);
+
+      String? tempSelected = _filterAgrochemicalUuid;
+
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Filter by Agrochemical'),
+            content: StatefulBuilder(
+              builder: (context, setStateDialog) {
+                return SizedBox(
+                  width: 300,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: tempSelected,
+                        items: _filterOptions.map((opt) {
+                          return DropdownMenuItem<String>(
+                            value: opt['uuid']?.toString(),
+                            child: Text(opt['name'] ?? 'Unknown'),
+                          );
+                        }).toList(),
+                        onChanged: (val) => setStateDialog(() => tempSelected = val),
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          labelText: 'Select Agrochemical',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              // Clear filter
+                              tempSelected = null;
+                              Navigator.of(context).pop();
+                              setState(() {
+                                _filterAgrochemicalUuid = null;
+                                _filterAgrochemicalName = null;
+                              });
+                            },
+                            child: const Text('Clear'),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: () {
+                              // Apply
+                              setState(() {
+                                _filterAgrochemicalUuid = tempSelected;
+                                final sel = _filterOptions.firstWhere(
+                                    (o) => o['uuid']?.toString() == tempSelected,
+                                    orElse: () => {});
+                                _filterAgrochemicalName = sel['name']?.toString();
+                              });
+                              Navigator.of(context).pop();
+                            },
+                            child: const Text('Apply'),
+                          ),
+                        ],
+                      )
+                    ],
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      setState(() => _isFilterLoading = false);
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Error'),
+          content: Text('Failed to load agrochemicals: $e'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))
+          ],
+        ),
+      );
+    }
   }
 
   @override
@@ -43,8 +139,11 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                     ),
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: GestureDetector(
-                      onTap: () => setState(() => searchQuery = ''),
-                      child: const Icon(Icons.filter_alt_outlined),
+                      onTap: _showFilterDialog,
+                      child: Icon(
+                        _filterAgrochemicalUuid == null ? Icons.filter_alt_outlined : Icons.filter_alt,
+                        color: _filterAgrochemicalUuid == null ? null : AppColors.hunterGreen,
+                      ),
                     ),
                     filled: true,
                     fillColor: AppColors.white,
@@ -113,7 +212,12 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                     return name.contains(searchQuery.toLowerCase());
                   }).toList();
 
-              if (filtered.isEmpty) {
+              // Apply agrochemical filter if selected
+              final agrochemicalFiltered = _filterAgrochemicalUuid != null
+                  ? filtered.where((item) => item['agrochemical']?['uuid']?.toString() == _filterAgrochemicalUuid).toList()
+                  : filtered;
+
+              if (agrochemicalFiltered.isEmpty) {
                 return const Center(
                   child: Text('No agrochemical records found.'),
                 );
@@ -124,17 +228,33 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                   vertical: 8,
                   horizontal: 16,
                 ),
-                itemCount: filtered.length,
+                itemCount: agrochemicalFiltered.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  final item = filtered[index];
+                  final item = agrochemicalFiltered[index];
                   final agro = item['agrochemical'] ?? {};
                   final isSelected = selectedIndex == index;
 
                   return GestureDetector(
-                    onTap: () {
+                    onTap: () async {
                       setState(() => selectedIndex = index);
-                      // TODO: Navigate to details page
+
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (_) => CreateAgrochemicalPage(
+                                treeUuid: widget.treeUuid,
+                                treeTag: '', // Optional if needed
+                                agrochemicalRecord:
+                                    item, // ✅ pass the selected record
+                              ),
+                        ),
+                      );
+
+                      if (result == true) {
+                        setState(() {}); // refresh list after update
+                      }
                     },
                     child: Container(
                       decoration: BoxDecoration(

@@ -67,6 +67,7 @@ class AgrochemicalApi {
   static Future<void> updateAgrochemicalRecord({
     required String record_uuid,
     required String agrochemical_uuid,
+    required String tree_uuid,
     required String applied_at,
     required String description,
   }) async {
@@ -83,6 +84,7 @@ class AgrochemicalApi {
         },
         body: jsonEncode({
           "agrochemical_uuid": agrochemical_uuid,
+          "tree_uuid": tree_uuid,
           "applied_at": applied_at,
           "description": description,
         }),
@@ -93,7 +95,9 @@ class AgrochemicalApi {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return;
       } else {
-        throw Exception(data["message"] ?? "Failed to update agrochemical record");
+        throw Exception(
+          data["message"] ?? "Failed to update agrochemical record",
+        );
       }
     } catch (e) {
       throw Exception("Error: ${e.toString()}");
@@ -117,6 +121,28 @@ class AgrochemicalApi {
       return List<Map<String, dynamic>>.from(decoded['data']);
     } else {
       throw Exception("Failed to fetch agrochemicals");
+    }
+  }
+
+  static Future<void> deleteAgrochemicalRecord(String recordUuid) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.delete(
+        Uri.parse("${Config.apiBaseUrl}/agrochemicals/$recordUuid"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        final body = jsonDecode(response.body);
+        throw Exception(body['message'] ?? 'Failed to delete agrochemical record');
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
     }
   }
 }

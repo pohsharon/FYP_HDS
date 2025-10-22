@@ -70,36 +70,6 @@ class HealthApi {
     } catch (e) {
       throw Exception('Failed to create tree: ${response.body}');
     }
-    // try {
-    //   SharedPreferences prefs = await SharedPreferences.getInstance();
-    //   final token = prefs.getString('token');
-
-    //   final response = await http.post(
-    //     Uri.parse("${Config.apiBaseUrl}/health-records"),
-    //     headers: {
-    //       "Content-Type": "application/json",
-    //       "Accept": "application/json",
-    //       if (token != null) "Authorization": "Bearer $token",
-    //     },
-    //     body: jsonEncode({
-    //       "tree_uuid": treeUuid,
-    //       "disease_id": diseaseId,
-    //       "recorded_at": date,
-    //       "status": status,
-    //       "treatment": treatment,
-    //     }),
-    //   );
-
-    //   final data = jsonDecode(response.body);
-
-    //   if (response.statusCode == 200 || response.statusCode == 201) {
-    //     return data;
-    //   } else {
-    //     throw Exception(data["message"] ?? "Failed to create health record");
-    //   }
-    // } catch (e) {
-    //   throw Exception("Error: ${e.toString()}");
-    // }
   }
 
   static Future<List<Map<String, dynamic>>> fetchHealthRecords(
@@ -146,35 +116,72 @@ class HealthApi {
     }
   }
 
-  static Future<void> updateHealthRecord({
+  static Future<Map<String, dynamic>> updateHealthRecord({
     required String id,
     required String treeUuid,
     required int diseaseId,
     required String date,
     required String status,
     required String treatment,
-    
+    File? imageFile,
   }) async {
+    final uri = Uri.parse("${Config.apiBaseUrl}/health-records/$id");
+    var request = http.MultipartRequest(
+      'POST',
+      uri,
+    ); // If backend expects PUT method:
+    request.fields['_method'] = 'PUT'; // Laravel style method spoofing
+
+    request.fields['tree_uuid'] = treeUuid;
+    request.fields['disease_id'] = diseaseId.toString();
+    request.fields['recorded_at'] = date;
+    request.fields['status'] = status;
+    request.fields['treatment'] = treatment;
+
+    // ✅ Attach image only if user selected a new one
+    if (imageFile != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath('thumbnail', imageFile.path),
+      );
+    }
+
+    // ✅ Add headers (same as create)
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    request.headers['Accept'] = 'application/json';
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    try {
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return data;
+      } else {
+        throw Exception(data['message'] ?? 'Failed to update health record');
+      }
+    } catch (e) {
+      throw Exception('Failed to update health record: ${response.body}');
+    }
+  }
+
+  static Future<void> deleteHealthRecord(String id) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
-    final response = await http.put(
-      Uri.parse('${Config.apiBaseUrl}/health-records/$id'),
+    final response = await http.delete(
+      Uri.parse("${Config.apiBaseUrl}/health-records/$id"),
       headers: {
-        'Content-Type': 'application/json',
-        if (token != null) 'Authorization': 'Bearer $token',
+        "Accept": "application/json",
+        if (token != null) "Authorization": "Bearer $token",
       },
-      body: jsonEncode({
-        'tree_uuid': treeUuid,
-        'disease_id': diseaseId,
-        'recorded_at': date,
-        'status': status,
-        'treatment': treatment,
-      }),
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Failed to update health record: ${response.body}');
+      throw Exception("Failed to delete health record: ${response.body}");
     }
   }
 }

@@ -87,7 +87,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
           date: dateController.text,
           status: selectedStatus!,
           treatment: treatmentController.text,
-          // you can add imageFile: _selectedImage if update endpoint accepts multipart
+          imageFile: _selectedImage,
         );
       } else {
         // create new
@@ -228,6 +228,50 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
     );
   }
 
+  Future<void> _deleteRecord() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Health record'),
+        content: const Text('Are you sure you want to delete this health record?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      setState(() => isLoading = true);
+      await HealthApi.deleteHealthRecord(widget.existingRecord!['id'].toString());
+      await Flushbar(
+        message: 'Health record deleted',
+        icon: const Icon(Icons.check_circle, color: Colors.white),
+        backgroundColor: Colors.green.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(12),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      await Flushbar(
+        message: 'Error deleting health record: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -238,6 +282,13 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         backgroundColor: AppColors.pakistanGreen,
+        actions: [
+          if (widget.existingRecord != null)
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.white),
+              onPressed: _deleteRecord,
+            ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),

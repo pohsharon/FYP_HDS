@@ -20,6 +20,8 @@ class HealthTabPage extends StatefulWidget {
 
 class _HealthTabPageState extends State<HealthTabPage> {
   String searchQuery = '';
+  int? _filterDiseaseId;
+  String? _filterDiseaseName;
 
   @override
   Widget build(BuildContext context) {
@@ -42,15 +44,23 @@ class _HealthTabPageState extends State<HealthTabPage> {
                 return const Center(child: Text("No health records found."));
               }
 
-              final filteredRecords =
-                  snapshot.data!
-                      .where(
-                        (record) => record['disease']['diseaseName']
-                            .toString()
-                            .toLowerCase()
-                            .contains(searchQuery.toLowerCase()),
-                      )
-                      .toList();
+              final records = snapshot.data!;
+
+              final filteredRecords = records.where((record) {
+                final diseaseName = record['disease']?['diseaseName']?.toString().toLowerCase() ?? '';
+                final matchesSearch = diseaseName.contains(searchQuery.toLowerCase());
+                final matchesDiseaseFilter = _filterDiseaseId == null
+                    ? true
+                    : (record['disease']?['id'] == _filterDiseaseId);
+                return matchesSearch && matchesDiseaseFilter;
+              }).toList();
+
+              if (filteredRecords.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: Text('No health records match your search or filter.')),
+                );
+              }
 
               return Column(
                 children:
@@ -100,8 +110,11 @@ class _HealthTabPageState extends State<HealthTabPage> {
               ),
               prefixIcon: const Icon(Icons.search),
               suffixIcon: GestureDetector(
-                onTap: () => setState(() => searchQuery = ''),
-                child: const Icon(Icons.filter_alt_outlined),
+                onTap: () => _showDiseaseFilterDialog(),
+                child: Icon(
+                  Icons.filter_alt_outlined,
+                  color: _filterDiseaseId == null ? null : AppColors.hunterGreen,
+                ),
               ),
               filled: true,
               fillColor: AppColors.white,
@@ -338,5 +351,94 @@ class _HealthTabPageState extends State<HealthTabPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _showDiseaseFilterDialog() async {
+    try {
+      final List<Map<String, dynamic>> diseases = await HealthApi.fetchDiseases();
+
+      String? tempSelectedName = _filterDiseaseName;
+      int? tempSelectedId = _filterDiseaseId;
+
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Filter by Disease'),
+            content: StatefulBuilder(
+              builder: (context, setStateDialog) {
+                return SizedBox(
+                  width: double.maxFinite,
+                  child: DropdownButtonFormField<int>(
+                    isExpanded: true,
+                    value: tempSelectedId,
+                    hint: const Text('Select a disease'),
+                    items: (() {
+                      final List<DropdownMenuItem<int>> list = [];
+                      for (final d in diseases) {
+                        final idValue = d['id'];
+                        final int? id = idValue is int
+                            ? idValue
+                            : (idValue != null ? int.tryParse(idValue.toString()) : null);
+                        final name = (d['diseaseName'] ?? d['name'] ?? '').toString();
+                        if (id != null) {
+                          list.add(DropdownMenuItem<int>(value: id, child: Text(name)));
+                        }
+                      }
+                      return list;
+                    })(),
+                    onChanged: (v) {
+                      setStateDialog(() {
+                        tempSelectedId = v;
+                        final Map<String, dynamic> sel = diseases.firstWhere(
+                          (x) => (x['id'] == v),
+                          orElse: () => <String, dynamic>{},
+                        );
+                        tempSelectedName = (sel['diseaseName'] ?? sel['name'] ?? '').toString();
+                      });
+                    },
+                  ),
+                );
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  // clear filter
+                  setState(() {
+                    _filterDiseaseId = null;
+                    _filterDiseaseName = null;
+                  });
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Clear'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _filterDiseaseId = tempSelectedId;
+                    _filterDiseaseName = tempSelectedName;
+                  });
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Apply'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      // show simple dialog on error
+      showDialog(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Error'),
+          content: Text('Failed to load diseases: $e'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
+          ],
+        ),
+      );
+    }
   }
 }
