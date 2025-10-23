@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/tree_api.dart';
 import 'package:fyp_hbs/services/fruit_api.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class CreateFruitPage extends StatefulWidget {
   final Map<String, dynamic>? fruit;
@@ -34,25 +35,44 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
     super.initState();
     _fetchTrees();
     _fetchEvents();
+
+    if (widget.fruit != null) {
+      final f = widget.fruit!;
+      weightController.text = f['weight']?.toString() ?? '';
+      gradeController.text = f['grade']?.toString() ?? '';
+      harvestedAtController.text = f['harvested_at']?.toString() ?? '';
+      isSpoiled = (f['is_spoiled'] as bool?) ?? false;
+      selectedTreeUuid = f['tree_uuid'];
+      selectedHarvestUuid = f['harvest_uuid'];
+    }
   }
 
   Future<void> _fetchTrees() async {
-  try {
-    final fetchedTrees = await TreeApi.fetchTrees();
+    try {
+      final response = await TreeApi.fetchAllTrees();
+      final treeList =
+          (response['data']['data'] as List<dynamic>)
+              .map((tree) => tree as Map<String, dynamic>)
+              .toList();
 
-    // Extract the 'data' list from the fetchedTrees Map
-    final treeList = List<Map<String, dynamic>>.from(fetchedTrees['data']);
+      setState(() {
+        trees = treeList;
 
-    setState(() {
-      trees = treeList; // assign only the list part to your trees variable
-    });
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Error fetching trees: $e")),
-    );
+        // ✅ Reset selectedTreeUuid if it doesn't exist in dropdown items
+        if (selectedTreeUuid != null &&
+            !trees.any((tree) => tree['uuid'] == selectedTreeUuid)) {
+          selectedTreeUuid = null;
+        }
+      });
+    } catch (e) {
+      await Flushbar(
+        message: 'Error fetching trees: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+      ).show(context);
+    }
   }
-}
-
 
   Future<void> _fetchEvents() async {
     try {
@@ -61,9 +81,15 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
         events = fetchedEvents;
       });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error fetching events: $e")));
+      await Flushbar(
+        message: 'Error fetching events: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
     }
   }
 
@@ -111,40 +137,83 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
   Future<void> _saveFruit() async {
     if (!_formKey.currentState!.validate()) return;
     if (selectedTreeUuid == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Please select a tree")));
+      await Flushbar(
+        message: 'Please select a tree',
+        icon: const Icon(Icons.info_outline, color: Colors.white),
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
       return;
     }
     if (selectedHarvestUuid == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No valid harvest event for this date")),
-      );
+      await Flushbar(
+        message: 'No valid harvest event for this date',
+        icon: const Icon(Icons.info_outline, color: Colors.white),
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
       return;
     }
 
-    setState(() => isLoading = true);
-
     try {
-      await FruitApi.createFruit(
-        tree_uuid: selectedTreeUuid!,
-        harvest_uuid: selectedHarvestUuid!,
-        weight: double.parse(weightController.text),
-        grade: gradeController.text,
-        harvested_at: harvestedAtController.text,
-        is_spoiled: isSpoiled,
-      );
+      setState(() => isLoading = true);
 
-      if (mounted) {
-        Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Fruit created successfully")),
+      if (widget.fruit == null) {
+        await FruitApi.createFruit(
+          tree_uuid: selectedTreeUuid!,
+          harvest_uuid: selectedHarvestUuid!,
+          weight: double.parse(weightController.text),
+          grade: gradeController.text,
+          harvested_at: harvestedAtController.text,
+          is_spoiled: isSpoiled,
+        );
+      } else {
+        await FruitApi.updateFruit(
+          uuid: widget.fruit!['uuid'],
+          tree_uuid: selectedTreeUuid!,
+          harvest_uuid: selectedHarvestUuid!,
+          weight: double.parse(weightController.text),
+          grade: gradeController.text,
+          harvested_at: harvestedAtController.text,
+          is_spoiled: isSpoiled,
         );
       }
+
+      if (mounted) {
+        await Flushbar(
+          message:
+              widget.fruit == null
+                  ? 'Fruit created successfully'
+                  : 'Fruit updated successfully',
+          icon: const Icon(Icons.check_circle, color: Colors.white),
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 2),
+          borderRadius: BorderRadius.circular(12),
+          margin: const EdgeInsets.all(12),
+          flushbarPosition: FlushbarPosition.TOP,
+        ).show(context);
+
+        Future.microtask(() {
+          if (!mounted) return;
+          Navigator.pop(context, true);
+        });
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error saving fruit: $e")));
+      await Flushbar(
+        message: 'Error saving fruit: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
     } finally {
       setState(() => isLoading = false);
     }
@@ -163,6 +232,80 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
           ),
         ),
         backgroundColor: AppColors.pakistanGreen,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.white),
+            onPressed: () async {
+              if (widget.fruit != null) {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder:
+                      (context) => AlertDialog(
+                        title: const Text('Delete Fruit'),
+                        content: const Text(
+                          'Are you sure you want to delete this fruit?',
+                        ),
+                        backgroundColor: Colors.white,
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                );
+
+                if (confirm == true) {
+                  try {
+                    await FruitApi.deleteFruit(
+                      widget.fruit!['uuid'].toString(),
+                    );
+
+                    // show flushbar and wait for it to finish before navigating
+                    await Flushbar(
+                      message: 'Fruit deleted successfully',
+                      icon: const Icon(Icons.check_circle, color: Colors.white),
+                      backgroundColor: Colors.green.shade700,
+                      duration: const Duration(seconds: 2),
+                      borderRadius: BorderRadius.circular(12),
+                      margin: const EdgeInsets.all(12),
+                      flushbarPosition: FlushbarPosition.TOP,
+                    ).show(context);
+
+                    if (!mounted) return;
+                    // Close this page and return `true` to indicate deletion
+                    Navigator.pop(context, true);
+                  } catch (e) {
+                    await Flushbar(
+                      message: 'Error deleting fruit: $e',
+                      icon: const Icon(Icons.error, color: Colors.white),
+                      backgroundColor: Colors.red.shade700,
+                      duration: const Duration(seconds: 3),
+                      borderRadius: BorderRadius.circular(8),
+                      margin: const EdgeInsets.all(12),
+                    ).show(context);
+                  }
+                }
+              } else {
+                await Flushbar(
+                  message: 'No fruit to delete',
+                  icon: const Icon(Icons.info, color: Colors.white),
+                  backgroundColor: Colors.grey.shade700,
+                  duration: const Duration(seconds: 2),
+                  borderRadius: BorderRadius.circular(8),
+                  margin: const EdgeInsets.all(12),
+                ).show(context);
+              }
+            },
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),

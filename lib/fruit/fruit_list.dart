@@ -4,6 +4,7 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/fruit/create_fruit.dart';
 import 'package:fyp_hbs/services/fruit_api.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class FruitPage extends StatefulWidget {
   const FruitPage({super.key});
@@ -46,9 +47,15 @@ class _FruitPageState extends State<FruitPage> {
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error loading fruits: $e")));
+      await Flushbar(
+        message: 'Error loading fruits: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
     }
   }
 
@@ -213,9 +220,6 @@ class _FruitPageState extends State<FruitPage> {
 
               if (result == true) {
                 fetchFruits();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Fruit list updated')),
-                );
               }
             },
             child: Container(
@@ -344,12 +348,33 @@ class _FruitPageState extends State<FruitPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
+                // Top bar with Close (left) and Edit (right)
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: AppColors.hunterGreen),
+                      onPressed: () async {
+                        // Close the dialog first
+                        Navigator.of(context).pop();
+                        // Navigate to CreateFruitPage with the current fruit for editing
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => CreateFruitPage(fruit: fruit)),
+                        );
+
+                        // Refresh list if the fruit was updated
+                        if (result == true) {
+                          await fetchFruits();
+                         
+                        }
+                      },
+                    ),
+                  ],
                 ),
                 QrImageView(
                   data: uuid,
