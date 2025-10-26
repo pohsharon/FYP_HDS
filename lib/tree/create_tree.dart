@@ -111,11 +111,15 @@ class _CreateTreePageState extends State<CreateTreePage> {
           height: double.parse(heightController.text),
           diameter: double.parse(widthController.text),
           floweringPeriod: floweringPeriodController.text,
+          imageFile: _selectedImage, // Only send if user picks new
         );
       }
 
       await Flushbar(
-        message: widget.tree == null ? 'Tree created successfully' : 'Tree updated successfully',
+        message:
+            widget.tree == null
+                ? 'Tree created successfully'
+                : 'Tree updated successfully',
         icon: const Icon(Icons.check_circle, color: Colors.white),
         backgroundColor: Colors.green.shade700,
         duration: const Duration(seconds: 2),
@@ -159,21 +163,27 @@ class _CreateTreePageState extends State<CreateTreePage> {
               if (widget.tree != null) {
                 final confirm = await showDialog<bool>(
                   context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Delete Tree'),
-                    content: const Text('Are you sure you want to delete this tree?'),
-                    backgroundColor: Colors.white,
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text('Cancel'),
+                  builder:
+                      (context) => AlertDialog(
+                        title: const Text('Delete Tree'),
+                        content: const Text(
+                          'Are you sure you want to delete this tree?',
+                        ),
+                        backgroundColor: Colors.white,
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text(
+                              'Delete',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
                       ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text('Delete', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
-                  ),
                 );
 
                 if (confirm == true) {
@@ -225,69 +235,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
           key: _formKey,
           child: ListView(
             children: [
-              GestureDetector(
-                onTap: _pickImage,
-                child: Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child:
-                          _selectedImage != null
-                              ? Image.file(
-                                _selectedImage!,
-                                height: 180,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                              )
-                              : (_existingThumbnailPath != null &&
-                                  _existingThumbnailPath!.isNotEmpty)
-                              ? Image.network(
-                                // build full URL to Laravel storage
-                                '${Config.apiBaseUrl.replaceFirst('/api', '')}/storage/$_existingThumbnailPath',
-                                height: 180,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                              )
-                              : Container(
-                                height: 180,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.grey),
-                                ),
-                                child: const Center(
-                                  child: Text('Tap to select tree image'),
-                                ),
-                              ),
-                    ),
-                    if (_selectedImage != null ||
-                        (_existingThumbnailPath != null &&
-                            _existingThumbnailPath!.isNotEmpty))
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _selectedImage = null;
-                              _existingThumbnailPath = null; // clear preview
-                            });
-                          },
-                          child: const CircleAvatar(
-                            radius: 14,
-                            backgroundColor: Colors.black54,
-                            child: Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
+              _buildImagePreview(),
               const SizedBox(height: 16),
 
               DropdownButtonFormField<String>(
@@ -414,5 +362,85 @@ class _CreateTreePageState extends State<CreateTreePage> {
         ),
       ),
     );
+  }
+
+  Widget _buildImagePreview() {
+    // Use a fixed height container and Stack to allow the close button
+    return GestureDetector(
+      onTap: _pickImage,
+      child: SizedBox(
+        height: 180,
+        width: double.infinity,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child:
+                  _selectedImage != null
+                      ? Image.file(
+                        _selectedImage!,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      )
+                      : (_existingThumbnailPath != null &&
+                          _existingThumbnailPath!.isNotEmpty)
+                      ? Image.network(
+                        _buildFullImageUrl(_existingThumbnailPath!), // ✅ FIXED
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[200],
+                            height: 180,
+                            width: double.infinity,
+                            child: const Center(
+                              child: Text('Image unavailable'),
+                            ),
+                          );
+                        },
+                      )
+                      : Container(
+                        height: 180,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey),
+                        ),
+                        child: const Center(child: Text('Tap to select image')),
+                      ),
+            ),
+
+            if (_selectedImage != null ||
+                (_existingThumbnailPath != null &&
+                    _existingThumbnailPath!.isNotEmpty))
+              Positioned(
+                top: 8,
+                right: 8,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedImage = null;
+                      _existingThumbnailPath = null; // clear preview
+                    });
+                  },
+                  child: const CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Colors.black54,
+                    child: Icon(Icons.close, color: Colors.white, size: 16),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _buildFullImageUrl(String path) {
+    final baseUrl = Config.supabaseBaseUrl;
+    return '$baseUrl/$path';
   }
 }

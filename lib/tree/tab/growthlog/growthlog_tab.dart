@@ -222,7 +222,6 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                                       try {
                                         final result =
                                             await TreeGrowthApi.addGrowthLog(
-                                              treeId: treeId,
                                               treeUuid: widget.treeUuid,
                                               height: double.parse(height),
                                               diameter: double.parse(diameter),

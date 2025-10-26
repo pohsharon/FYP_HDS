@@ -65,10 +65,11 @@ class HealthApi {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return data;
       } else {
-        throw Exception(data['message'] ?? 'Failed to create tree');
+        throw Exception(data['message'] ?? 'Failed to create health record');
       }
     } catch (e) {
-      throw Exception('Failed to create tree: ${response.body}');
+      print(response.body);
+      throw Exception('Failed to create health record');
     }
   }
 

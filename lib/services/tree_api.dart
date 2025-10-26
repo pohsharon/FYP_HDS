@@ -50,6 +50,7 @@ class TreeApi {
         throw Exception(data['message'] ?? 'Failed to create tree');
       }
     } catch (e) {
+      print(response.body);
       throw Exception('Failed to create tree: ${response.body}');
     }
   }
@@ -190,50 +191,43 @@ class TreeApi {
     required String floweringPeriod,
     File? imageFile,
   }) async {
+    final uri = Uri.parse("${Config.apiBaseUrl}/trees/$id");
+    var request = http.MultipartRequest("POST", uri);
+
+    request.fields['_method'] = 'PUT';
+    request.fields['species_id'] = speciesId;
+    request.fields['planted_at'] = plantedAt;
+    request.fields['height'] = height.toString();
+    request.fields['diameter'] = diameter.toString();
+    request.fields['flowering_period'] = floweringPeriod;
+
+    // If user uploaded new image → send file
+    if (imageFile != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath('thumbnail', imageFile.path),
+      );
+    }
+    
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    request.headers['Accept'] = 'application/json';
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
     try {
-      final uri = Uri.parse("${Config.apiBaseUrl}/trees/$id");
-      var request = http.MultipartRequest('POST', uri);
-
-      // Method override for PUT if your Laravel route uses PUT/PATCH
-      request.fields['_method'] = 'PUT';
-
-      // Add fields
-      request.fields['species_id'] = speciesId;
-      request.fields['planted_at'] = plantedAt;
-      request.fields['height'] = height.toString();
-      request.fields['diameter'] = diameter.toString();
-      request.fields['flowering_period'] = floweringPeriod;
-
-      // Add image if present
-      if (imageFile != null) {
-        request.files.add(
-          await http.MultipartFile.fromPath('thumbnail', imageFile.path),
-        );
-      }
-
-      // Add headers
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
-      request.headers['Accept'] = 'application/json';
-      if (token != null) {
-        request.headers['Authorization'] = 'Bearer $token';
-      }
-
-      // Send request
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-
-      // Decode JSON
       final data = jsonDecode(response.body);
-
-      if (response.statusCode == 200 || response.statusCode == 204) {
-        print("Tree updated successfully");
-        return;
+      if (response.statusCode == 200) {
+        return data;
       } else {
-        throw Exception(data["message"] ?? "Failed to update tree");
+        throw Exception(data['message'] ?? 'Failed to update tree');
       }
     } catch (e) {
-      throw Exception("Error updating tree: ${e.toString()}");
+      print(response.body);
+      throw Exception('Failed to update tree: ${response.body}');
     }
   }
 

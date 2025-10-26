@@ -197,7 +197,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                           border: Border.all(color: Colors.grey),
                         ),
                         child: const Center(
-                          child: Text('Tap to select tree image'),
+                          child: Text('Tap to select image'),
                         ),
                       ),
             ),

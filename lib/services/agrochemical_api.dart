@@ -57,7 +57,7 @@ class AgrochemicalApi {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return data;
       } else {
-        throw Exception(data["message"] ?? "Failed to create tree");
+        throw Exception(data["message"] ?? "Failed to create agrochemical");
       }
     } catch (e) {
       throw Exception("Error: ${e.toString()}");

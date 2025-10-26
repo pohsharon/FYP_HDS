@@ -5,7 +5,7 @@ import '../config.dart';
 
 class TreeGrowthApi {
   static Future<Map<String, dynamic>> addGrowthLog({
-    required int treeId,
+    // required int treeId,
     required String treeUuid,
     required double height,
     required double diameter,
@@ -22,7 +22,7 @@ class TreeGrowthApi {
           if (token != null) "Authorization": "Bearer $token",
         },
         body: jsonEncode({
-          "tree_id": treeId,
+          // "tree_id": treeId,
           "tree_uuid": treeUuid,
           "height": height,
           "diameter": diameter,

@@ -68,7 +68,10 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
       }
 
       await Flushbar(
-        message: "Health record updated successfully",
+ message:
+            widget.disease != null
+                ? 'Disease updated successfully.'
+                : 'Disease created successfully.',
         icon: const Icon(Icons.check_circle, color: Colors.white),
         backgroundColor: Colors.green.shade700,
         duration: const Duration(seconds: 2),
