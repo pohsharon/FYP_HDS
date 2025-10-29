@@ -43,3 +43,40 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Flutter-generated files
+**/ios/Flutter/
+**/android/.gradle/
+**/android/app/build/
+**/windows/flutter/
+**/linux/flutter/
+**/macos/Flutter/
+**/build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+
+# Windows
+**/windows/flutter/ephemeral/
+**/windows/build/
+
+# Android
+**/android/.gradle/
+**/android/captures/
+**/android/local.properties
+**/android/app/key.properties
+**/android/app/google-services.json
+**/android/app/google-services.plist
+
+# VS Code / IntelliJ / Xcode
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+*.swp
+*.swo
+*.tmp
+*.log
