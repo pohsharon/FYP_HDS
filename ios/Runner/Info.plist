@@ -51,7 +51,14 @@
 	<string>This app uses your location to show your position on the map.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs access to your photo library to select tree images.</string>
-
-
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access to scan QR codes.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app uses the photo library to select images.</string>
 </dict>
 </plist>
