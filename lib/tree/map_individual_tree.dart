@@ -4,7 +4,7 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:fyp_hbs/services/tree_api.dart'; // ✅ make sure this import exists
+import 'package:fyp_hbs/services/api/tree_api.dart'; // ✅ make sure this import exists
 
 class MapIndividualTreePage extends StatefulWidget {
   final double treeLatitude;

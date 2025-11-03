@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'create_health_info.dart';
-import 'package:fyp_hbs/services/health_api.dart';
+import 'package:fyp_hbs/services/api/health_api.dart';
 import 'disease_list.dart';
 import 'package:fyp_hbs/config.dart'; // for building image URL
 

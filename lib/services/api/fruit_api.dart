@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../config.dart';
+import '../../config.dart';
 
 class FruitApi {
   static Future<Map<String, dynamic>> createFruit({

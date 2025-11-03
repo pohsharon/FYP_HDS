@@ -2,7 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-import 'package:fyp_hbs/services/tree_growth_api.dart';
+import 'package:fyp_hbs/services/api/tree_growth_api.dart';
 
 class GrowthLogTabPage extends StatefulWidget {
   final String treeUuid;

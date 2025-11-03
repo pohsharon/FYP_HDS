@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-import 'package:fyp_hbs/services/disease_api.dart';
+import 'package:fyp_hbs/services/api/disease_api.dart';
 import 'package:another_flushbar/flushbar.dart';
 
 class CreateDiseasePage extends StatefulWidget {

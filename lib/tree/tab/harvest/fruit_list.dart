@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-import 'package:fyp_hbs/services/tree_api.dart';
+import 'package:fyp_hbs/services/api/tree_api.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 class FruitListPage extends StatefulWidget {

@@ -3,7 +3,7 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:qr_flutter/qr_flutter.dart';
-import 'package:fyp_hbs/services/tree_api.dart';
+import 'package:fyp_hbs/services/api/tree_api.dart';
 import 'package:fyp_hbs/tree/map.dart';
 import 'package:fyp_hbs/authentication/login.dart';
 

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-import 'package:fyp_hbs/services/disease_api.dart';
+import 'package:fyp_hbs/services/api/disease_api.dart';
 import 'package:fyp_hbs/tree/tab/health/create_disease.dart';
 
 class DiseaseListPage extends StatefulWidget {

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-import 'package:fyp_hbs/services/tree_api.dart';
-import 'package:fyp_hbs/services/fruit_api.dart';
+import 'package:fyp_hbs/services/api/tree_api.dart';
+import 'package:fyp_hbs/services/api/fruit_api.dart';
 import 'package:another_flushbar/flushbar.dart';
 
 class CreateFruitPage extends StatefulWidget {

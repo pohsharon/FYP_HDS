@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-import 'package:fyp_hbs/services/tree_api.dart';
+import 'package:fyp_hbs/services/api/tree_api.dart';
 import '../config.dart';
 import 'package:another_flushbar/flushbar.dart';
 

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:fyp_hbs/services/tree_api.dart';
+import 'package:fyp_hbs/services/api/tree_api.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_map/flutter_map.dart';
