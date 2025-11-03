@@ -1,70 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/authentication/otp_verification.dart';
+import 'package:fyp_hbs/nav.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
+import 'package:fyp_hbs/authentication/reset_password.dart';
 import 'package:fyp_hbs/services/api/auth_service.dart';
 
-class ForgotPasswordPage extends StatefulWidget {
+class ForgotPasswordPage extends StatelessWidget {
   const ForgotPasswordPage({super.key});
 
   @override
-  State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
-}
+  Widget build(BuildContext context) {
+    final TextEditingController phoneController = TextEditingController();
+    final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
-class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
-  final TextEditingController phoneController = TextEditingController();
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-
-  String?
-  _serverError; // For showing backend validation errors (e.g. phone not registered)
-  bool _loading = false;
-
-  Future<bool> isPhoneRegistered(String phone) async {
-    final result = await AuthService.checkPhone(phone);
-    final exists = (result['exists'] as bool?) ?? false;
-
-    if (!exists) {
-      setState(() {
-        _serverError =
-            result['message'] ?? 'This phone number is not registered.';
-      });
-      return false;
+    Future isPhoneRegistered(String phone) async {
+      final result = await AuthService.checkPhone(phone);
+      if (!(result['exists'] as bool)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(result['message'] ?? 'Phone not registered')),
+        );
+        return;
+      }
     }
 
-    setState(() {
-      _serverError = null;
-    });
-    return true;
-  }
+    String? validatePhone(String value) {
+      value = value.trim();
+      final phonePattern = RegExp(
+        r'^1[0-9]{8,9}$',
+      ); // enter number without leading 0, +60 shown in the field
+      if (value.isEmpty) return 'Please enter your phone number';
+      if (!phonePattern.hasMatch(value)) return 'Invalid phone number format';
+      return null;
+    }
 
-  String? validatePhone(String value) {
-    value = value.trim();
-    final phonePattern = RegExp(r'^1[0-9]{8,9}$'); // Malaysian format without 0
-    if (value.isEmpty) return 'Please enter your phone number';
-    if (!phonePattern.hasMatch(value)) return 'Invalid phone number format';
-    return null;
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final phone = phoneController.text.trim();
-
-    setState(() => _loading = true);
-
-    final registered = await isPhoneRegistered(phone);
-
-    setState(() => _loading = false);
-
-    if (!registered) return;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const OTPVerificationPage()),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -84,6 +52,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const SizedBox(height: 30),
+                // OTP Illustration
                 SizedBox(
                   height: 140,
                   child: Image.asset('assets/images/OTP.png'),
@@ -109,8 +78,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
-
-                // 📱 Phone Number Field
+                // Phone Number Field
                 TextFormField(
                   controller: phoneController,
                   keyboardType: TextInputType.phone,
@@ -122,17 +90,32 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    errorText: _serverError, // Show server-side error here
                   ),
                   validator: (value) => validatePhone(value ?? ''),
                 ),
-
                 const SizedBox(height: 32),
-
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _loading ? null : _submit,
+                    onPressed: () async {
+                      if (!_formKey.currentState!.validate()) return;
+                      final phone = phoneController.text.trim();
+                      final registered = await isPhoneRegistered(phone);
+                      if (!registered) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Phone number not registered.'),
+                          ),
+                        );
+                        return;
+                      }
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const OTPVerificationPage(),
+                        ),
+                      );
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.hunterGreen,
                       padding: const EdgeInsets.symmetric(vertical: 18),
@@ -140,19 +123,14 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child:
-                        _loading
-                            ? const CircularProgressIndicator(
-                              color: Colors.white,
-                            )
-                            : const Text(
-                              'Get OTP',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                                color: Colors.white,
-                              ),
-                            ),
+                    child: const Text(
+                      'Get OTP',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ),
               ],

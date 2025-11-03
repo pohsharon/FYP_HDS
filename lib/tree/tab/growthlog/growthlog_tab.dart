@@ -1,8 +1,8 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_growth_api.dart';
+import 'package:fyp_hbs/services/api/tree_api.dart';
 
 class GrowthLogTabPage extends StatefulWidget {
   final String treeUuid;
@@ -97,46 +97,6 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
 
   @override
   Widget build(BuildContext context) {
-    // Prepare axis helpers
-    // Determine which x-label indices to show (only first occurrence per month/year)
-    final Map<String, int> _firstIndexForLabel = {};
-    for (int i = 0; i < xLabels.length; i++) {
-      _firstIndexForLabel.putIfAbsent(xLabels[i], () => i);
-    }
-    
-
-    // Determine Y axis formatting based on currently selected tab
-    final List<FlSpot> displayedSpots = selectedTab == 0 ? heightData : diameterData;
-    double minY = double.infinity;
-    double maxY = double.negativeInfinity;
-    for (final s in displayedSpots) {
-      if (s.y.isNaN) continue;
-      if (s.y < minY) minY = s.y;
-      if (s.y > maxY) maxY = s.y;
-    }
-    if (minY == double.infinity || maxY == double.negativeInfinity) {
-      minY = 0;
-      maxY = 1;
-    }
-
-    // Add padding when min==max or small range
-    double ySpan = (maxY - minY);
-    if (ySpan == 0) {
-      ySpan = maxY == 0 ? 1.0 : maxY * 0.1;
-    }
-    final yPadding = ySpan * 0.12;
-    minY = max(0, minY - yPadding);
-    maxY = maxY + yPadding;
-
-    // Decide decimal places: if any value has fractional part -> show 1 decimal, else 0
-    int yDecimals = 0;
-    for (final s in displayedSpots) {
-      if ((s.y - s.y.truncateToDouble()).abs() > 1e-9) {
-        yDecimals = 1;
-        break;
-      }
-    }
-
     return Column(
       children: [
         Padding(
@@ -252,20 +212,29 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                                     final height = heightController.text.trim();
                                     final diameter =
                                         diameterController.text.trim();
-                                    if (height.isNotEmpty && diameter.isNotEmpty) {
+                                    final tree = await TreeApi.getTreeByUuid(
+                                      widget.treeUuid,
+                                    );
+                                    final treeId = tree["id"];
+
+                                    if (height.isNotEmpty &&
+                                        diameter.isNotEmpty) {
                                       try {
-                                        await TreeGrowthApi.addGrowthLog(
-                                          treeUuid: widget.treeUuid,
-                                          height: double.parse(height),
-                                          diameter: double.parse(diameter),
-                                        );
+                                        final result =
+                                            await TreeGrowthApi.addGrowthLog(
+                                              treeUuid: widget.treeUuid,
+                                              height: double.parse(height),
+                                              diameter: double.parse(diameter),
+                                            );
 
                                         Navigator.pop(context, true);
                                         await _fetchGrowthLogs();
                                         setState(() {});
                                       } catch (e) {
                                         print("Error: $e");
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
                                           SnackBar(
                                             content: Text(
                                               "Failed to save growth log: $e",
@@ -274,7 +243,9 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                                         );
                                       }
                                     } else {
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
                                         const SnackBar(
                                           content: Text(
                                             "Please enter height and diameter",
@@ -310,88 +281,43 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                     child: // Build labels from your fetched logs
                         LineChart(
                       LineChartData(
-            minX: 0,
-            maxX: xLabels.length > 0 ? (xLabels.length - 1).toDouble() : 0,
-            minY: minY,
-            maxY: maxY,
-                        gridData: FlGridData(
-                          show: true,
-                          drawVerticalLine: true,
-                          getDrawingHorizontalLine:
-                              (value) => FlLine(
-                                strokeWidth: 0.5,
-                                color: AppColors.gray300,
-                              ),
-                          getDrawingVerticalLine:
-                              (value) => FlLine(
-                                strokeWidth: 0.5,
-                                color: AppColors.gray300,
-                              ),
-                        ),
-
+                        minX: 0,
+                        maxX: xLabels.length > 0
+                            ? (xLabels.length - 1).toDouble()
+                            : 0,
+                        gridData: FlGridData(show: true),
                         titlesData: FlTitlesData(
-                          bottomTitles: AxisTitles(
-                            axisNameWidget: const Text(
-                              "Date (Month/Year)",
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            axisNameSize: 22,
+                          show: true,
+                          topTitles: AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+                          rightTitles: AxisTitles(
+                            sideTitles: SideTitles(showTitles: false),
+                          ),
+
+                          // Left Y-axis
+                          leftTitles: AxisTitles(
                             sideTitles: SideTitles(
                               showTitles: true,
-                              reservedSize: 30,
+                              reservedSize: 40,
+                            ),
+                          ),
+
+                          // Bottom X-axis with month/year labels
+                          bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
                               getTitlesWidget: (value, meta) {
                                 final index = value.toInt();
-                                if (index >= 0 && index < xLabels.length && _firstIndexForLabel[xLabels[index]] == index) {
-                                  return Padding(
-                                    padding: const EdgeInsets.only(top: 6),
-                                    child: Text(
-                                      xLabels[index],
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
+                                if (index >= 0 && index < xLabels.length) {
+                                  return Text(
+                                    xLabels[index],
+                                    style: const TextStyle(fontSize: 10),
                                   );
                                 }
                                 return const SizedBox.shrink();
                               },
                             ),
-                          ),
-                          leftTitles: AxisTitles(
-                            axisNameWidget: Text(
-                              selectedTab == 0
-                                  ? "Height (cm)"
-                                  : "Diameter (cm)",
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            axisNameSize: 30,
-                            sideTitles: SideTitles(
-                              showTitles: true,
-                              reservedSize: 40,
-                              getTitlesWidget: (value, meta) {
-                                return Text(
-                                  value.toStringAsFixed(yDecimals),
-                                  style: const TextStyle(
-                                    color: Colors.black87,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          // Hide top & right completely
-                          rightTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: false),
-                          ),
-                          topTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: false),
                           ),
                         ),
 
@@ -403,45 +329,14 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                             left: BorderSide(color: Colors.black, width: 1),
                           ),
                         ),
-                        lineTouchData: LineTouchData(
-                          touchTooltipData: LineTouchTooltipData(
-                            tooltipBgColor: Colors.white.withOpacity(0.9),
-                            tooltipRoundedRadius: 12,
-                            getTooltipItems: (touchedSpots) {
-                              return touchedSpots.map((spot) {
-                                return LineTooltipItem(
-                                  "Month: ${xLabels[spot.x.toInt()]}\nValue: ${spot.y}",
-                                  const TextStyle(color: Colors.black87),
-                                );
-                              }).toList();
-                            },
-                          ),
-                        ),
 
                         lineBarsData: [
                           LineChartBarData(
                             spots: selectedTab == 0 ? heightData : diameterData,
-                            isCurved: true,
-                            curveSmoothness: 0.2,
+                            isCurved: false,
+                            color: AppColors.hunterGreen,
                             barWidth: 3,
-                            gradient: const LinearGradient(
-                              colors: [
-                                AppColors.hunterGreen,
-                                AppColors.gray600,
-                              ],
-                            ),
-                            dotData: FlDotData(show: false),
-                            belowBarData: BarAreaData(
-                              show: true,
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  AppColors.hunterGreen.withOpacity(0.3),
-                                  Colors.transparent,
-                                ],
-                              ),
-                            ),
+                            dotData: FlDotData(show: true),
                           ),
                         ],
                       ),

@@ -15,12 +15,12 @@ class TreePage extends StatefulWidget {
 }
 
 class _TreePageState extends State<TreePage> {
+  late Future<List<dynamic>> _treesFuture;
+  List<dynamic> trees = [];
   List<dynamic> _allTrees = [];
   List<dynamic> _filteredTrees = [];
-  List<Map<String, dynamic>> _speciesList = [];
+  List<String> _speciesList = [];
   String? _selectedSpecies;
-
-
   final ScrollController _scrollController = ScrollController();
 
   int _currentPage = 1;
@@ -31,50 +31,50 @@ class _TreePageState extends State<TreePage> {
   void initState() {
     super.initState();
     fetchTrees(page: 1);
-    _loadSpecies();
 
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
               _scrollController.position.maxScrollExtent - 200 &&
           !_isLoadingMore &&
           _currentPage < _lastPage) {
+        // Load next page when near bottom
         _loadMoreTrees();
       }
     });
   }
 
   Future<void> fetchTrees({int page = 1, bool isLoadMore = false}) async {
-    try {
-      final response = await TreeApi.fetchTrees(page: page);
+  try {
+    final response = await TreeApi.fetchTrees(page: page);
 
-      final pagination = response['data'] as Map<String, dynamic>;
-      final List<dynamic> treeList = pagination['data'] ?? [];
-      final int lastPage = pagination['last_page'] ?? 1;
+    final pagination = response['data'] as Map<String, dynamic>;
+    final List<dynamic> treeList = pagination['data'] ?? [];
+    final int lastPage = pagination['last_page'] ?? 1;
 
-      final cleanedTrees =
-          treeList.map((tree) {
-            final t = tree as Map<String, dynamic>;
-            return {
-              ...t,
-              'latitude': t['latitude'] ?? 0.0,
-              'longitude': t['longitude'] ?? 0.0,
-            };
-          }).toList();
+    final cleanedTrees = treeList.map((tree) {
+      final t = tree as Map<String, dynamic>;
+      return {
+        ...t,
+        'latitude': t['latitude'] ?? 0.0,
+        'longitude': t['longitude'] ?? 0.0,
+      };
+    }).toList();
 
-      setState(() {
-        _lastPage = lastPage;
-        if (isLoadMore) {
-          _filteredTrees.addAll(cleanedTrees);
-        } else {
-          _filteredTrees = cleanedTrees;
-          _allTrees = cleanedTrees;
-        }
-        _currentPage = page;
-      });
-    } catch (e) {
-      print("Failed to fetch trees: $e");
-    }
+    setState(() {
+      _lastPage = lastPage;
+      if (isLoadMore) {
+        _filteredTrees.addAll(cleanedTrees);
+      } else {
+        _filteredTrees = cleanedTrees;
+        _allTrees = cleanedTrees;
+      }
+    });
+
+    _currentPage = page;
+  } catch (e) {
+    print("Failed to fetch trees: $e");
   }
+}
 
   Future<void> _loadMoreTrees() async {
     setState(() => _isLoadingMore = true);
@@ -88,24 +88,10 @@ class _TreePageState extends State<TreePage> {
           final treeId = tree['tree_tag']?.toString().toLowerCase() ?? '';
           return treeId.contains(query.toLowerCase());
         }).toList();
-
     setState(() {
       _filteredTrees = filtered;
     });
   }
-
-  Future<void> _loadSpecies() async {
-  try {
-    final speciesList = await TreeApi.fetchSpecies();
-
-    setState(() {
-      _speciesList = speciesList; // full list of maps
-    });
-
-  } catch (e) {
-    print("❌ Failed to load species: $e");
-  }
-}
 
   void _showSpeciesFilterDialog(BuildContext context) {
     String? tempSelectedSpecies = _selectedSpecies;
@@ -114,31 +100,28 @@ class _TreePageState extends State<TreePage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          backgroundColor: Colors.white,
           title: const Text("Filter by Species"),
           content: StatefulBuilder(
             builder: (context, setStateDialog) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                                    // _speciesList: List<Map<String,dynamic>>
-                  
                   DropdownButton<String>(
                     isExpanded: true,
                     hint: const Text("Select a species"),
                     value: tempSelectedSpecies,
                     onChanged: (value) {
                       setStateDialog(() {
-                        tempSelectedSpecies = value?.trim();
+                        tempSelectedSpecies = value;
                       });
                     },
-                    items: _speciesList.map((species) {
-                      final name = (species['name'] ?? '').toString().trim();
-                      return DropdownMenuItem<String>(
-                        value: name,
-                        child: Text(name),
-                      );
-                    }).toList(),
+                    items:
+                        _speciesList.map((species) {
+                          return DropdownMenuItem<String>(
+                            value: species,
+                            child: Text(species),
+                          );
+                        }).toList(),
                   ),
                 ],
               );
@@ -167,14 +150,13 @@ class _TreePageState extends State<TreePage> {
     );
   }
 
-    void _filterBySpecies(String speciesName) {
-    final name = speciesName.trim();
+  void _filterBySpecies(String species) {
     setState(() {
-      _selectedSpecies = name;
-      _filteredTrees = _allTrees.where((tree) {
-        final treeSpecies = tree['species']?['name']?.toString().trim() ?? '';
-        return treeSpecies == name;
-      }).toList();
+      _selectedSpecies = species;
+      _filteredTrees =
+          _allTrees.where((tree) {
+            return tree['species']['name'] == species;
+          }).toList();
     });
   }
 
@@ -199,7 +181,7 @@ class _TreePageState extends State<TreePage> {
               ),
               builder: (context) {
                 return Column(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.max,
                   children: [
                     ListTile(
                       leading: const Icon(Icons.lock),
@@ -207,8 +189,11 @@ class _TreePageState extends State<TreePage> {
                       onTap: () {
                         Navigator.pop(context);
                         // TODO: Navigate to change password page
+                        // Navigator.push(context, MaterialPageRoute(builder: (_) => ChangePasswordPage()));
                       },
                     ),
+
+                    // Add more actions here if needed
                   ],
                 );
               },
@@ -244,8 +229,14 @@ class _TreePageState extends State<TreePage> {
               );
 
               if (shouldLogout == true) {
+                // Clear authentication data here (e.g., SharedPreferences)
+                // Example:
+                // final prefs = await SharedPreferences.getInstance();
+                // await prefs.clear();
+
+                // Navigate to login page and remove all previous routes
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginPage()),
+                  MaterialPageRoute(builder: (_) => LoginPage()),
                   (route) => false,
                 );
               }
@@ -263,7 +254,9 @@ class _TreePageState extends State<TreePage> {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
-                  await fetchTrees();
+                  fetchTrees();
+                  // Wait for fetchTrees to complete and set state
+                  await Future.delayed(const Duration(milliseconds: 500));
                 },
                 child:
                     _filteredTrees.isEmpty
@@ -271,7 +264,9 @@ class _TreePageState extends State<TreePage> {
                         : ListView.builder(
                           controller: _scrollController,
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: _filteredTrees.length + 1,
+                          itemCount:
+                              _filteredTrees.length +
+                              1, // +1 for loading indicator
                           itemBuilder: (context, index) {
                             if (index < _filteredTrees.length) {
                               final tree = _filteredTrees[index];
@@ -284,7 +279,7 @@ class _TreePageState extends State<TreePage> {
                                 ),
                               );
                             } else {
-                              return const SizedBox.shrink();
+                              return const SizedBox.shrink(); // empty at the end
                             }
                           },
                         ),
@@ -317,7 +312,9 @@ class _TreePageState extends State<TreePage> {
           const SizedBox(width: 5),
           Expanded(
             child: TextField(
-              onChanged: filterTrees,
+              onChanged: (value) {
+                filterTrees(value);
+              },
               decoration: InputDecoration(
                 hintText: 'Search Tree',
                 hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
@@ -335,7 +332,7 @@ class _TreePageState extends State<TreePage> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(30),
-                  borderSide: const BorderSide(
+                  borderSide: BorderSide(
                     color: AppColors.hunterGreen,
                     width: 1.5,
                   ),
@@ -353,6 +350,9 @@ class _TreePageState extends State<TreePage> {
 
               if (result == true) {
                 fetchTrees();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Tree list updated')),
+                );
               }
             },
             child: Container(
@@ -371,12 +371,20 @@ class _TreePageState extends State<TreePage> {
 
   Widget _buildTreeCard(
     BuildContext context, {
-    required Map<String, dynamic> tree,
+    required Map<String, dynamic> tree, // ✅ Accept tree map
   }) {
     final String tag = tree['tree_tag'];
+    final String id = tree['id'].toString();
     final String type = tree['species']?['name'] ?? 'Unknown Species';
     final String date = tree['planted_at'];
     final String uuid = tree['uuid'];
+
+    // Color statusColor =
+    //     status == 'Flowering' ? AppColors.successLight : AppColors.dangerLight;
+    // Color statusTextColor =
+    //     status == 'Flowering'
+    //         ? AppColors.successActive
+    //         : AppColors.dangerActive;
 
     return Card(
       color: AppColors.white,
@@ -390,22 +398,28 @@ class _TreePageState extends State<TreePage> {
         padding: const EdgeInsets.all(10),
         child: Row(
           children: [
+            // QR Code
             SizedBox(
               width: 70,
               height: 70,
               child: QrImageView(data: uuid, version: QrVersions.auto),
             ),
             const SizedBox(width: 10),
+            // Tree info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    tag,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        tag,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -435,6 +449,7 @@ class _TreePageState extends State<TreePage> {
                 ],
               ),
             ),
+            // View Button
             OutlinedButton(
               onPressed: () async {
                 final shouldRefresh = await Navigator.push(

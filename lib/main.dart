@@ -64,6 +64,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'services/sync_services.dart';
 import 'services/local_db.dart';
 import 'utils/connectivity_helper.dart';
+import 'package:fyp_hbs/tree/create_tree.dart';
 
 final SyncService _syncService = SyncService();
 
@@ -89,9 +90,6 @@ void main() async {
       trees = await localDB.fetchAllTrees();
     }
   }
-
-  print("🌳 Trees loaded: ${trees.map((e) => e.treeTag).toList()}");
-
   runApp(MyApp(trees: trees));
 }
 
@@ -122,19 +120,59 @@ class _MyAppState extends State<MyApp> {
     });
   }
 
+ @override
+Widget build(BuildContext context) {
+  return MaterialApp(
+    home: TreeHomePage(initialTrees: widget.trees),
+  );
+}
+
+}
+
+class TreeHomePage extends StatefulWidget {
+  final List<TreeModel> initialTrees;
+  const TreeHomePage({super.key, required this.initialTrees});
+
+  @override
+  State<TreeHomePage> createState() => _TreeHomePageState();
+}
+
+class _TreeHomePageState extends State<TreeHomePage> {
+  List<TreeModel> trees = [];
+
+  @override
+  void initState() {
+    super.initState();
+    trees = widget.initialTrees;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: const Text('🌳 Offline Sync Test')),
-        body: ListView.builder(
-          itemCount: widget.trees.length,
-          itemBuilder: (context, index) {
-            final tree = widget.trees[index];
-            return ListTile(title: Text(tree.treeTag ?? 'Unnamed Tree'));
-          },
-        ),
+    return Scaffold(
+      appBar: AppBar(title: const Text('🌳 Offline Sync Test')),
+      body: ListView.builder(
+        itemCount: trees.length,
+        itemBuilder: (context, index) {
+          final tree = trees[index];
+          return ListTile(title: Text(tree.treeTag ?? 'Unnamed Tree'));
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CreateTreePage()),
+          );
+
+          if (result == true) {
+            final localDB = LocalDB.instance;
+            final updatedTrees = await localDB.fetchAllTrees();
+            setState(() => trees = updatedTrees);
+          }
+        },
+        child: const Icon(Icons.add),
       ),
     );
   }
 }
+

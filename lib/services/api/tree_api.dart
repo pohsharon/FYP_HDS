@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class TreeApi {
   static Future<Map<String, dynamic>> createTree({
@@ -56,8 +57,29 @@ class TreeApi {
   }
 
   static Future<List<Map<String, dynamic>>> fetchSpecies() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    // Check connectivity status
+    final connectivityResult = await Connectivity().checkConnectivity();
+    final isOffline = connectivityResult == ConnectivityResult.none;
+
+    // 📴 OFFLINE MODE: load cached species
+    if (isOffline) {
+      final cachedSpecies = prefs.getString('cached_species');
+      if (cachedSpecies != null) {
+        print("📦 Loaded species from cache (offline)");
+        final List<dynamic> decodedList = jsonDecode(cachedSpecies);
+        return decodedList.map<Map<String, dynamic>>((item) {
+          return Map<String, dynamic>.from(item);
+        }).toList();
+      } else {
+        print("⚠️ No cached species available (offline)");
+        return [];
+      }
+    }
+
+    // 🌐 ONLINE MODE: fetch from API
     try {
-      final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
 
       final response = await http.get(
@@ -71,22 +93,26 @@ class TreeApi {
       final decoded = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
-        // Normalize to a list whether the API returns { data: [...] } or directly [...]
         List<dynamic> items;
         if (decoded is Map && decoded.containsKey('data')) {
-          items = (decoded['data'] as List<dynamic>);
+          items = decoded['data'];
         } else if (decoded is List) {
           items = decoded;
         } else {
           throw Exception('Unexpected response format for species');
         }
 
-        // Convert each item to a Map<String, dynamic>
-        return items.map<Map<String, dynamic>>((item) {
+        final speciesList = items.map<Map<String, dynamic>>((item) {
           if (item is Map) return Map<String, dynamic>.from(item);
           if (item is String) return {'id': null, 'name': item};
           return {'id': null, 'name': item?.toString() ?? ''};
         }).toList();
+
+        // 💾 Cache species locally for offline use
+        await prefs.setString('cached_species', jsonEncode(speciesList));
+        print("✅ Species cached locally (${speciesList.length})");
+
+        return speciesList;
       } else {
         final message =
             (decoded is Map)
@@ -95,7 +121,19 @@ class TreeApi {
         throw Exception(message);
       }
     } catch (e) {
-      throw Exception("Error: ${e.toString()}");
+      print("⚠️ Error fetching species online: $e");
+
+      // Try loading from cache as fallback
+      final cachedSpecies = prefs.getString('cached_species');
+      if (cachedSpecies != null) {
+        print("📦 Using cached species as fallback");
+        final List<dynamic> decodedList = jsonDecode(cachedSpecies);
+        return decodedList.map<Map<String, dynamic>>((item) {
+          return Map<String, dynamic>.from(item);
+        }).toList();
+      } else {
+        throw Exception("Error fetching species and no cache available");
+      }
     }
   }
 

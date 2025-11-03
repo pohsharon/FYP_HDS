@@ -77,7 +77,6 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
-                      if (!_formKey.currentState!.validate()) return;
                       // TODO logic to reset password
                       Navigator.push(
                         context,

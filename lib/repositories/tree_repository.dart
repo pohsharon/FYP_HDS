@@ -28,6 +28,8 @@ class TreeRepository {
             if (fp is num) return fp.toInt();
             return int.tryParse(fp?.toString() ?? '') ?? 0;
           })(),
+          // These records come from the server, so mark them as already synced locally
+          synced: 1,
         );
       }).toList();
 
@@ -35,8 +37,15 @@ class TreeRepository {
       for (var tree in trees) {
         await _localDB.insertTree(tree);
       }
-
       print("✅ Loaded from Supabase and cached locally");
+
+      // DEBUG: dump local DB contents after caching to verify synced flags
+      try {
+        final allLocal = await _localDB.fetchAllTrees();
+        print('📦 After caching, local DB has ${allLocal.length} trees');
+      } catch (e) {
+        print('⚠️ Error reading local DB after caching: $e');
+      }
       return trees;
     } on SocketException catch (_) {
       print("📴 Offline mode — loading from local DB");
