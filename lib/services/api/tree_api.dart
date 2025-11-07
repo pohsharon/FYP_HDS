@@ -220,7 +220,7 @@ class TreeApi {
     }
   }
 
-  static Future<void> updateTree({
+  static Future<Map<String, dynamic>> updateTree({
     required String id,
     required String speciesId,
     required String plantedAt,
@@ -259,7 +259,7 @@ class TreeApi {
     try {
       final data = jsonDecode(response.body);
       if (response.statusCode == 200) {
-        return data;
+        return Map<String, dynamic>.from(data);
       } else {
         throw Exception(data['message'] ?? 'Failed to update tree');
       }

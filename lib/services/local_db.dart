@@ -40,11 +40,13 @@ class LocalDB {
         latitude REAL,
         longitude REAL,
         flowering_period INTEGER,
-        synced INTEGER DEFAULT 0
+        synced INTEGER DEFAULT 0,
+        pending_update INTEGER DEFAULT 0,
+        pending_delete INTEGER DEFAULT 0
       )
     ''');
 
-    // ✅ Create species table
+    // Create species table
     await db.execute('''
       CREATE TABLE species(
         id INTEGER PRIMARY KEY,
@@ -54,13 +56,19 @@ class LocalDB {
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-  if (oldVersion < 2) {
-    await db.execute(
-        'CREATE TABLE IF NOT EXISTS species(id INTEGER PRIMARY KEY, name TEXT)');
-    await db.execute('ALTER TABLE trees ADD COLUMN synced INTEGER DEFAULT 0');
+    if (oldVersion < 2) {
+      await db.execute(
+        'CREATE TABLE IF NOT EXISTS species(id INTEGER PRIMARY KEY, name TEXT)',
+      );
+      await db.execute(
+        'ALTER TABLE trees ADD COLUMN pending_update INTEGER DEFAULT 0',
+      );
+      await db.execute(
+        'ALTER TABLE trees ADD COLUMN pending_delete INTEGER DEFAULT 0',
+      );
+      await db.execute('ALTER TABLE trees ADD COLUMN synced INTEGER DEFAULT 0');
+    }
   }
-}
-
 
   // ======================
   // CRUD OPERATIONS
@@ -121,10 +129,6 @@ class LocalDB {
     db.close();
   }
 
-  // ======================
-  // Species Storage
-  // ======================
-
   Future<void> saveSpeciesList(List<Map<String, dynamic>> speciesList) async {
     final db = await database;
     for (var s in speciesList) {
@@ -141,34 +145,36 @@ class LocalDB {
     return await db.query('species');
   }
 
-  // ======================
-  // 🌐 Cache Remote Trees (with preservation)
-  // ======================
-
   Future<void> cacheRemoteTrees(List<TreeModel> remoteTrees) async {
     final db = await instance.database;
 
-    // DEBUG: dump current rows before caching
     try {
       final beforeAll = await db.query('trees');
-      print('🔎 cacheRemoteTrees: total rows before caching: ${beforeAll.length}');
+      print(
+        '🔎 cacheRemoteTrees: total rows before caching: ${beforeAll.length}',
+      );
       for (final r in beforeAll) {
-        print('   • row -> uuid=${r['uuid']}, tree_tag=${r['tree_tag']}, synced=${r['synced']}');
+        print(
+          '   • row -> uuid=${r['uuid']}, tree_tag=${r['tree_tag']}, synced=${r['synced']}',
+        );
       }
     } catch (e) {
       print('⚠️ cacheRemoteTrees: error dumping rows before caching: $e');
     }
 
-    // Step 1: Keep unsynced trees
     final unsynced = await db.query(
       'trees',
       where: 'synced = ?',
       whereArgs: [0],
     );
-    print('📦 Preserving ${unsynced.length} unsynced trees before caching remote data');
+    print(
+      '📦 Preserving ${unsynced.length} unsynced trees before caching remote data',
+    );
     if (unsynced.isNotEmpty) {
       for (final u in unsynced) {
-        print('   • preserving unsynced -> uuid=${u['uuid']}, tree_tag=${u['tree_tag']}, synced=${u['synced']}');
+        print(
+          '   • preserving unsynced -> uuid=${u['uuid']}, tree_tag=${u['tree_tag']}, synced=${u['synced']}',
+        );
       }
     }
 
@@ -193,4 +199,87 @@ class LocalDB {
     );
     print('✅ Local cache updated. Total trees in DB: $total');
   }
+
+  Future<int> markAsPendingUpdate(String uuid) async {
+    final db = await database;
+    return await db.update(
+      'trees',
+      {'pending_update': 1},
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+    );
+  }
+
+  Future<int> markAsPendingDelete(String uuid) async {
+    final db = await database;
+    return await db.update(
+      'trees',
+      {'pending_delete': 1},
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+    );
+  }
+
+  Future<List<TreeModel>> fetchPendingUpdates() async {
+    final db = await database;
+    final result = await db.query(
+      'trees',
+      where: 'pending_update = ?',
+      whereArgs: [1],
+    );
+    return result.map((e) => TreeModel.fromMap(e)).toList();
+  }
+
+  Future<List<TreeModel>> fetchPendingDeletes() async {
+    final db = await database;
+    final result = await db.query(
+      'trees',
+      where: 'pending_delete = ?',
+      whereArgs: [1],
+    );
+    return result.map((e) => TreeModel.fromMap(e)).toList();
+  }
+
+  Future<int> deleteTreeByUuid(String uuid) async {
+    final db = await database;
+    return await db.delete('trees', where: 'uuid = ?', whereArgs: [uuid]);
+  }
+
+  Future<int> clearPendingUpdate(String uuid) async {
+    final db = await database;
+    return await db.update(
+      'trees',
+      {'pending_update': 0, 'synced': 1},
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+    );
+  }
+// Future<void> resetTreesTable() async {
+//   final db = await instance.database;
+//   // Drop the old table if it exists
+//   await db.execute('DROP TABLE IF EXISTS trees');
+
+//   // Recreate it with the correct columns
+//   await db.execute('''
+//     CREATE TABLE trees (
+//       id INTEGER PRIMARY KEY AUTOINCREMENT,
+//       uuid TEXT,
+//       tree_tag TEXT,
+//       species_id INTEGER,
+//       planted_at TEXT,
+//       height REAL,
+//       diameter REAL,
+//       flowering_period TEXT,
+//       thumbnail TEXT,
+//       latitude REAL,
+//       longitude REAL,
+//       synced INTEGER DEFAULT 1,
+//       pending_update INTEGER DEFAULT 0,
+//       pending_delete INTEGER DEFAULT 0
+//     )
+//   ''');
+//   print('✅ Trees table reset successfully');
+// }
+
+  
 }

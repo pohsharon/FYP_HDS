@@ -14,6 +14,8 @@ class TreeModel {
   final double? longitude;
   final int synced;
   final File? imageFile;
+  final int pendingUpdate;
+  final int pendingDelete;
 
   TreeModel({
     this.id,
@@ -29,6 +31,8 @@ class TreeModel {
     this.longitude,
     this.synced = 0,
     this.imageFile,
+    this.pendingUpdate = 0,
+    this.pendingDelete = 0,
   });
 
   Map<String, dynamic> toMap() => {
@@ -43,34 +47,72 @@ class TreeModel {
     'thumbnail': thumbnail,
     'latitude': latitude,
     'longitude': longitude,
-    'synced': synced ?? 0,
+    'synced': synced,
+    'pending_update': pendingUpdate,
+    'pending_delete': pendingDelete,
   };
 
   factory TreeModel.fromMap(Map<String, dynamic> map) => TreeModel(
-    id: map['id'],
+    id: (() {
+      final v = map['id'];
+      if (v == null) return null;
+      if (v is int) return v;
+      return int.tryParse(v.toString());
+    })(),
     uuid: map['uuid'],
     treeTag: map['tree_tag'],
     speciesId: map['species_id']?.toString(),
-    plantedAt: DateTime.parse(map['planted_at']),
+    plantedAt: (() {
+      final p = map['planted_at'];
+      if (p == null) return null;
+      try {
+        return DateTime.parse(p.toString());
+      } catch (_) {
+        return null;
+      }
+    })(),
     height:
         (map['height'] is num)
-            ? map['height'].toDouble()
-            : double.tryParse(map['height'] ?? '0'),
+            ? (map['height'] as num).toDouble()
+            : double.tryParse(map['height']?.toString() ?? '0'),
     diameter:
         (map['diameter'] is num)
-            ? map['diameter'].toDouble()
-            : double.tryParse(map['diameter'] ?? '0'),
-    floweringPeriod: map['flowering_period'],
+            ? (map['diameter'] as num).toDouble()
+            : double.tryParse(map['diameter']?.toString() ?? '0'),
+    floweringPeriod: (() {
+      final fp = map['flowering_period'];
+      if (fp == null) return null;
+      if (fp is int) return fp;
+      if (fp is num) return fp.toInt();
+      return int.tryParse(fp.toString());
+    })(),
     thumbnail: map['thumbnail'],
     latitude:
         (map['latitude'] is num)
-            ? map['latitude'].toDouble()
-            : double.tryParse(map['latitude'] ?? '0'),
+            ? (map['latitude'] as num).toDouble()
+            : double.tryParse(map['latitude']?.toString() ?? '0'),
     longitude:
         (map['longitude'] is num)
-            ? map['longitude'].toDouble()
-            : double.tryParse(map['longitude'] ?? '0'),
-    synced: map['synced'] ?? 0,
+            ? (map['longitude'] as num).toDouble()
+            : double.tryParse(map['longitude']?.toString() ?? '0'),
+    synced: (() {
+      final s = map['synced'];
+      if (s == null) return 0;
+      if (s is int) return s;
+      return int.tryParse(s.toString()) ?? 0;
+    })(),
+    pendingUpdate: (() {
+      final p = map['pending_update'];
+      if (p == null) return 0;
+      if (p is int) return p;
+      return int.tryParse(p.toString()) ?? 0;
+    })(),
+    pendingDelete: (() {
+      final p = map['pending_delete'];
+      if (p == null) return 0;
+      if (p is int) return p;
+      return int.tryParse(p.toString()) ?? 0;
+    })(),
   );
 
   TreeModel copyWith({
@@ -87,6 +129,8 @@ class TreeModel {
     double? longitude,
     int? synced,
     File? imageFile,
+    int? pendingUpdate,
+    int? pendingDelete,
   }) {
     return TreeModel(
       id: id ?? this.id,
@@ -102,6 +146,8 @@ class TreeModel {
       longitude: longitude ?? this.longitude,
       synced: synced ?? this.synced,
       imageFile: imageFile ?? this.imageFile,
+      pendingUpdate: pendingUpdate ?? this.pendingUpdate,
+      pendingDelete: pendingDelete ?? this.pendingDelete,
     );
   }
 }

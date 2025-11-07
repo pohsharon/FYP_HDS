@@ -350,9 +350,7 @@ class _TreePageState extends State<TreePage> {
 
               if (result == true) {
                 fetchTrees();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Tree list updated')),
-                );
+                
               }
             },
             child: Container(

@@ -10,50 +10,90 @@ class SyncService {
   bool get isRunning => _isRunning;
 
   Future<void> syncUnsyncedTrees() async {
-    // Simple debounce: ignore if we ran very recently
     final now = DateTime.now();
+    // 🕒 Prevent duplicate runs
     if (_lastRun != null && now.difference(_lastRun!).inMilliseconds < 1200) {
-      print('⏱️ Sync called too soon after last run — skipping');
+      print('⏱️ Sync called too soon — skipping');
       return;
     }
     if (_isRunning) {
-      print('🔁 Sync already in progress — skipping duplicate call');
+      print('🔁 Sync already running — skipping');
       return;
     }
+
     _isRunning = true;
     _lastRun = now;
 
     try {
-    final connectivityResult = await Connectivity().checkConnectivity();
+      // 🔌 Step 1: Check connection (ensure actual internet connectivity)
+      final hasInternet = await Connectivity().checkConnectivity() != ConnectivityResult.none;
+      if (!hasInternet) {
+        print('📴 Offline — sync postponed');
+        return;
+      }
 
-    // 🔌 Step 1: Only sync if online
-    if (connectivityResult == ConnectivityResult.none) {
-      print('🔌 Offline — sync postponed');
-      return;
-    }
-
-    // 🌱 Step 2: Get unsynced trees from local DB
-    final unsynced = await _localDB.fetchUnsyncedTrees();
-    print('🌱 Found ${unsynced.length} unsynced trees');
-
-    // 🚀 Step 3: Upload each unsynced tree to Supabase / Laravel
-    for (final tree in unsynced) {
-      try {
-        // Resolve speciesId: sometimes local data stores species name instead of id.
-        String resolveSpeciesId(String? s) {
-          if (s == null) return '';
-          // already numeric
-          if (int.tryParse(s) != null) return s;
-          // maybe of form '{"id":1,"name":"..."}' or just a name; return as-is for now
-          return s;
+      // 🧹 STEP 2: Handle pending deletes
+      final deletes = await _localDB.fetchPendingDeletes();
+      print('🗑 Found ${deletes.length} pending deletes');
+      for (final t in deletes) {
+        try {
+          if (t.id == null) {
+            print('⚠️ Cannot delete remote for ${t.uuid} because id is null');
+            continue;
+          }
+          // TreeApi.deleteTree throws on failure; it returns void on success
+          await TreeApi.deleteTree(t.id.toString());
+          await _localDB.deleteTreeByUuid(t.uuid);
+          print('✅ Deleted remote & local: ${t.uuid}');
+        } catch (e) {
+          print('⚠️ Error deleting ${t.uuid}: $e');
         }
+      }
 
-        String speciesIdToSend = resolveSpeciesId(tree.speciesId?.toString());
+      // 📝 STEP 3: Handle pending updates
+      final updates = await _localDB.fetchPendingUpdates();
+      print('🧩 Found ${updates.length} pending updates');
+      for (final t in updates) {
+        try {
+          if (t.id == null) {
+            print('⚠️ Cannot update remote for ${t.uuid} because id is null');
+            continue;
+          }
+          final resp = await TreeApi.updateTree(
+            id: t.id.toString(),
+            speciesId: t.speciesId ?? '',
+            plantedAt: t.plantedAt?.toIso8601String() ?? '',
+            height: t.height ?? 0.0,
+            diameter: t.diameter ?? 0.0,
+            floweringPeriod: t.floweringPeriod?.toString() ?? '',
+            imageFile: t.imageFile,
+          );
+          if (resp['success'] == true) {
+            await _localDB.clearPendingUpdate(t.uuid);
+            print('✅ Synced update: ${t.uuid}');
+          } else {
+            print('⚠️ Server rejected update for ${t.uuid}');
+          }
+        } catch (e) {
+          print('⚠️ Update failed for ${t.uuid}: $e');
+        }
+      }
 
-        // If speciesIdToSend is not numeric, try to fetch species list and match by name
-        if (speciesIdToSend.isEmpty || int.tryParse(speciesIdToSend) == null) {
-          final checkAgain = await Connectivity().checkConnectivity();
-          if (checkAgain != ConnectivityResult.none) {
+      // 🌱 STEP 4: Handle unsynced new trees
+      final unsynced = await _localDB.fetchUnsyncedTrees();
+      print('🌱 Found ${unsynced.length} new unsynced trees');
+      for (final tree in unsynced) {
+        try {
+          // --- resolve speciesId ---
+          String resolveSpeciesId(String? s) {
+            if (s == null) return '';
+            if (int.tryParse(s) != null) return s;
+            return s;
+          }
+
+          String speciesIdToSend = resolveSpeciesId(tree.speciesId?.toString());
+
+          if (speciesIdToSend.isEmpty || int.tryParse(speciesIdToSend) == null) {
             try {
               final speciesList = await TreeApi.fetchSpecies();
               final match = speciesList.firstWhere(
@@ -68,63 +108,45 @@ class SyncService {
             } catch (e) {
               print('⚠️ Could not fetch species list: $e');
             }
-          } else {
-            print('🕸️ Still offline — skipping species fetch');
           }
-        }
 
-        // ✅ Match parameters exactly with TreeApi.createTree()
-        final response = await TreeApi.createTree(
-          speciesId: speciesIdToSend,
-          plantedAt:
-              tree.plantedAt is String
-                  ? tree.plantedAt as String
-                  : (tree.plantedAt == null ? '' : tree.plantedAt.toString()),
-          height: tree.height ?? 0.0,
-          diameter: tree.diameter ?? 0.0,
-          floweringPeriod:
-              tree.floweringPeriod is String
-                  ? tree.floweringPeriod as String
-                  : (tree.floweringPeriod == null
-                      ? ''
-                      : tree.floweringPeriod.toString()),
-          imageFile: tree.imageFile, // optional
-        );
+          // --- upload ---
+          final response = await TreeApi.createTree(
+            speciesId: speciesIdToSend,
+            plantedAt: tree.plantedAt is String
+                ? tree.plantedAt as String
+                : (tree.plantedAt == null
+                    ? ''
+                    : tree.plantedAt.toString()),
+            height: tree.height ?? 0.0,
+            diameter: tree.diameter ?? 0.0,
+            floweringPeriod: tree.floweringPeriod is String
+                ? tree.floweringPeriod as String
+                : (tree.floweringPeriod ?? '').toString(),
+            imageFile: tree.imageFile,
+          );
 
-        if (response['success'] == true ||
-            response['status'] == 'success' ||
-            response.containsKey('data')) {
-          // 🗂 Step 4: Mark as synced in local DB (try uuid first, then fallback to tree_tag)
-          try {
+          if (response['success'] == true ||
+              response['status'] == 'success' ||
+              response.containsKey('data')) {
+            // mark as synced
             final updated = await _localDB.markAsSynced(tree.uuid);
-            if (updated == 0 && (tree.treeTag != null && tree.treeTag!.isNotEmpty)) {
-              final byTag = await _localDB.markAsSyncedByTag(tree.treeTag!);
-              if (byTag > 0) {
-                print('✅ Synced tree by tag: ${tree.treeTag}');
-              } else {
-                print('⚠️ markAsSynced updated 0 rows for uuid:${tree.uuid} and tag:${tree.treeTag}');
-              }
-            } else if (updated > 0) {
-              print('✅ Synced tree: ${tree.treeTag ?? tree.uuid}');
+            if (updated > 0) {
+              print('✅ Synced new tree: ${tree.uuid}');
             } else {
-              print('⚠️ markAsSynced called with empty uuid and no tree_tag provided');
+              print('⚠️ markAsSynced updated 0 rows for ${tree.uuid}');
             }
-          } catch (e) {
-            print('⚠️ Error while marking as synced: $e');
+          } else {
+            print('⚠️ Server rejected new tree ${tree.uuid}');
           }
-        } else {
-          print('⚠️ Server rejected ${tree.uuid}: ${response['message']}');
+        } catch (e) {
+          print('⚠️ Create sync failed for ${tree.uuid}: $e');
         }
-      } catch (e) {
-        print('⚠️ Sync failed for ${tree.uuid}: $e');
       }
-    }
-
     } finally {
       _isRunning = false;
       _lastRun = DateTime.now();
+      print('🔁 Sync process complete.');
     }
-
-    print('🔁 Sync process complete.');
   }
 }

@@ -7,7 +7,6 @@ import 'package:fyp_hbs/services/api/tree_api.dart';
 import '../config.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:uuid/uuid.dart';
-// connectivity_plus import not needed here; we use ConnectivityHelper instead
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/services/local_db.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
@@ -252,9 +251,20 @@ class _CreateTreePageState extends State<CreateTreePage> {
 
                 if (confirm == true) {
                   try {
-                    await TreeApi.deleteTree(widget.tree!['id'].toString());
+                    final online = await ConnectivityHelper.hasInternetConnection();
+                    if (!online) {
+                      await LocalDB.instance.markAsPendingDelete(
+                        widget.tree!['uuid'],
+                      );
+                      await Flushbar(
+                        message:
+                            'Tree will be deleted when you are back online',
+                      ).show(context);
+                      Navigator.pop(context, true);
+                    } else {
+                      await TreeApi.deleteTree(widget.tree!['id'].toString());
+                    }
 
-                    // show flushbar and wait for it to finish before navigating
                     await Flushbar(
                       message: 'Tree deleted successfully',
                       icon: const Icon(Icons.check_circle, color: Colors.white),
