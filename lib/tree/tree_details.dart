@@ -10,6 +10,8 @@ import 'package:fyp_hbs/tree/map_individual_tree.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:fyp_hbs/tree/tab/growthlog/growthlog_tab.dart';
 import '../config.dart';
+import 'package:fyp_hbs/services/local_db.dart';
+import 'package:fyp_hbs/models/tree_model.dart';
 
 class TreeDetailsPage extends StatefulWidget {
   final String treeID;
@@ -45,6 +47,44 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
           isLoading = false;
         });
       } catch (e2) {
+        // Try to load from local DB as a fallback (offline-created tree)
+        try {
+          final local = await LocalDB.instance.fetchAllTrees();
+          TreeModel? match;
+          for (final m in local) {
+            if (m.uuid == widget.treeID || m.id?.toString() == widget.treeID) {
+              match = m;
+              break;
+            }
+          }
+
+          if (match != null) {
+            // Convert TreeModel to the map shape expected by the UI
+            final m = match;
+            final localMap = {
+              'id': m.id ?? m.uuid,
+              'uuid': m.uuid,
+              'tree_tag': m.treeTag ?? 'Offline Tree',
+              'species': {'id': m.speciesId, 'name': m.speciesId ?? 'Unknown'},
+              'planted_at': m.plantedAt?.toIso8601String() ?? '',
+              'latitude': m.latitude ?? 0.0,
+              'longitude': m.longitude ?? 0.0,
+              'thumbnail': m.thumbnail ?? '',
+              'height': m.height ?? 0.0,
+              'width': m.diameter ?? 0.0,
+              'flowering_period': m.floweringPeriod ?? 0,
+            };
+
+            setState(() {
+              tree = localMap;
+              isLoading = false;
+            });
+            return;
+          }
+        } catch (e3) {
+          print('Failed to load tree from local DB: $e3');
+        }
+
         setState(() => isLoading = false);
         ScaffoldMessenger.of(
           context,

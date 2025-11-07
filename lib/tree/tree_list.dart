@@ -4,6 +4,9 @@ import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
+import 'package:fyp_hbs/services/local_db.dart';
+import 'package:fyp_hbs/models/tree_model.dart';
+import 'package:intl/intl.dart';
 import 'package:fyp_hbs/tree/map.dart';
 import 'package:fyp_hbs/authentication/login.dart';
 
@@ -15,7 +18,7 @@ class TreePage extends StatefulWidget {
 }
 
 class _TreePageState extends State<TreePage> {
-  late Future<List<dynamic>> _treesFuture;
+  // removed unused _treesFuture
   List<dynamic> trees = [];
   List<dynamic> _allTrees = [];
   List<dynamic> _filteredTrees = [];
@@ -72,7 +75,40 @@ class _TreePageState extends State<TreePage> {
 
     _currentPage = page;
   } catch (e) {
-    print("Failed to fetch trees: $e");
+    print("Failed to fetch trees from API: $e -- falling back to local DB");
+
+    try {
+      final local = await LocalDB.instance.fetchAllTrees();
+      final cleanedLocal = local.map((TreeModel m) {
+        return {
+          'id': m.id ?? m.uuid,
+          'uuid': m.uuid,
+          'tree_tag': m.treeTag ?? 'Offline Tree',
+          'species': {'id': m.speciesId, 'name': m.speciesId ?? 'Unknown'},
+    'planted_at': m.plantedAt != null ? DateFormat('yyyy-MM-dd').format(m.plantedAt!) : '',
+          'latitude': m.latitude ?? 0.0,
+          'longitude': m.longitude ?? 0.0,
+          'thumbnail': m.thumbnail ?? '',
+          'height': m.height ?? 0.0,
+          'diameter': m.diameter ?? 0.0,
+          'synced': m.synced,
+        };
+      }).toList();
+
+      setState(() {
+        _lastPage = 1;
+        if (isLoadMore) {
+          _filteredTrees.addAll(cleanedLocal);
+        } else {
+          _filteredTrees = cleanedLocal;
+          _allTrees = cleanedLocal;
+        }
+      });
+
+      _currentPage = 1;
+    } catch (e2) {
+      print('Failed to load trees from local DB: $e2');
+    }
   }
 }
 
@@ -371,10 +407,26 @@ class _TreePageState extends State<TreePage> {
     BuildContext context, {
     required Map<String, dynamic> tree, // ✅ Accept tree map
   }) {
-    final String tag = tree['tree_tag'];
-    final String id = tree['id'].toString();
-    final String type = tree['species']?['name'] ?? 'Unknown Species';
-    final String date = tree['planted_at'];
+    final String tag = tree['tree_tag'] ?? 'Tree';
+    // Determine sync status (default to synced)
+    final int synced = (tree['synced'] is int)
+        ? tree['synced'] as int
+        : int.tryParse(tree['synced']?.toString() ?? '1') ?? 1;
+    // Format planted date uniformly
+    final String rawDate = tree['planted_at']?.toString() ?? '';
+    String displayDate = rawDate;
+    if (rawDate.isNotEmpty) {
+      try {
+        final dt = DateTime.parse(rawDate);
+        displayDate = DateFormat('yyyy-MM-dd').format(dt);
+      } catch (_) {
+        // fallback: strip time portion if present
+        if (rawDate.contains('T')) {
+          displayDate = rawDate.split('T').first;
+        }
+      }
+    }
+  final String type = tree['species']?['name'] ?? 'Unknown Species';
     final String uuid = tree['uuid'];
 
     // Color statusColor =
@@ -429,14 +481,34 @@ class _TreePageState extends State<TreePage> {
                           fontSize: 11,
                         ),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
+                      // Unsynced badge
+                      if (synced == 0) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.shade300),
+                          ),
+                          child: const Text(
+                            'Unsynced',
+                            style: TextStyle(
+                              color: Colors.orange,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                       const Text(
                         "•",
                         style: TextStyle(color: Colors.grey, fontSize: 11),
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        date,
+                        displayDate,
                         style: const TextStyle(
                           color: Colors.grey,
                           fontSize: 11,
@@ -453,8 +525,8 @@ class _TreePageState extends State<TreePage> {
                 final shouldRefresh = await Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder:
-                        (_) => TreeDetailsPage(treeID: tree['id'].toString()),
+        builder:
+          (_) => TreeDetailsPage(treeID: tree['id'].toString()),
                   ),
                 );
 
