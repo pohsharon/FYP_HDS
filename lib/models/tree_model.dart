@@ -43,7 +43,7 @@ class TreeModel {
     'thumbnail': thumbnail,
     'latitude': latitude,
     'longitude': longitude,
-    'synced': synced,
+    'synced': synced ?? 0,
   };
 
   factory TreeModel.fromMap(Map<String, dynamic> map) => TreeModel(

@@ -65,31 +65,42 @@ import 'services/sync_services.dart';
 import 'services/local_db.dart';
 import 'utils/connectivity_helper.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
+// removed unused TreeApi import (use TreeRepository for conversions)
 
 final SyncService _syncService = SyncService();
+// Guard to prevent concurrent cache refreshes triggered by rapid connectivity events
+bool _isRefreshingCache = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final online = await ConnectivityHelper.hasInternetConnection();
-
+  final localDB = LocalDB.instance;
   List<TreeModel> trees = [];
 
   if (!online) {
     print('📴 Offline mode detected. Loading trees from local DB...');
-    final localDB = LocalDB.instance;
     trees = await localDB.fetchAllTrees();
   } else {
     print('🌐 Online mode detected. Fetching trees from remote...');
-    final repo = TreeRepository();
+
     try {
+      // 1️⃣ Fetch from remote
+      final repo = TreeRepository();
       trees = await repo.getTrees();
+
+      // 2️⃣ Cache them locally (trees is already List<TreeModel>)
+      await localDB.cacheRemoteTrees(trees);
+      print('💾 Cached ${trees.length} remote trees locally.');
+
+      // 3️⃣ Sync any unsynced trees (upload local ones)
+      await _syncService.syncUnsyncedTrees();
     } catch (e) {
-      print('⚠️ Failed to fetch from remote. Loading local instead...');
-      final localDB = LocalDB.instance;
+      print('⚠️ Failed to fetch from remote: $e');
       trees = await localDB.fetchAllTrees();
     }
   }
+
   runApp(MyApp(trees: trees));
 }
 
@@ -112,21 +123,44 @@ class _MyAppState extends State<MyApp> {
     Connectivity().onConnectivityChanged.listen((status) async {
       final online = await ConnectivityHelper.hasInternetConnection();
       if (online) {
-        print('🌐 Reconnected — syncing data...');
-        await _syncService.syncUnsyncedTrees();
+        print('🌐 Reconnected — syncing and refreshing cache...');
+
+        // Avoid duplicate concurrent refresh/sync triggered by rapid connectivity events
+        if (_isRefreshingCache) {
+          print('⏱️ Cache refresh already running — skipping this reconnect event');
+          return;
+        }
+
+        _isRefreshingCache = true;
+        try {
+          final localDB = LocalDB.instance;
+          // Use the repository to convert API response into List<TreeModel>
+          final repo = TreeRepository();
+          final refreshed = await repo.getTrees();
+
+          // 🧩 Update local DB first
+          await localDB.cacheRemoteTrees(refreshed);
+          print('💾 Refreshed local cache from remote.');
+
+          // 🚀 Then upload unsynced ones
+          await _syncService.syncUnsyncedTrees();
+        } catch (e) {
+          print('⚠️ Error during refresh+sync on reconnect: $e');
+        } finally {
+          _isRefreshingCache = false;
+        }
       } else {
         print('📴 Offline mode — sync paused');
       }
     });
   }
 
- @override
-Widget build(BuildContext context) {
-  return MaterialApp(
-    home: TreeHomePage(initialTrees: widget.trees),
-  );
-}
-
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: TreeHomePage(initialTrees: widget.trees),
+    );
+  }
 }
 
 class TreeHomePage extends StatefulWidget {
@@ -175,4 +209,5 @@ class _TreeHomePageState extends State<TreeHomePage> {
     );
   }
 }
+
 

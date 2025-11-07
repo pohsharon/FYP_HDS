@@ -17,7 +17,12 @@ class LocalDB {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    return await openDatabase(path, version: 2, onCreate: _createDB, onUpgrade: _upgradeDB);
+    return await openDatabase(
+      path,
+      version: 2,
+      onCreate: _createDB,
+      onUpgrade: _upgradeDB,
+    );
   }
 
   Future _createDB(Database db, int version) async {
@@ -49,10 +54,13 @@ class LocalDB {
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute('CREATE TABLE IF NOT EXISTS species(id INTEGER PRIMARY KEY, name TEXT)');
-    }
+  if (oldVersion < 2) {
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS species(id INTEGER PRIMARY KEY, name TEXT)');
+    await db.execute('ALTER TABLE trees ADD COLUMN synced INTEGER DEFAULT 0');
   }
+}
+
 
   // ======================
   // CRUD OPERATIONS
@@ -61,7 +69,11 @@ class LocalDB {
   Future<int> insertTree(TreeModel tree) async {
     final db = await instance.database;
     final map = tree.toMap();
-    final res = await db.insert('trees', map, conflictAlgorithm: ConflictAlgorithm.replace);
+    final res = await db.insert(
+      'trees',
+      map,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
     return res;
   }
 
@@ -136,23 +148,39 @@ class LocalDB {
   Future<void> cacheRemoteTrees(List<TreeModel> remoteTrees) async {
     final db = await instance.database;
 
+    // DEBUG: dump current rows before caching
+    try {
+      final beforeAll = await db.query('trees');
+      print('🔎 cacheRemoteTrees: total rows before caching: ${beforeAll.length}');
+      for (final r in beforeAll) {
+        print('   • row -> uuid=${r['uuid']}, tree_tag=${r['tree_tag']}, synced=${r['synced']}');
+      }
+    } catch (e) {
+      print('⚠️ cacheRemoteTrees: error dumping rows before caching: $e');
+    }
+
     // Step 1: Keep unsynced trees
-    final unsynced = await db.query('trees', where: 'synced = ?', whereArgs: [0]);
+    final unsynced = await db.query(
+      'trees',
+      where: 'synced = ?',
+      whereArgs: [0],
+    );
     print('📦 Preserving ${unsynced.length} unsynced trees before caching remote data');
+    if (unsynced.isNotEmpty) {
+      for (final u in unsynced) {
+        print('   • preserving unsynced -> uuid=${u['uuid']}, tree_tag=${u['tree_tag']}, synced=${u['synced']}');
+      }
+    }
 
     // Step 2: Delete only synced ones
     await db.delete('trees', where: 'synced = ?', whereArgs: [1]);
 
     // Step 3: Insert remote trees (marked as synced)
     for (final tree in remoteTrees) {
-      await db.insert(
-        'trees',
-        {
-          ...tree.toMap(),
-          'synced': 1,
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await db.insert('trees', {
+        ...tree.toMap(),
+        'synced': 1,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
     // Step 4: Reinsert unsynced ones
@@ -161,7 +189,8 @@ class LocalDB {
     }
 
     final total = Sqflite.firstIntValue(
-        await db.rawQuery('SELECT COUNT(*) FROM trees'));
+      await db.rawQuery('SELECT COUNT(*) FROM trees'),
+    );
     print('✅ Local cache updated. Total trees in DB: $total');
   }
 }

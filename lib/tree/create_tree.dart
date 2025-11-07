@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +7,7 @@ import 'package:fyp_hbs/services/api/tree_api.dart';
 import '../config.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:uuid/uuid.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
+// connectivity_plus import not needed here; we use ConnectivityHelper instead
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/services/local_db.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
@@ -76,6 +75,20 @@ class _CreateTreePageState extends State<CreateTreePage> {
   }
 
   Future<void> _pickImage() async {
+    final online = await ConnectivityHelper.hasInternetConnection();
+    if (!online) {
+      await Flushbar(
+        message: 'No internet — cannot pick image while offline',
+        icon: const Icon(Icons.cloud_off, color: Colors.white),
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(12),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
+      return;
+    }
+
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.gallery,
@@ -90,104 +103,112 @@ class _CreateTreePageState extends State<CreateTreePage> {
   }
 
   Future<void> _saveTree() async {
-  if (!_formKey.currentState!.validate() || selectedSpeciesId == null) {
-    return;
-  }
-
-  try {
-    setState(() => isLoading = true);
-
-    // ✅ Check internet status
-    final online = await ConnectivityHelper.hasInternetConnection();
-
-    if (online) {
-      // 🌐 ONLINE: Send to API as usual
-      if (widget.tree == null) {
-        await TreeApi.createTree(
-          speciesId: selectedSpeciesId!,
-          plantedAt: plantingDateController.text,
-          height: double.parse(heightController.text),
-          diameter: double.parse(widthController.text),
-          floweringPeriod: floweringPeriodController.text,
-          imageFile: _selectedImage,
-        );
-      } else {
-        await TreeApi.updateTree(
-          id: widget.tree!['id'].toString(),
-          speciesId: selectedSpeciesId!,
-          plantedAt: plantingDateController.text,
-          height: double.parse(heightController.text),
-          diameter: double.parse(widthController.text),
-          floweringPeriod: floweringPeriodController.text,
-          imageFile: _selectedImage,
-        );
-      }
-
-      await Flushbar(
-        message: widget.tree == null
-            ? 'Tree created successfully (online)'
-            : 'Tree updated successfully (online)',
-        icon: const Icon(Icons.check_circle, color: Colors.white),
-        backgroundColor: Colors.green.shade700,
-        duration: const Duration(seconds: 2),
-        borderRadius: BorderRadius.circular(12),
-        margin: const EdgeInsets.all(12),
-        flushbarPosition: FlushbarPosition.TOP,
-      ).show(context);
-    } else {
-      // 📴 OFFLINE: Save to Local DB instead
-      final uuid = const Uuid().v4();
-      final offlineTree = TreeModel(
-        uuid: uuid,
-        treeTag: "Offline-${DateTime.now().millisecondsSinceEpoch}",
-        speciesId: selectedSpeciesId!,
-        plantedAt: DateTime.parse(plantingDateController.text),
-        height: double.tryParse(heightController.text),
-        diameter: double.tryParse(widthController.text),
-        floweringPeriod: int.tryParse(floweringPeriodController.text),
-        synced: 0,
-        imageFile: _selectedImage,
-      );
-
-      await LocalDB.instance.insertTree(offlineTree);
-
-      print('🌱 Offline tree saved locally: ${offlineTree.treeTag}');
-
-      // DEBUG: print all local trees to verify insertion and synced flag
-      try {
-        final allLocal = await LocalDB.instance.fetchAllTrees();
-        for (final t in allLocal) {
-        }
-      } catch (e) {
-        print('⚠️ Error reading local DB after insert: $e');
-      }
-      await Flushbar(
-        message: 'No internet — tree saved locally',
-        icon: const Icon(Icons.cloud_off, color: Colors.white),
-        backgroundColor: Colors.orange.shade700,
-        duration: const Duration(seconds: 2),
-        borderRadius: BorderRadius.circular(12),
-        margin: const EdgeInsets.all(12),
-        flushbarPosition: FlushbarPosition.TOP,
-      ).show(context);
+    if (!_formKey.currentState!.validate() || selectedSpeciesId == null) {
+      return;
     }
 
-    if (!mounted) return;
-    Navigator.pop(context, true);
-  } catch (e) {
-    Flushbar(
-      message: 'Error: $e',
-      icon: const Icon(Icons.error, color: Colors.white),
-      backgroundColor: Colors.red.shade700,
-      duration: const Duration(seconds: 3),
-      borderRadius: BorderRadius.circular(8),
-      margin: const EdgeInsets.all(12),
-    ).show(context);
-  } finally {
-    setState(() => isLoading = false);
-  }
-}
+    try {
+      setState(() => isLoading = true);
 
+      // ✅ Check internet status
+      final online = await ConnectivityHelper.hasInternetConnection();
+
+      if (online) {
+        // 🌐 ONLINE: Send to API as usual
+        if (widget.tree == null) {
+          await TreeApi.createTree(
+            speciesId: selectedSpeciesId!,
+            plantedAt: plantingDateController.text,
+            height: double.parse(heightController.text),
+            diameter: double.parse(widthController.text),
+            floweringPeriod: floweringPeriodController.text,
+            imageFile: _selectedImage,
+          );
+        } else {
+          await TreeApi.updateTree(
+            id: widget.tree!['id'].toString(),
+            speciesId: selectedSpeciesId!,
+            plantedAt: plantingDateController.text,
+            height: double.parse(heightController.text),
+            diameter: double.parse(widthController.text),
+            floweringPeriod: floweringPeriodController.text,
+            imageFile: _selectedImage,
+          );
+        }
+
+        await Flushbar(
+          message:
+              widget.tree == null
+                  ? 'Tree created successfully (online)'
+                  : 'Tree updated successfully (online)',
+          icon: const Icon(Icons.check_circle, color: Colors.white),
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 2),
+          borderRadius: BorderRadius.circular(12),
+          margin: const EdgeInsets.all(12),
+          flushbarPosition: FlushbarPosition.TOP,
+        ).show(context);
+      } else {
+        // 📴 OFFLINE: Save to Local DB instead
+        final uuid = const Uuid().v4();
+        final offlineTree = TreeModel(
+          uuid: uuid,
+          treeTag: "Offline-${DateTime.now().millisecondsSinceEpoch}",
+          speciesId: selectedSpeciesId!,
+          plantedAt: DateTime.parse(plantingDateController.text),
+          height: double.tryParse(heightController.text),
+          diameter: double.tryParse(widthController.text),
+          floweringPeriod: int.tryParse(floweringPeriodController.text),
+          synced: 0,
+          imageFile: _selectedImage,
+        );
+
+        final insertedId = await LocalDB.instance.insertTree(offlineTree);
+
+        print(
+          '🌱 Offline tree saved locally: ${offlineTree.treeTag} (row id: $insertedId)',
+        );
+
+        // DEBUG: verify unsynced rows count immediately after insert
+        try {
+          final unsyncedNow = await LocalDB.instance.fetchUnsyncedTrees();
+          print(
+            '📦 After offline insert, unsynced count: ${unsyncedNow.length}',
+          );
+          for (final u in unsyncedNow) {
+            print(
+              '   • unsynced -> uuid=${u.uuid}, tree_tag=${u.treeTag}, synced=${u.synced}',
+            );
+          }
+        } catch (e) {
+          print('⚠️ Error reading unsynced rows after insert: $e');
+        }
+        await Flushbar(
+          message: 'No internet — tree saved locally',
+          icon: const Icon(Icons.cloud_off, color: Colors.white),
+          backgroundColor: Colors.orange.shade700,
+          duration: const Duration(seconds: 2),
+          borderRadius: BorderRadius.circular(12),
+          margin: const EdgeInsets.all(12),
+          flushbarPosition: FlushbarPosition.TOP,
+        ).show(context);
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      Flushbar(
+        message: 'Error: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+      ).show(context);
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

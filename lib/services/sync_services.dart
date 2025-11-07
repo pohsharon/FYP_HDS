@@ -4,8 +4,26 @@ import 'api/tree_api.dart';
 
 class SyncService {
   final LocalDB _localDB = LocalDB.instance;
+  bool _isRunning = false;
+  DateTime? _lastRun;
+
+  bool get isRunning => _isRunning;
 
   Future<void> syncUnsyncedTrees() async {
+    // Simple debounce: ignore if we ran very recently
+    final now = DateTime.now();
+    if (_lastRun != null && now.difference(_lastRun!).inMilliseconds < 1200) {
+      print('⏱️ Sync called too soon after last run — skipping');
+      return;
+    }
+    if (_isRunning) {
+      print('🔁 Sync already in progress — skipping duplicate call');
+      return;
+    }
+    _isRunning = true;
+    _lastRun = now;
+
+    try {
     final connectivityResult = await Connectivity().checkConnectivity();
 
     // 🔌 Step 1: Only sync if online
@@ -100,6 +118,11 @@ class SyncService {
       } catch (e) {
         print('⚠️ Sync failed for ${tree.uuid}: $e');
       }
+    }
+
+    } finally {
+      _isRunning = false;
+      _lastRun = DateTime.now();
     }
 
     print('🔁 Sync process complete.');

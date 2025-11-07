@@ -33,11 +33,9 @@ class TreeRepository {
         );
       }).toList();
 
-      await _localDB.deleteAllTrees();
-      for (var tree in trees) {
-        await _localDB.insertTree(tree);
-      }
-      print("✅ Loaded from Supabase and cached locally");
+      // Do NOT write to local DB here. Return parsed models and let caller decide
+      // how to cache them (so unsynced local rows are preserved correctly).
+      print("✅ Loaded from Supabase (parsed ${trees.length} trees)");
 
       // DEBUG: dump local DB contents after caching to verify synced flags
       try {
