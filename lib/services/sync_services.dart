@@ -37,14 +37,56 @@ class SyncService {
       print('🗑 Found ${deletes.length} pending deletes');
       for (final t in deletes) {
         try {
-          if (t.id == null) {
-            print('⚠️ Cannot delete remote for ${t.uuid} because id is null');
-            continue;
+          // Prefer resolving the authoritative server id by UUID first to avoid using
+          // stale local numeric ids. If GET by uuid returns 404, treat as already deleted.
+          try {
+            final remote = await TreeApi.getTreeByUuid(t.uuid);
+            Map<String, dynamic> treeObj = {};
+            if (remote.containsKey('data') && remote['data'] is Map) {
+              treeObj = Map<String, dynamic>.from(remote['data']);
+            } else {
+              treeObj = Map<String, dynamic>.from(remote);
+            }
+
+            final serverId = treeObj['id']?.toString() ?? treeObj['server_id']?.toString();
+            if (serverId != null && serverId.isNotEmpty) {
+              await TreeApi.deleteTree(serverId);
+              await _localDB.deleteTreeByUuid(t.uuid);
+              print('✅ Deleted remote & local by resolved id: ${t.uuid} -> $serverId');
+              continue;
+            } else {
+              print('⚠️ Could not resolve server id for delete for ${t.uuid}');
+            }
+          } catch (e) {
+            final msg = e.toString();
+            if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('Not Found')) {
+              // Remote already missing — remove local row and consider delete successful
+              await _localDB.deleteTreeByUuid(t.uuid);
+              print('ℹ️ Remote not found for uuid ${t.uuid}; removed local row');
+              continue;
+            } else {
+              print('⚠️ Failed to resolve server id for delete for ${t.uuid}: $e');
+            }
           }
-          // TreeApi.deleteTree throws on failure; it returns void on success
-          await TreeApi.deleteTree(t.id.toString());
-          await _localDB.deleteTreeByUuid(t.uuid);
-          print('✅ Deleted remote & local: ${t.uuid}');
+
+          // As a fallback, if no uuid-resolve/delete happened, try delete by local numeric id
+          if (t.id != null) {
+            try {
+              await TreeApi.deleteTree(t.id.toString());
+              await _localDB.deleteTreeByUuid(t.uuid);
+              print('✅ Deleted remote & local by local id fallback: ${t.uuid}');
+            } catch (e) {
+              final msg = e.toString();
+              if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('Not Found')) {
+                await _localDB.deleteTreeByUuid(t.uuid);
+                print('ℹ️ Remote record not found for id ${t.id}; removed local row ${t.uuid}');
+              } else {
+                print('⚠️ Delete by id fallback failed for ${t.uuid}: $e');
+              }
+            }
+          } else {
+            print('⚠️ Could not delete ${t.uuid}: no server id resolved and no local id available');
+          }
         } catch (e) {
           print('⚠️ Error deleting ${t.uuid}: $e');
         }
