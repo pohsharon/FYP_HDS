@@ -76,7 +76,12 @@ class SyncService {
                 print('⚠️ Server rejected update by id for ${t.uuid}');
               }
             } catch (e) {
-              print('⚠️ Update by id failed for ${t.uuid}: $e');
+              final msg = e.toString();
+              if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('Not Found')) {
+                print('ℹ️ Update by id returned 404/not-found for ${t.uuid}; will try resolving by uuid');
+              } else {
+                print('⚠️ Update by id failed for ${t.uuid}: $e');
+              }
             }
           }
 
@@ -114,7 +119,12 @@ class SyncService {
                 print('⚠️ Could not resolve server id for uuid ${t.uuid}');
               }
             } catch (e) {
-              print('⚠️ Failed to resolve server id/update for ${t.uuid}: $e');
+              final msg = e.toString();
+              if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('MethodNotAllowedHttpException')) {
+                print('ℹ️ Could not resolve server id or update for ${t.uuid}: ${msg.split("\n").first}');
+              } else {
+                print('⚠️ Failed to resolve server id/update for ${t.uuid}: $e');
+              }
             }
           }
 

@@ -172,9 +172,6 @@ class LocalDB {
         );
       }
 
-      final result = await db.rawQuery('PRAGMA table_info(trees);');
-      print(result);
-
     } catch (e) {
       print('⚠️ cacheRemoteTrees: error dumping rows before caching: $e');
     }

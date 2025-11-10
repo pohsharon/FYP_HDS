@@ -270,11 +270,19 @@ class TreeApi {
       if (response.statusCode == 200) {
         return Map<String, dynamic>.from(data);
       } else {
-        throw Exception(data['message'] ?? 'Failed to update tree');
+        final msg = (data is Map && data['message'] != null) ? data['message'].toString() : 'Failed to update tree';
+        throw Exception(msg);
       }
     } catch (e) {
-      print(response.body);
-      throw Exception('Failed to update tree: ${response.body}');
+      // Return a concise error instead of printing the full server response body
+      String body = response.body;
+      try {
+        final parsed = jsonDecode(body);
+        if (parsed is Map && parsed['message'] != null) {
+          throw Exception(parsed['message'].toString());
+        }
+      } catch (_) {}
+      throw Exception('Failed to update tree (status ${response.statusCode})');
     }
   }
 
@@ -319,11 +327,19 @@ class TreeApi {
       if (response.statusCode == 200) {
         return Map<String, dynamic>.from(data);
       } else {
-        throw Exception(data['message'] ?? 'Failed to update tree by uuid');
+        final msg = (data is Map && data['message'] != null) ? data['message'].toString() : 'Failed to update tree by uuid';
+        throw Exception(msg);
       }
     } catch (e) {
-      print(response.body);
-      throw Exception('Failed to update tree by uuid: ${response.body}');
+      // Keep logs concise: attempt to extract server message, else provide status
+      String body = response.body;
+      try {
+        final parsed = jsonDecode(body);
+        if (parsed is Map && parsed['message'] != null) {
+          throw Exception(parsed['message'].toString());
+        }
+      } catch (_) {}
+      throw Exception('Failed to update tree by uuid (status ${response.statusCode})');
     }
   }
 
