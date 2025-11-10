@@ -55,24 +55,71 @@ class SyncService {
       print('🧩 Found ${updates.length} pending updates');
       for (final t in updates) {
         try {
-          if (t.id == null) {
-            print('⚠️ Cannot update remote for ${t.uuid} because id is null');
-            continue;
+          // Prefer updating by numeric id when available, but fall back to uuid endpoint
+          bool updated = false;
+          if (t.id != null) {
+            try {
+              final resp = await TreeApi.updateTree(
+                id: t.id.toString(),
+                speciesId: t.speciesId ?? '',
+                plantedAt: t.plantedAt?.toIso8601String() ?? '',
+                height: t.height ?? 0.0,
+                diameter: t.diameter ?? 0.0,
+                floweringPeriod: t.floweringPeriod?.toString() ?? '',
+                imageFile: t.imageFile,
+              );
+              if (resp['success'] == true || resp.containsKey('data')) {
+                await _localDB.clearPendingUpdate(t.uuid);
+                print('✅ Synced update by id: ${t.uuid}');
+                updated = true;
+              } else {
+                print('⚠️ Server rejected update by id for ${t.uuid}');
+              }
+            } catch (e) {
+              print('⚠️ Update by id failed for ${t.uuid}: $e');
+            }
           }
-          final resp = await TreeApi.updateTree(
-            id: t.id.toString(),
-            speciesId: t.speciesId ?? '',
-            plantedAt: t.plantedAt?.toIso8601String() ?? '',
-            height: t.height ?? 0.0,
-            diameter: t.diameter ?? 0.0,
-            floweringPeriod: t.floweringPeriod?.toString() ?? '',
-            imageFile: t.imageFile,
-          );
-          if (resp['success'] == true) {
-            await _localDB.clearPendingUpdate(t.uuid);
-            print('✅ Synced update: ${t.uuid}');
-          } else {
-            print('⚠️ Server rejected update for ${t.uuid}');
+
+          if (!updated) {
+            // Try resolving server numeric id via GET /trees/uuid/{uuid}
+            try {
+              final remote = await TreeApi.getTreeByUuid(t.uuid);
+              // remote may be the tree object, or contain 'data'
+              Map<String, dynamic> treeObj = {};
+              if (remote.containsKey('data') && remote['data'] is Map) {
+                treeObj = Map<String, dynamic>.from(remote['data']);
+              } else {
+                treeObj = Map<String, dynamic>.from(remote);
+              }
+
+              final serverId = treeObj['id']?.toString() ?? treeObj['server_id']?.toString();
+              if (serverId != null && serverId.isNotEmpty) {
+                final resp3 = await TreeApi.updateTree(
+                  id: serverId,
+                  speciesId: t.speciesId ?? '',
+                  plantedAt: t.plantedAt?.toIso8601String() ?? '',
+                  height: t.height ?? 0.0,
+                  diameter: t.diameter ?? 0.0,
+                  floweringPeriod: t.floweringPeriod?.toString() ?? '',
+                  imageFile: t.imageFile,
+                );
+                if (resp3['success'] == true || resp3.containsKey('data')) {
+                  await _localDB.clearPendingUpdate(t.uuid);
+                  print('✅ Synced update by resolved server id: ${t.uuid} -> $serverId');
+                  updated = true;
+                } else {
+                  print('⚠️ Server rejected update for resolved id $serverId for ${t.uuid}');
+                }
+              } else {
+                print('⚠️ Could not resolve server id for uuid ${t.uuid}');
+              }
+            } catch (e) {
+              print('⚠️ Failed to resolve server id/update for ${t.uuid}: $e');
+            }
+          }
+
+          if (!updated) {
+            print('⚠️ Update failed for ${t.uuid}: unable to sync by id or uuid');
           }
         } catch (e) {
           print('⚠️ Update failed for ${t.uuid}: $e');

@@ -61,11 +61,26 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
           if (match != null) {
             // Convert TreeModel to the map shape expected by the UI
             final m = match;
+            // try to resolve species name from local species table
+            String speciesName = m.speciesId ?? 'Unknown';
+            try {
+              final speciesRows = await LocalDB.instance.getAllSpecies();
+              for (final s in speciesRows) {
+                final sid = s['id']?.toString();
+                if (sid != null && sid == (m.speciesId?.toString() ?? '')) {
+                  speciesName = s['name']?.toString() ?? speciesName;
+                  break;
+                }
+              }
+            } catch (_) {
+              // ignore and use fallback
+            }
+
             final localMap = {
               'id': m.id ?? m.uuid,
               'uuid': m.uuid,
               'tree_tag': m.treeTag ?? 'Offline Tree',
-              'species': {'id': m.speciesId, 'name': m.speciesId ?? 'Unknown'},
+              'species': {'id': m.speciesId, 'name': speciesName},
               'planted_at': m.plantedAt?.toIso8601String() ?? '',
               'latitude': m.latitude ?? 0.0,
               'longitude': m.longitude ?? 0.0,

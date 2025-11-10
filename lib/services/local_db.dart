@@ -67,6 +67,7 @@ class LocalDB {
         'ALTER TABLE trees ADD COLUMN pending_delete INTEGER DEFAULT 0',
       );
       await db.execute('ALTER TABLE trees ADD COLUMN synced INTEGER DEFAULT 0');
+      await db.execute('ALTER TABLE species ADD COLUMN species_name TEXT');
     }
   }
 
@@ -132,11 +133,23 @@ class LocalDB {
   Future<void> saveSpeciesList(List<Map<String, dynamic>> speciesList) async {
     final db = await database;
     for (var s in speciesList) {
-      await db.insert(
-        'species',
-        s,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      // Only persist the columns that exist in the species table to avoid
+      // "no column named ..." errors when the API returns extra fields.
+      final entry = <String, dynamic>{
+        'id': s['id'],
+        'name': s['name'] ?? s['title'] ?? s['label'] ?? s['value'] ?? ''
+      };
+
+      try {
+        await db.insert(
+          'species',
+          entry,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } catch (e) {
+        // Log but don't crash the caller — mismatch in schema is non-fatal for app flow.
+        print('⚠️ saveSpeciesList: failed to insert species row $entry: $e');
+      }
     }
   }
 
@@ -158,22 +171,27 @@ class LocalDB {
           '   • row -> uuid=${r['uuid']}, tree_tag=${r['tree_tag']}, synced=${r['synced']}',
         );
       }
+
+      final result = await db.rawQuery('PRAGMA table_info(trees);');
+      print(result);
+
     } catch (e) {
       print('⚠️ cacheRemoteTrees: error dumping rows before caching: $e');
     }
 
-    final unsynced = await db.query(
+    // Preserve rows that are unsynced (synced=0) OR have pending updates/deletes
+    final unsyncedOrPending = await db.query(
       'trees',
-      where: 'synced = ?',
-      whereArgs: [0],
+      where: '(synced = ? OR pending_update = ? OR pending_delete = ?)',
+      whereArgs: [0, 1, 1],
     );
     print(
-      '📦 Preserving ${unsynced.length} unsynced trees before caching remote data',
+      '📦 Preserving ${unsyncedOrPending.length} local rows (unsynced or pending) before caching remote data',
     );
-    if (unsynced.isNotEmpty) {
-      for (final u in unsynced) {
+    if (unsyncedOrPending.isNotEmpty) {
+      for (final u in unsyncedOrPending) {
         print(
-          '   • preserving unsynced -> uuid=${u['uuid']}, tree_tag=${u['tree_tag']}, synced=${u['synced']}',
+          '   • preserving -> uuid=${u['uuid']}, tree_tag=${u['tree_tag']}, synced=${u['synced']}, pending_update=${u['pending_update']}, pending_delete=${u['pending_delete']}',
         );
       }
     }
@@ -189,8 +207,8 @@ class LocalDB {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
-    // Step 4: Reinsert unsynced ones
-    for (final u in unsynced) {
+    // Step 4: Reinsert preserved local rows (unsynced or pending)
+    for (final u in unsyncedOrPending) {
       await db.insert('trees', u, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
 
@@ -245,6 +263,17 @@ class LocalDB {
     return await db.delete('trees', where: 'uuid = ?', whereArgs: [uuid]);
   }
 
+  /// Update an existing tree row identified by uuid.
+  /// If [markPendingUpdate] is true, sets `pending_update` to 1 so sync will upload this change.
+  Future<int> updateTreeByUuid(String uuid, Map<String, dynamic> changes, {bool markPendingUpdate = false}) async {
+    final db = await database;
+    final updateMap = Map<String, dynamic>.from(changes);
+    // Remove id if present to avoid trying to update primary key unintentionally
+    updateMap.remove('id');
+    if (markPendingUpdate) updateMap['pending_update'] = 1;
+    return await db.update('trees', updateMap, where: 'uuid = ?', whereArgs: [uuid]);
+  }
+
   Future<int> clearPendingUpdate(String uuid) async {
     final db = await database;
     return await db.update(
@@ -279,6 +308,21 @@ class LocalDB {
 //     )
 //   ''');
 //   print('✅ Trees table reset successfully');
+// }
+
+// Future<void> resetTreesTable() async {
+//   final db = await instance.database;
+//   // Drop the old table if it exists
+//   await db.execute('DROP TABLE IF EXISTS species');
+
+//   // Recreate it with the correct columns
+//   await db.execute('''
+//     CREATE TABLE species(
+//         id INTEGER PRIMARY KEY,
+//         name TEXT
+//       )
+//   ''');
+//   print('✅ Species table reset successfully');
 // }
 
   

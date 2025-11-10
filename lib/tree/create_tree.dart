@@ -148,49 +148,78 @@ class _CreateTreePageState extends State<CreateTreePage> {
           flushbarPosition: FlushbarPosition.TOP,
         ).show(context);
       } else {
-        // 📴 OFFLINE: Save to Local DB instead
-        final uuid = const Uuid().v4();
-        final offlineTree = TreeModel(
-          uuid: uuid,
-          treeTag: "Offline-${DateTime.now().millisecondsSinceEpoch}",
-          speciesId: selectedSpeciesId!,
-          plantedAt: DateTime.parse(plantingDateController.text),
-          height: double.tryParse(heightController.text),
-          diameter: double.tryParse(widthController.text),
-          floweringPeriod: int.tryParse(floweringPeriodController.text),
-          synced: 0,
-          imageFile: _selectedImage,
-        );
+        // 📴 OFFLINE: Save to Local DB instead. If we are editing an existing tree,
+        // update the existing row and mark it as pending update. Otherwise insert a new offline row.
+        if (widget.tree != null) {
+          // Editing an existing tree while offline -> update local row by uuid
+          final uuidExisting = widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString() ?? const Uuid().v4();
+          final changes = {
+            'tree_tag': widget.tree!['tree_tag'] ?? "Offline-${DateTime.now().millisecondsSinceEpoch}",
+            'species_id': selectedSpeciesId!,
+            'planted_at': plantingDateController.text,
+            'height': double.tryParse(heightController.text),
+            'diameter': double.tryParse(widthController.text),
+            'flowering_period': int.tryParse(floweringPeriodController.text),
+            // Do not clear thumbnail here; imageFile is stored separately in TreeModel.imageFile
+          };
 
-        final insertedId = await LocalDB.instance.insertTree(offlineTree);
+          final updatedRows = await LocalDB.instance.updateTreeByUuid(uuidExisting, changes, markPendingUpdate: true);
+          print('🌱 Offline edit saved locally for uuid=$uuidExisting (updated rows: $updatedRows)');
 
-        print(
-          '🌱 Offline tree saved locally: ${offlineTree.treeTag} (row id: $insertedId)',
-        );
-
-        // DEBUG: verify unsynced rows count immediately after insert
-        try {
-          final unsyncedNow = await LocalDB.instance.fetchUnsyncedTrees();
-          print(
-            '📦 After offline insert, unsynced count: ${unsyncedNow.length}',
+          await Flushbar(
+            message: 'No internet — changes saved locally and will be synced',
+            icon: const Icon(Icons.cloud_off, color: Colors.white),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 2),
+            borderRadius: BorderRadius.circular(12),
+            margin: const EdgeInsets.all(12),
+            flushbarPosition: FlushbarPosition.TOP,
+          ).show(context);
+        } else {
+          // Creating a new offline tree
+          final uuid = const Uuid().v4();
+          final offlineTree = TreeModel(
+            uuid: uuid,
+            treeTag: "Offline-${DateTime.now().millisecondsSinceEpoch}",
+            speciesId: selectedSpeciesId!,
+            plantedAt: DateTime.parse(plantingDateController.text),
+            height: double.tryParse(heightController.text),
+            diameter: double.tryParse(widthController.text),
+            floweringPeriod: int.tryParse(floweringPeriodController.text),
+            synced: 0,
+            imageFile: _selectedImage,
           );
-          for (final u in unsyncedNow) {
+
+          final insertedId = await LocalDB.instance.insertTree(offlineTree);
+
+          print(
+            '🌱 Offline tree saved locally: ${offlineTree.treeTag} (row id: $insertedId)',
+          );
+
+          // DEBUG: verify unsynced rows count immediately after insert
+          try {
+            final unsyncedNow = await LocalDB.instance.fetchUnsyncedTrees();
             print(
-              '   • unsynced -> uuid=${u.uuid}, tree_tag=${u.treeTag}, synced=${u.synced}',
+              '📦 After offline insert, unsynced count: ${unsyncedNow.length}',
             );
+            for (final u in unsyncedNow) {
+              print(
+                '   • unsynced -> uuid=${u.uuid}, tree_tag=${u.treeTag}, synced=${u.synced}',
+              );
+            }
+          } catch (e) {
+            print('⚠️ Error reading unsynced rows after insert: $e');
           }
-        } catch (e) {
-          print('⚠️ Error reading unsynced rows after insert: $e');
+          await Flushbar(
+            message: 'No internet — tree saved locally',
+            icon: const Icon(Icons.cloud_off, color: Colors.white),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 2),
+            borderRadius: BorderRadius.circular(12),
+            margin: const EdgeInsets.all(12),
+            flushbarPosition: FlushbarPosition.TOP,
+          ).show(context);
         }
-        await Flushbar(
-          message: 'No internet — tree saved locally',
-          icon: const Icon(Icons.cloud_off, color: Colors.white),
-          backgroundColor: Colors.orange.shade700,
-          duration: const Duration(seconds: 2),
-          borderRadius: BorderRadius.circular(12),
-          margin: const EdgeInsets.all(12),
-          flushbarPosition: FlushbarPosition.TOP,
-        ).show(context);
       }
 
       if (!mounted) return;

@@ -12,6 +12,9 @@ void main() async {
   // Initialize offline/online setup and preload local cache
   await AppInitializer.initializeApp();
   AppInitializer.initConnectivityListener();
+  // final localDB = LocalDB.instance;
+  // await localDB.resetTreesTable();
+
 
   runApp(const MainApp());
 }

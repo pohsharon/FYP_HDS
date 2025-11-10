@@ -1,6 +1,7 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/tree_model.dart';
 import '../repositories/tree_repository.dart';
+import 'api/tree_api.dart';
 import '../services/local_db.dart';
 import '../services/sync_services.dart';
 import '../utils/connectivity_helper.dart';
@@ -19,6 +20,13 @@ class AppInitializer {
     } else {
       print('🌐 Online mode detected. Fetching from remote...');
       try {
+        // Fetch species list and cache to local DB for offline name lookups
+        try {
+          await TreeApi.fetchSpecies();
+          print('✅ Species fetched during init');
+        } catch (e) {
+          print('⚠️ Failed to fetch species during init: $e');
+        }
         final repo = TreeRepository();
         trees = await repo.getTrees();
         await localDB.cacheRemoteTrees(trees);

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fyp_hbs/services/local_db.dart';
 import '../../config.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
@@ -108,9 +109,17 @@ class TreeApi {
           return {'id': null, 'name': item?.toString() ?? ''};
         }).toList();
 
-        // 💾 Cache species locally for offline use
+        // 💾 Cache species locally for offline use (SharedPreferences)
         await prefs.setString('cached_species', jsonEncode(speciesList));
         print("✅ Species cached locally (${speciesList.length})");
+
+        // Also persist species into local SQLite for stronger offline lookup
+        try {
+          await LocalDB.instance.saveSpeciesList(speciesList);
+          print('✅ Species saved to local DB (${speciesList.length})');
+        } catch (e) {
+          print('⚠️ Failed to save species to local DB: $e');
+        }
 
         return speciesList;
       } else {
@@ -266,6 +275,55 @@ class TreeApi {
     } catch (e) {
       print(response.body);
       throw Exception('Failed to update tree: ${response.body}');
+    }
+  }
+
+  /// Update a tree using its UUID (fallback when numeric id is not available)
+  static Future<Map<String, dynamic>> updateTreeByUuid({
+    required String uuid,
+    required String speciesId,
+    required String plantedAt,
+    required double height,
+    required double diameter,
+    required String floweringPeriod,
+    File? imageFile,
+  }) async {
+    final uri = Uri.parse("${Config.apiBaseUrl}/trees/uuid/$uuid");
+    var request = http.MultipartRequest("POST", uri);
+
+    request.fields['_method'] = 'PUT';
+    request.fields['species_id'] = speciesId;
+    request.fields['planted_at'] = plantedAt;
+    request.fields['height'] = height.toString();
+    request.fields['diameter'] = diameter.toString();
+    request.fields['flowering_period'] = floweringPeriod;
+
+    if (imageFile != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath('thumbnail', imageFile.path),
+      );
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    request.headers['Accept'] = 'application/json';
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    try {
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return Map<String, dynamic>.from(data);
+      } else {
+        throw Exception(data['message'] ?? 'Failed to update tree by uuid');
+      }
+    } catch (e) {
+      print(response.body);
+      throw Exception('Failed to update tree by uuid: ${response.body}');
     }
   }
 

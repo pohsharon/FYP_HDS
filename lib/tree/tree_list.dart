@@ -79,13 +79,27 @@ class _TreePageState extends State<TreePage> {
 
     try {
       final local = await LocalDB.instance.fetchAllTrees();
+      // build species lookup from local species table
+      final speciesRows = await LocalDB.instance.getAllSpecies();
+      final Map<String, String> speciesLookup = {};
+      for (final s in speciesRows) {
+        final key = s['id']?.toString();
+        final name = s['name']?.toString() ?? '';
+        if (key != null) speciesLookup[key] = name;
+      }
+
       final cleanedLocal = local.map((TreeModel m) {
+        final sid = m.speciesId?.toString();
+        final speciesName = (sid != null && speciesLookup.containsKey(sid))
+            ? speciesLookup[sid]
+            : (m.speciesId ?? 'Unknown');
+
         return {
           'id': m.id ?? m.uuid,
           'uuid': m.uuid,
           'tree_tag': m.treeTag ?? 'Offline Tree',
-          'species': {'id': m.speciesId, 'name': m.speciesId ?? 'Unknown'},
-    'planted_at': m.plantedAt != null ? DateFormat('yyyy-MM-dd').format(m.plantedAt!) : '',
+          'species': {'id': m.speciesId, 'name': speciesName},
+          'planted_at': m.plantedAt != null ? DateFormat('yyyy-MM-dd').format(m.plantedAt!) : '',
           'latitude': m.latitude ?? 0.0,
           'longitude': m.longitude ?? 0.0,
           'thumbnail': m.thumbnail ?? '',
