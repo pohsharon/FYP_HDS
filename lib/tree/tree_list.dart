@@ -75,7 +75,7 @@ class _TreePageState extends State<TreePage> {
 
     _currentPage = page;
   } catch (e) {
-    print("Failed to fetch trees from API: $e -- falling back to local DB");
+    print('Offline mode: falling back to local DB');
 
     try {
       final local = await LocalDB.instance.fetchAllTrees();

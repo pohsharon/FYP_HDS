@@ -3,6 +3,10 @@ import 'package:intl/intl.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
 import 'package:fyp_hbs/services/api/fruit_api.dart';
+import 'package:another_flushbar/flushbar.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:fyp_hbs/services/local_db.dart'; 
+import 'package:fyp_hbs/models/fruit_model.dart';
 
 class CreateFruitPage extends StatefulWidget {
   final Map<String, dynamic>? fruit;
@@ -39,13 +43,37 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
   Future<void> _fetchTrees() async {
   try {
     final response = await TreeApi.fetchAllTrees();
+    List<Map<String, dynamic>> treeList = [];
+    try {
+      // Try to extract nested list at response['data']['data'] (API shape)
+      final nested = (response as dynamic)['data']['data'];
+      if (nested is List) {
+        treeList = nested.map((e) => Map<String, dynamic>.from(e)).toList();
+      } else if (response is List) {
+        final respList = response as List;
+        treeList = respList.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+    } catch (_) {
+      // ignore and fall through to potential local DB fallback
+    }
 
-    final treeList = (response['data']['data'] as List<dynamic>)
-        .map((tree) => tree as Map<String, dynamic>)
-        .toList();
+    if (treeList.isEmpty) {
+      // Fallback: read from local DB (useful when offline)
+      try {
+        final local = await LocalDB.instance.fetchAllTrees();
+        treeList = local
+            .map((t) => {
+                  'uuid': t.uuid,
+                  'tree_tag': t.treeTag ?? 'Unknown',
+                })
+            .toList();
+      } catch (e) {
+        print('⚠️ _fetchTrees fallback failed: $e');
+      }
+    }
 
     setState(() {
-      trees = treeList; // ✅ Now properly typed
+      trees = treeList;
     });
   } catch (e) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -53,8 +81,6 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
     );
   }
 }
-
-
 
   Future<void> _fetchEvents() async {
     try {
@@ -110,47 +136,85 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
     });
   }
 
-  Future<void> _saveFruit() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (selectedTreeUuid == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Please select a tree")));
-      return;
-    }
-    if (selectedHarvestUuid == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("No valid harvest event for this date")),
-      );
-      return;
-    }
+  Future<bool> isOnline() async {
+  final connectivityResult = await Connectivity().checkConnectivity();
+  return connectivityResult != ConnectivityResult.none;
+}
 
-    setState(() => isLoading = true);
+Future<void> _saveFruit() async {
+  if (!_formKey.currentState!.validate()) return;
+  if (selectedTreeUuid == null) {
+    Flushbar(
+      message: "Please select a tree",
+      duration: const Duration(seconds: 3),
+      backgroundColor: Colors.red,
+    ).show(context);
+    return;
+  }
+  if (selectedHarvestUuid == null) {
+    Flushbar(
+      message: "No valid harvest event for this date",
+      duration: const Duration(seconds: 3),
+      backgroundColor: Colors.orange,
+    ).show(context);
+    return;
+  }
 
-    try {
+  setState(() => isLoading = true);
+
+  // Prepare typed variables below when saving
+  try {
+    final treeUuid = selectedTreeUuid!;
+    final harvestUuid = selectedHarvestUuid!;
+    final weight = double.parse(weightController.text);
+    final grade = gradeController.text;
+    final harvestedAt = harvestedAtController.text;
+
+    if (await isOnline()) {
       await FruitApi.createFruit(
-        tree_uuid: selectedTreeUuid!,
-        harvest_uuid: selectedHarvestUuid!,
-        weight: double.parse(weightController.text),
-        grade: gradeController.text,
-        harvested_at: harvestedAtController.text,
+        tree_uuid: treeUuid,
+        harvest_uuid: harvestUuid,
+        weight: weight,
+        grade: grade,
+        harvested_at: harvestedAt,
         is_spoiled: isSpoiled,
       );
 
-      if (mounted) {
-        Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Fruit created successfully")),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error saving fruit: $e")));
-    } finally {
-      setState(() => isLoading = false);
+        // Don't show a Flushbar here because popping the route immediately after
+        // can cause Navigator push/pop race conditions. The caller (list page)
+        // should show confirmation when it receives the `true` result.
+    } else {
+      // Save locally using the FruitModel
+      final fruitModel = FruitModel(
+        harvest_uuid: harvestUuid,
+        transaction_uuid: null,
+        harvested_at: harvestedAt,
+        is_spoiled: isSpoiled,
+        tree_uuid: treeUuid,
+        weight: weight,
+        grade: grade,
+        synced: 0,
+        pendingUpdate: 0,
+        pendingDelete: 0,
+      );
+
+      await LocalDB.instance.insertFruit(fruitModel);
+
+        // Saved offline; don't show Flushbar here to avoid navigator locking.
+        // The caller can show a notification after this page pops.
     }
+
+    if (mounted) Navigator.pop(context, true);
+  } catch (e) {
+    Flushbar(
+      message: "Error saving fruit: $e",
+      duration: const Duration(seconds: 3),
+      backgroundColor: Colors.red,
+    ).show(context);
+  } finally {
+    setState(() => isLoading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {

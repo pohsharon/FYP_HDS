@@ -1,7 +1,9 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../models/tree_model.dart';
+import '../models/fruit_model.dart';
 import '../repositories/tree_repository.dart';
 import 'api/tree_api.dart';
+import 'api/fruit_api.dart';
 import '../services/local_db.dart';
 import '../services/sync_services.dart';
 import '../utils/connectivity_helper.dart';
@@ -30,7 +32,23 @@ class AppInitializer {
         final repo = TreeRepository();
         trees = await repo.getTrees();
         await localDB.cacheRemoteTrees(trees);
+        // Fetch and cache fruits for offline use
+        try {
+          final remoteFruits = await FruitApi.fetchFruits();
+          final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
+          await localDB.cacheRemoteFruits(fruitModels);
+          print('🍎 Fruits fetched & cached during init');
+        } catch (e) {
+          print('⚠️ Failed to fetch/cache fruits during init: $e');
+        }
         await _syncService.syncUnsyncedTrees();
+        // Also attempt to sync any fruits that were created offline
+        try {
+          await _syncService.syncFruits();
+          print('🍎 Fruit sync complete during init');
+        } catch (e) {
+          print('⚠️ Fruit sync during init failed: $e');
+        }
       } catch (e) {
         print('⚠️ Remote fetch failed: $e');
         trees = await localDB.fetchAllTrees();
@@ -50,7 +68,23 @@ class AppInitializer {
           final repo = TreeRepository();
           final refreshed = await repo.getTrees();
           await localDB.cacheRemoteTrees(refreshed);
+          // Fetch and cache fruits after reconnect
+          try {
+            final remoteFruits = await FruitApi.fetchFruits();
+            final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
+            await localDB.cacheRemoteFruits(fruitModels);
+            print('🍎 Fruits fetched & cached after reconnect');
+          } catch (e) {
+            print('⚠️ Failed to fetch/cache fruits after reconnect: $e');
+          }
           await _syncService.syncUnsyncedTrees();
+          // Sync fruits after trees
+          try {
+            await _syncService.syncFruits();
+            print('🍎 Fruit sync complete after reconnect');
+          } catch (e) {
+            print('⚠️ Fruit sync after reconnect failed: $e');
+          }
         } catch (e) {
           print('⚠️ Sync error: $e');
         }

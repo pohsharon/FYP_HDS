@@ -3,6 +3,8 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/fruit/create_fruit.dart';
 import 'package:fyp_hbs/services/api/fruit_api.dart';
+import 'package:fyp_hbs/services/local_db.dart';
+import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 
 class FruitPage extends StatefulWidget {
@@ -17,7 +19,6 @@ class _FruitPageState extends State<FruitPage> {
   List<Map<String, dynamic>> _filteredFruits = [];
   List<String> _speciesList = [];
   String? _selectedSpecies;
-  bool _isLoading = true;
 
   @override
   void initState() {
@@ -40,15 +41,71 @@ class _FruitPageState extends State<FruitPage> {
         _allFruits = fruits;
         _filteredFruits = fruits;
         _speciesList = speciesSet.toList();
-        _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error loading fruits: $e")));
+      // On error (likely offline), try to load fruits from local DB cache
+      try {
+        final localFruits = await LocalDB.instance.getAllFruits();
+        // build tree/species lookup to populate nested fields similar to API shape
+        final localTrees = await LocalDB.instance.fetchAllTrees();
+        final speciesRows = await LocalDB.instance.getAllSpecies();
+        final Map<String, String> speciesLookup = {};
+        for (final s in speciesRows) {
+          final key = s['id']?.toString();
+          final name = s['name']?.toString() ?? '';
+          if (key != null) speciesLookup[key] = name;
+        }
+
+        final Map<String, TreeModel> treeByUuid = {};
+        for (final t in localTrees) {
+          treeByUuid[t.uuid] = t;
+        }
+
+        final mapped = localFruits.map((f) {
+          final treeUuid = f.tree_uuid;
+          String speciesName = 'Unknown Species';
+          String treeTag = 'Offline Tree';
+          if (treeUuid != null && treeByUuid.containsKey(treeUuid)) {
+            final tm = treeByUuid[treeUuid]!;
+            final sid = tm.speciesId?.toString();
+            if (sid != null && speciesLookup.containsKey(sid)) {
+              speciesName = speciesLookup[sid]!;
+            } else if (tm.speciesId != null) {
+              speciesName = tm.speciesId.toString();
+            }
+            treeTag = tm.treeTag ?? treeTag;
+          }
+
+          return {
+            'uuid': f.harvest_uuid ?? '',
+            'fruit_tag': f.harvest_uuid ?? 'Offline Fruit',
+            'harvested_at': f.harvested_at ?? '',
+            'weight': f.weight,
+            'grade': f.grade ?? '',
+            'tree': {
+              'uuid': treeUuid ?? '',
+              'tree_tag': treeTag,
+              'species': {'name': speciesName}
+            }
+          };
+        }).toList();
+
+        final mappedList = mapped.cast<Map<String, dynamic>>().toList();
+
+        setState(() {
+          _allFruits = mappedList;
+          _filteredFruits = mappedList;
+          _speciesList = mappedList
+              .map((e) => (e['tree'] as Map<String, dynamic>?)?['species']?['name']?.toString() ?? 'Unknown')
+              .toSet()
+              .toList();
+        });
+      } catch (e2) {
+        setState(() {});
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error loading fruits: $e")));
+      }
     }
   }
 
@@ -150,10 +207,15 @@ class _FruitPageState extends State<FruitPage> {
             _buildSearchBar(context),
             const SizedBox(height: 16),
             Expanded(
-              child:
-                  _filteredFruits.isEmpty
-                      ? const Center(child: Text("Loading..."))
-                      : ListView.builder(
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  await fetchFruits();
+                  // allow a short delay so UI updates smoothly
+                  await Future.delayed(const Duration(milliseconds: 300));
+                },
+                child: _filteredFruits.isEmpty
+                    ? const Center(child: Text("Loading..."))
+                    : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         itemCount: _filteredFruits.length,
                         itemBuilder: (context, index) {
@@ -161,6 +223,7 @@ class _FruitPageState extends State<FruitPage> {
                           return _buildFruitCard(context, fruit: fruit);
                         },
                       ),
+              ),
             ),
           ],
         ),
@@ -241,8 +304,7 @@ class _FruitPageState extends State<FruitPage> {
         fruit['tree']?['species']?['name'] ?? 'Unknown Species';
     final String weight = fruit['weight']?.toString() ?? 'Unknown';
     final String grade = fruit['grade'] ?? 'Unknown';
-    final String treeTag = fruit['tree']?['tree_tag'] ?? 'Unknown';
-    final String uuid = fruit['uuid'];
+  final String uuid = fruit['uuid'];
 
     return Card(
       color: AppColors.white,
