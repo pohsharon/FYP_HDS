@@ -172,20 +172,77 @@ class TreeApi {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
-    final response = await http.get(
-      Uri.parse("${Config.apiBaseUrl}/trees?page=all"),
-      headers: {
-        "Accept": "application/json",
-        if (token != null) "Authorization": "Bearer $token",
-      },
-    );
+    // Aggregate pages if the server paginates results. Some backends ignore
+    // the `page=all` query and still return paginated responses, so fetch
+    // page-by-page until we've collected all items.
+    try {
+      int page = 1;
+      final List<Map<String, dynamic>> allItems = [];
 
-    if (response.statusCode == 200) {
-      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-      return decoded;
-    } else {
-      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-      throw Exception(decoded['message'] ?? 'Failed to fetch trees');
+      while (true) {
+        final response = await http.get(
+          Uri.parse("${Config.apiBaseUrl}/trees?page=$page"),
+          headers: {
+            "Accept": "application/json",
+            if (token != null) "Authorization": "Bearer $token",
+          },
+        );
+
+        if (response.statusCode != 200) {
+          // Try to extract message from body if possible
+          try {
+            final decodedErr = jsonDecode(response.body);
+            throw Exception(decodedErr['message'] ?? 'Failed to fetch trees');
+          } catch (_) {
+            throw Exception('Failed to fetch trees (status ${response.statusCode})');
+          }
+        }
+
+        final decoded = jsonDecode(response.body);
+
+        // Normalize different response shapes to a list of items
+        List<dynamic> items = [];
+        if (decoded is Map && decoded.containsKey('data')) {
+          final data = decoded['data'];
+          if (data is Map && data.containsKey('data')) {
+            items = data['data'];
+          } else if (data is List) {
+            items = data;
+          }
+        } else if (decoded is List) {
+          items = decoded;
+        }
+
+        if (items.isEmpty) {
+          break;
+        }
+
+        for (final it in items) {
+          if (it is Map) allItems.add(Map<String, dynamic>.from(it));
+        }
+
+        // If response includes pagination meta, stop when we've reached last_page
+        int? lastPage;
+        try {
+          if (decoded is Map) {
+            final meta = decoded['meta'] ?? (decoded['data'] is Map ? decoded['data']['meta'] : null);
+            if (meta is Map && meta.containsKey('last_page')) {
+              lastPage = (meta['last_page'] is int) ? meta['last_page'] : int.tryParse(meta['last_page']?.toString() ?? '');
+            }
+          }
+        } catch (_) {}
+
+        if (lastPage != null) {
+          if (page >= lastPage) break;
+        }
+
+        page += 1;
+      }
+
+      // Return in the same shape expected by TreeRepository: { 'data': { 'data': [...] } }
+      return {'data': {'data': allItems}};
+    } catch (e) {
+      throw Exception('Failed to fetch all trees: $e');
     }
   }
 

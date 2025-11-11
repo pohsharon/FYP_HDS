@@ -57,6 +57,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
       // ignore and fall through to potential local DB fallback
     }
 
+
     if (treeList.isEmpty) {
       // Fallback: read from local DB (useful when offline)
       try {
@@ -76,9 +77,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
       trees = treeList;
     });
   } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Error fetching trees: $e")),
-    );
+   print(e);
   }
 }
 
@@ -89,24 +88,13 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
         events = fetchedEvents;
       });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Error fetching events: $e")));
-    }
+      print(e);
   }
 
   void _updateHarvestEventForDate(DateTime date) {
-    print(events);
     for (var event in events) {
       final start = DateTime.parse(event['start_date']);
       final endDateStr = event['end_date'];
-
-      print("Picked date: $date");
-      for (var event in events) {
-        print(
-          "Event: ${event['uuid']} start=${event['start_date']} end=${event['end_date']}",
-        );
-      }
 
       // Handle active event (no end date yet)
       if (endDateStr == null ||
@@ -186,6 +174,11 @@ Future<void> _saveFruit() async {
     } else {
       // Save locally using the FruitModel
       final fruitModel = FruitModel(
+    fruit_tag: (grade.isNotEmpty)
+      ? 'Grade $grade'
+      : (harvestedAt.isNotEmpty)
+        ? harvestedAt
+        : (harvestUuid.length > 8 ? harvestUuid.substring(0, 8) : harvestUuid),
         harvest_uuid: harvestUuid,
         transaction_uuid: null,
         harvested_at: harvestedAt,

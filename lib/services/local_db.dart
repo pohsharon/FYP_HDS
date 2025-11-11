@@ -20,7 +20,7 @@ class LocalDB {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -58,6 +58,7 @@ class LocalDB {
     await db.execute('''
     CREATE TABLE IF NOT EXISTS fruits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fruit_tag TEXT,
       harvest_uuid TEXT UNIQUE,
       transaction_uuid TEXT,
       harvested_at TEXT,
@@ -85,6 +86,14 @@ class LocalDB {
       );
       await db.execute('ALTER TABLE trees ADD COLUMN synced INTEGER DEFAULT 0');
       await db.execute('ALTER TABLE species ADD COLUMN species_name TEXT');
+    }
+    if (oldVersion < 3) {
+      // Add fruit_tag column to fruits table for storing server-provided fruit tags
+      try {
+        await db.execute('ALTER TABLE fruits ADD COLUMN fruit_tag TEXT');
+      } catch (e) {
+        print('⚠️ upgradeDB: could not add fruit_tag column: $e');
+      }
     }
   }
 
@@ -289,6 +298,20 @@ class LocalDB {
       final insertMap = Map<String, dynamic>.from(fm);
       insertMap['harvest_uuid'] = hid;
       insertMap['synced'] = 1;
+
+      // Prefer server-provided fruit_tag if present; otherwise derive a friendly tag
+      if (insertMap['fruit_tag'] == null || insertMap['fruit_tag'].toString().trim().isEmpty) {
+        String derived;
+        if (insertMap['grade'] != null && insertMap['grade'].toString().isNotEmpty) {
+          derived = 'Grade ${insertMap['grade']}';
+        } else if (insertMap['harvested_at'] != null && insertMap['harvested_at'].toString().isNotEmpty) {
+          derived = insertMap['harvested_at'].toString();
+        } else {
+          final idStr = hid.toString();
+          derived = idStr.length > 8 ? idStr.substring(0, 8) : idStr;
+        }
+        insertMap['fruit_tag'] = derived;
+      }
 
       await db.insert('fruits', insertMap, conflictAlgorithm: ConflictAlgorithm.replace);
     }

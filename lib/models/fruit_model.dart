@@ -1,6 +1,7 @@
 // import 'dart:io'; // not currently used
 
 class FruitModel {
+  final String? fruit_tag;
   final String? harvest_uuid;
   final String? transaction_uuid;
   final String? harvested_at;
@@ -14,6 +15,7 @@ class FruitModel {
   final int pendingDelete;   // 1 if waiting for delete sync
 
   FruitModel({
+    this.fruit_tag,
     this.harvest_uuid,
     this.transaction_uuid,
     this.harvested_at,
@@ -28,6 +30,7 @@ class FruitModel {
 
   /// Convert model to map for SQLite or JSON upload
   Map<String, dynamic> toMap() => {
+    'fruit_tag': fruit_tag,
         'harvest_uuid': harvest_uuid,
         'transaction_uuid': transaction_uuid,
         'harvested_at': harvested_at,
@@ -43,6 +46,7 @@ class FruitModel {
   /// Create FruitModel from SQLite or API map
   factory FruitModel.fromMap(Map<String, dynamic> map) {
     return FruitModel(
+      fruit_tag: (map['fruit_tag'] ?? map['fruitTag'] ?? map['tag'])?.toString(),
       // Accept multiple key names that different APIs may return.
       harvest_uuid: (map['harvest_uuid'] ?? map['harvestId'] ?? map['uuid'] ?? map['id'])?.toString(),
       transaction_uuid: (map['transaction_uuid'] ?? map['tx_uuid'] ?? map['transactionId'])?.toString(),
@@ -76,6 +80,7 @@ class FruitModel {
 
   /// Copy model with modifications
   FruitModel copyWith({
+    String? fruit_tag,
     String? harvest_uuid,
     String? transaction_uuid,
     String? harvested_at,
@@ -88,6 +93,7 @@ class FruitModel {
     int? pendingDelete,
   }) {
     return FruitModel(
+      fruit_tag: fruit_tag ?? this.fruit_tag,
       harvest_uuid: harvest_uuid ?? this.harvest_uuid,
       transaction_uuid: transaction_uuid ?? this.transaction_uuid,
       harvested_at: harvested_at ?? this.harvested_at,
@@ -104,7 +110,7 @@ class FruitModel {
   /// Helpful for debugging
   @override
   String toString() {
-    return 'FruitModel(harvest_uuid: $harvest_uuid, tree_uuid: $tree_uuid, '
+    return 'FruitModel(fruit_tag: $fruit_tag, harvest_uuid: $harvest_uuid, tree_uuid: $tree_uuid, '
         'weight: $weight, grade: $grade, synced: $synced, '
         'pendingUpdate: $pendingUpdate, pendingDelete: $pendingDelete)';
   }

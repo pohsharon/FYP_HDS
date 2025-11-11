@@ -76,19 +76,22 @@ class _FruitPageState extends State<FruitPage> {
             treeTag = tm.treeTag ?? treeTag;
           }
 
-          // Prefer an explicit tag if available (grade or harvested date),
-          // fall back to short harvest uuid for readability.
-          String fruitTag;
-          if (f.grade != null && f.grade!.isNotEmpty) {
-            fruitTag = 'Grade ${f.grade}';
-          } else if (f.harvested_at != null && f.harvested_at!.isNotEmpty) {
-            fruitTag = f.harvested_at!;
-          } else if (f.harvest_uuid != null && f.harvest_uuid!.isNotEmpty) {
-            final id = f.harvest_uuid!;
-            fruitTag = id.length > 8 ? id.substring(0, 8) : id;
-          } else {
-            fruitTag = 'Offline Fruit';
-          }
+          // Prefer an explicit persisted fruit_tag if available, otherwise fall
+          // back to grade, harvested date, or short harvest uuid for readability.
+          String fruitTag = (f.fruit_tag != null && f.fruit_tag!.isNotEmpty)
+              ? f.fruit_tag!
+              : (() {
+                  if (f.grade != null && f.grade!.isNotEmpty) {
+                    return 'Grade ${f.grade}';
+                  } else if (f.harvested_at != null && f.harvested_at!.isNotEmpty) {
+                    return f.harvested_at!;
+                  } else if (f.harvest_uuid != null && f.harvest_uuid!.isNotEmpty) {
+                    final id = f.harvest_uuid!;
+                    return id.length > 8 ? id.substring(0, 8) : id;
+                  } else {
+                    return 'Offline Fruit';
+                  }
+                })();
 
           return {
             'uuid': f.harvest_uuid ?? '',
