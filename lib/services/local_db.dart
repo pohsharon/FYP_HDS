@@ -264,11 +264,33 @@ class LocalDB {
     await db.delete('fruits', where: 'synced = ?', whereArgs: [1]);
 
     // Step 3: Insert remote fruits (marked as synced)
-    for (final fruit in remoteFruits) {
-      await db.insert('fruits', {
-        ...fruit.toMap(),
-        'synced': 1,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    print('📥 Inserting ${remoteFruits.length} remote fruits into local DB');
+    final seen = <String>{};
+    int genCounter = 0;
+    for (var i = 0; i < remoteFruits.length; i++) {
+      final fruit = remoteFruits[i];
+      final fm = fruit.toMap();
+      var hid = fm['harvest_uuid'] ?? fm['uuid'] ?? fm['id'] ?? '';
+
+      // If server provides empty or duplicate harvest id, generate a stable
+      // fallback id so we don't replace previous rows.
+      if (hid == null) hid = '';
+      if (hid.toString().trim().isEmpty || seen.contains(hid.toString())) {
+        genCounter++;
+        final generated = 'gen_${DateTime.now().millisecondsSinceEpoch}_${i}_$genCounter';
+        print('   • remote fruit had empty/duplicate id. Generated id=$generated');
+        hid = generated;
+      }
+
+      seen.add(hid.toString());
+      print('   • remote fruit -> harvest_uuid=$hid');
+
+      // Ensure the map contains the canonical harvest_uuid key for DB insertion
+      final insertMap = Map<String, dynamic>.from(fm);
+      insertMap['harvest_uuid'] = hid;
+      insertMap['synced'] = 1;
+
+      await db.insert('fruits', insertMap, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
     // Step 4: Reinsert preserved local rows (unsynced or pending)

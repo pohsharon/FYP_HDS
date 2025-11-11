@@ -1,4 +1,4 @@
-import 'dart:io';
+// import 'dart:io'; // not currently used
 
 class FruitModel {
   final String? harvest_uuid;
@@ -43,9 +43,10 @@ class FruitModel {
   /// Create FruitModel from SQLite or API map
   factory FruitModel.fromMap(Map<String, dynamic> map) {
     return FruitModel(
-      harvest_uuid: map['harvest_uuid']?.toString(),
-      transaction_uuid: map['transaction_uuid']?.toString(),
-      harvested_at: map['harvested_at']?.toString(),
+      // Accept multiple key names that different APIs may return.
+      harvest_uuid: (map['harvest_uuid'] ?? map['harvestId'] ?? map['uuid'] ?? map['id'])?.toString(),
+      transaction_uuid: (map['transaction_uuid'] ?? map['tx_uuid'] ?? map['transactionId'])?.toString(),
+      harvested_at: (map['harvested_at'] ?? map['date'] ?? map['harvestedAt'])?.toString(),
       is_spoiled: (map['is_spoiled'] == 1 || map['is_spoiled'] == true),
       tree_uuid: map['tree_uuid']?.toString(),
       weight: (map['weight'] is num)
