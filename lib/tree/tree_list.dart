@@ -422,10 +422,7 @@ class _TreePageState extends State<TreePage> {
     required Map<String, dynamic> tree, // ✅ Accept tree map
   }) {
     final String tag = tree['tree_tag'] ?? 'Tree';
-    // Determine sync status (default to synced)
-    final int synced = (tree['synced'] is int)
-        ? tree['synced'] as int
-        : int.tryParse(tree['synced']?.toString() ?? '1') ?? 1;
+  // Sync status handling temporarily disabled in UI while debugging sync issues.
     // Format planted date uniformly
     final String rawDate = tree['planted_at']?.toString() ?? '';
     String displayDate = rawDate;
@@ -496,26 +493,9 @@ class _TreePageState extends State<TreePage> {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      // Unsynced badge
-                      if (synced == 0) ...[
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade100,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange.shade300),
-                          ),
-                          child: const Text(
-                            'Unsynced',
-                            style: TextStyle(
-                              color: Colors.orange,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
+                      // NOTE: Temporarily hiding the Unsynced badge while tree sync
+                      // is being debugged. Re-enable by restoring the conditional
+                      // `if (synced == 0)` block when tree sync is fixed.
                       const Text(
                         "•",
                         style: TextStyle(color: Colors.grey, fontSize: 11),

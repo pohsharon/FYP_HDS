@@ -258,6 +258,7 @@ Future<void> _saveFruit() async {
       harvest_uuid: harvestUuid,
       transaction_uuid: null,
       harvested_at: harvestedAt,
+      created_at: DateTime.now().toIso8601String(),
       is_spoiled: isSpoiled,
       tree_uuid: treeUuid,
       weight: weight,

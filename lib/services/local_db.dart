@@ -20,7 +20,7 @@ class LocalDB {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -62,6 +62,7 @@ class LocalDB {
       harvest_uuid TEXT UNIQUE,
       transaction_uuid TEXT,
       harvested_at TEXT,
+      created_at TEXT,
       is_spoiled INTEGER DEFAULT 0,
       tree_uuid TEXT,
       weight REAL,
@@ -74,7 +75,7 @@ class LocalDB {
   }
 
   Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
+    if (oldVersion < 3) {
       await db.execute(
         'CREATE TABLE IF NOT EXISTS species(id INTEGER PRIMARY KEY, name TEXT)',
       );
@@ -93,6 +94,15 @@ class LocalDB {
         await db.execute('ALTER TABLE fruits ADD COLUMN fruit_tag TEXT');
       } catch (e) {
         print('⚠️ upgradeDB: could not add fruit_tag column: $e');
+      }
+    }
+    if (oldVersion < 4) {
+      // Add created_at column for ordering and sync clarity
+      try {
+        await db.execute('ALTER TABLE fruits ADD COLUMN created_at TEXT');
+        print('✅ upgradeDB: added created_at to fruits');
+      } catch (e) {
+        print('⚠️ upgradeDB: could not add created_at column: $e');
       }
     }
   }
@@ -184,6 +194,7 @@ class LocalDB {
 
     try {
       final beforeAll = await db.query('trees');
+      print('ℹ️ cacheRemoteTrees: rows before caching=${beforeAll.length}');
     } catch (e) {
       print('⚠️ cacheRemoteTrees: error dumping rows before caching: $e');
     }
@@ -232,6 +243,7 @@ class LocalDB {
 
     try {
       final beforeAll = await db.query('fruits');
+      print('ℹ️ cacheRemoteFruits: rows before caching=${beforeAll.length}');
     } catch (e) {
       print('⚠️ cacheRemoteFruits: error dumping rows before caching: $e');
     }
@@ -244,12 +256,6 @@ class LocalDB {
 
     // Step 2: Delete only synced ones
     await db.delete('fruits', where: 'synced = ?', whereArgs: [1]);
-
-    // Step 3: Insert remote fruits (marked as synced)
-    // NOTE: use IGNORE when inserting remote rows so we don't overwrite
-    // locally-created unsynced rows which we preserved above. We'll re-insert
-    // the preserved local rows afterwards with REPLACE to ensure they take
-    // precedence over remote data.
     print('📥 Inserting ${remoteFruits.length} remote fruits into local DB');
     final seen = <String>{};
     int genCounter = 0;
@@ -286,6 +292,11 @@ class LocalDB {
           derived = idStr.length > 8 ? idStr.substring(0, 8) : idStr;
         }
         insertMap['fruit_tag'] = derived;
+      }
+
+      // Ensure created_at is present so we can order items reliably.
+      if (insertMap['created_at'] == null || insertMap['created_at'].toString().trim().isEmpty) {
+        insertMap['created_at'] = DateTime.now().toIso8601String();
       }
 
       await db.insert('fruits', insertMap, conflictAlgorithm: ConflictAlgorithm.ignore);
@@ -387,7 +398,9 @@ class LocalDB {
 
 Future<List<FruitModel>> getAllFruits() async {
   final db = await instance.database;
-  final result = await db.query('fruits');
+  // Order: unsynced (0) first, then by created_at descending so newly created
+  // local items appear at the top.
+  final result = await db.query('fruits', orderBy: 'synced ASC, created_at DESC');
   return result.map((json) => FruitModel.fromMap(json)).toList();
 }
 

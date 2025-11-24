@@ -5,6 +5,7 @@ class FruitModel {
   final String? harvest_uuid;
   final String? transaction_uuid;
   final String? harvested_at;
+  final String? created_at;
   final bool is_spoiled;
   final String? tree_uuid;
   final double? weight;
@@ -23,6 +24,7 @@ class FruitModel {
     this.tree_uuid,
     this.weight,
     this.grade,
+    this.created_at,
     this.synced = 0,
     this.pendingUpdate = 0,
     this.pendingDelete = 0,
@@ -34,6 +36,7 @@ class FruitModel {
         'harvest_uuid': harvest_uuid,
         'transaction_uuid': transaction_uuid,
         'harvested_at': harvested_at,
+        'created_at': created_at,
         'is_spoiled': is_spoiled ? 1 : 0,
         'tree_uuid': tree_uuid,
         'weight': weight,
@@ -50,7 +53,8 @@ class FruitModel {
       // Accept multiple key names that different APIs may return.
       harvest_uuid: (map['harvest_uuid'] ?? map['harvestId'] ?? map['uuid'] ?? map['id'])?.toString(),
       transaction_uuid: (map['transaction_uuid'] ?? map['tx_uuid'] ?? map['transactionId'])?.toString(),
-      harvested_at: (map['harvested_at'] ?? map['date'] ?? map['harvestedAt'])?.toString(),
+  harvested_at: (map['harvested_at'] ?? map['date'] ?? map['harvestedAt'])?.toString(),
+  created_at: (map['created_at'] ?? map['createdAt'] ?? map['created'])?.toString(),
       is_spoiled: (map['is_spoiled'] == 1 || map['is_spoiled'] == true),
       tree_uuid: map['tree_uuid']?.toString(),
       weight: (map['weight'] is num)
@@ -88,6 +92,7 @@ class FruitModel {
     String? tree_uuid,
     double? weight,
     String? grade,
+    String? created_at,
     int? synced,
     int? pendingUpdate,
     int? pendingDelete,
@@ -101,6 +106,7 @@ class FruitModel {
       tree_uuid: tree_uuid ?? this.tree_uuid,
       weight: weight ?? this.weight,
       grade: grade ?? this.grade,
+      created_at: created_at ?? this.created_at,
       synced: synced ?? this.synced,
       pendingUpdate: pendingUpdate ?? this.pendingUpdate,
       pendingDelete: pendingDelete ?? this.pendingDelete,
