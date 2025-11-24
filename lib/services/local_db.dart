@@ -184,14 +184,6 @@ class LocalDB {
 
     try {
       final beforeAll = await db.query('trees');
-      print(
-        '🔎 cacheRemoteTrees: total rows before caching: ${beforeAll.length}',
-      );
-      for (final r in beforeAll) {
-        print(
-          '   • row -> uuid=${r['uuid']}, tree_tag=${r['tree_tag']}, synced=${r['synced']}',
-        );
-      }
     } catch (e) {
       print('⚠️ cacheRemoteTrees: error dumping rows before caching: $e');
     }
@@ -240,39 +232,24 @@ class LocalDB {
 
     try {
       final beforeAll = await db.query('fruits');
-      print(
-        '🔎 cacheRemoteFruits: total rows before caching: ${beforeAll.length}',
-      );
-      for (var r in beforeAll) {
-        print(
-          '   • row -> harvest_uuid=${r['harvest_uuid']}, tree_uuid=${r['tree_uuid']}, synced=${r['synced']}',
-        );
-      }
     } catch (e) {
       print('⚠️ cacheRemoteFruits: error dumping rows before caching: $e');
     }
 
-    // Preserve rows that are unsynced (synced=0) OR have pending updates/deletes
     final unsyncedOrPending = await db.query(
       'fruits',
       where: '(synced = ? OR pending_update = ? OR pending_delete = ?)',
       whereArgs: [0, 1, 1],
     );
-    print(
-      '📦 Preserving ${unsyncedOrPending.length} local rows (unsynced or pending) before caching remote data',
-    );
-    if (unsyncedOrPending.isNotEmpty) {
-      for (final u in unsyncedOrPending) {
-        print(
-          '   • preserving -> harvest_uuid=${u['harvest_uuid']}, tree_uuid=${u['tree_uuid']}, synced=${u['synced']}, pending_update=${u['pending_update']}, pending_delete=${u['pending_delete']}',
-        );
-      }
-    }
 
     // Step 2: Delete only synced ones
     await db.delete('fruits', where: 'synced = ?', whereArgs: [1]);
 
     // Step 3: Insert remote fruits (marked as synced)
+    // NOTE: use IGNORE when inserting remote rows so we don't overwrite
+    // locally-created unsynced rows which we preserved above. We'll re-insert
+    // the preserved local rows afterwards with REPLACE to ensure they take
+    // precedence over remote data.
     print('📥 Inserting ${remoteFruits.length} remote fruits into local DB');
     final seen = <String>{};
     int genCounter = 0;
@@ -287,12 +264,10 @@ class LocalDB {
       if (hid.toString().trim().isEmpty || seen.contains(hid.toString())) {
         genCounter++;
         final generated = 'gen_${DateTime.now().millisecondsSinceEpoch}_${i}_$genCounter';
-        print('   • remote fruit had empty/duplicate id. Generated id=$generated');
         hid = generated;
       }
 
       seen.add(hid.toString());
-      print('   • remote fruit -> harvest_uuid=$hid');
 
       // Ensure the map contains the canonical harvest_uuid key for DB insertion
       final insertMap = Map<String, dynamic>.from(fm);
@@ -313,12 +288,14 @@ class LocalDB {
         insertMap['fruit_tag'] = derived;
       }
 
-      await db.insert('fruits', insertMap, conflictAlgorithm: ConflictAlgorithm.replace);
+      await db.insert('fruits', insertMap, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
 
     // Step 4: Reinsert preserved local rows (unsynced or pending)
     for (final u in unsyncedOrPending) {
-      await db.insert('fruits', u, conflictAlgorithm: ConflictAlgorithm.ignore);
+      // Reinsert preserved local rows and ensure they overwrite any remote
+      // row that might have been inserted with the same harvest_uuid.
+      await db.insert('fruits', u, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
     final total = Sqflite.firstIntValue(

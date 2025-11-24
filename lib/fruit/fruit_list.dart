@@ -61,61 +61,72 @@ class _FruitPageState extends State<FruitPage> {
           treeByUuid[t.uuid] = t;
         }
 
-        final mapped = localFruits.map((f) {
-          final treeUuid = f.tree_uuid;
-          String speciesName = 'Unknown Species';
-          String treeTag = 'Offline Tree';
-          if (treeUuid != null && treeByUuid.containsKey(treeUuid)) {
-            final tm = treeByUuid[treeUuid]!;
-            final sid = tm.speciesId?.toString();
-            if (sid != null && speciesLookup.containsKey(sid)) {
-              speciesName = speciesLookup[sid]!;
-            } else if (tm.speciesId != null) {
-              speciesName = tm.speciesId.toString();
-            }
-            treeTag = tm.treeTag ?? treeTag;
-          }
+        final mapped =
+            localFruits.map((f) {
+              final treeUuid = f.tree_uuid;
+              String speciesName = 'Unknown Species';
+              String treeTag = 'Offline Tree';
+              if (treeUuid != null && treeByUuid.containsKey(treeUuid)) {
+                final tm = treeByUuid[treeUuid]!;
+                final sid = tm.speciesId?.toString();
+                if (sid != null && speciesLookup.containsKey(sid)) {
+                  speciesName = speciesLookup[sid]!;
+                } else if (tm.speciesId != null) {
+                  speciesName = tm.speciesId.toString();
+                }
+                treeTag = tm.treeTag ?? treeTag;
+              }
 
-          // Prefer an explicit persisted fruit_tag if available, otherwise fall
-          // back to grade, harvested date, or short harvest uuid for readability.
-          String fruitTag = (f.fruit_tag != null && f.fruit_tag!.isNotEmpty)
-              ? f.fruit_tag!
-              : (() {
-                  if (f.grade != null && f.grade!.isNotEmpty) {
-                    return 'Grade ${f.grade}';
-                  } else if (f.harvested_at != null && f.harvested_at!.isNotEmpty) {
-                    return f.harvested_at!;
-                  } else if (f.harvest_uuid != null && f.harvest_uuid!.isNotEmpty) {
-                    final id = f.harvest_uuid!;
-                    return id.length > 8 ? id.substring(0, 8) : id;
-                  } else {
-                    return 'Offline Fruit';
-                  }
-                })();
+              // Prefer an explicit persisted fruit_tag if available, otherwise fall
+              // back to grade, harvested date, or short harvest uuid for readability.
+              String fruitTag =
+                  (f.fruit_tag != null && f.fruit_tag!.isNotEmpty)
+                      ? f.fruit_tag!
+                      : (() {
+                        if (f.grade != null && f.grade!.isNotEmpty) {
+                          return 'Grade ${f.grade}';
+                        } else if (f.harvested_at != null &&
+                            f.harvested_at!.isNotEmpty) {
+                          return f.harvested_at!;
+                        } else if (f.harvest_uuid != null &&
+                            f.harvest_uuid!.isNotEmpty) {
+                          final id = f.harvest_uuid!;
+                          return id.length > 8 ? id.substring(0, 8) : id;
+                        } else {
+                          return 'Offline Fruit';
+                        }
+                      })();
 
-          return {
-            'uuid': f.harvest_uuid ?? '',
-            'fruit_tag': fruitTag,
-            'harvested_at': f.harvested_at ?? '',
-            'weight': f.weight,
-            'grade': f.grade ?? '',
-            'tree': {
-              'uuid': treeUuid ?? '',
-              'tree_tag': treeTag,
-              'species': {'name': speciesName}
-            }
-          };
-        }).toList();
+              return {
+                'uuid': f.harvest_uuid ?? '',
+                'fruit_tag': fruitTag,
+                'harvested_at': f.harvested_at ?? '',
+                'weight': f.weight,
+                'grade': f.grade ?? '',
+                'tree': {
+                  'uuid': treeUuid ?? '',
+                  'tree_tag': treeTag,
+                  'species': {'name': speciesName},
+                },
+              };
+            }).toList();
 
         final mappedList = mapped.cast<Map<String, dynamic>>().toList();
 
         setState(() {
           _allFruits = mappedList;
           _filteredFruits = mappedList;
-          _speciesList = mappedList
-              .map((e) => (e['tree'] as Map<String, dynamic>?)?['species']?['name']?.toString() ?? 'Unknown')
-              .toSet()
-              .toList();
+          _speciesList =
+              mappedList
+                  .map(
+                    (e) =>
+                        (e['tree']
+                                as Map<String, dynamic>?)?['species']?['name']
+                            ?.toString() ??
+                        'Unknown',
+                  )
+                  .toSet()
+                  .toList();
         });
       } catch (e2) {
         setState(() {});
@@ -230,16 +241,17 @@ class _FruitPageState extends State<FruitPage> {
                   // allow a short delay so UI updates smoothly
                   await Future.delayed(const Duration(milliseconds: 300));
                 },
-                child: _filteredFruits.isEmpty
-                    ? const Center(child: Text("Loading..."))
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _filteredFruits.length,
-                        itemBuilder: (context, index) {
-                          final fruit = _filteredFruits[index];
-                          return _buildFruitCard(context, fruit: fruit);
-                        },
-                      ),
+                child:
+                    _filteredFruits.isEmpty
+                        ? const Center(child: Text("Loading..."))
+                        : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _filteredFruits.length,
+                          itemBuilder: (context, index) {
+                            final fruit = _filteredFruits[index];
+                            return _buildFruitCard(context, fruit: fruit);
+                          },
+                        ),
               ),
             ),
           ],
@@ -293,9 +305,6 @@ class _FruitPageState extends State<FruitPage> {
 
               if (result == true) {
                 fetchFruits();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Fruit list updated')),
-                );
               }
             },
             child: Container(
@@ -321,7 +330,7 @@ class _FruitPageState extends State<FruitPage> {
         fruit['tree']?['species']?['name'] ?? 'Unknown Species';
     final String weight = fruit['weight']?.toString() ?? 'Unknown';
     final String grade = fruit['grade'] ?? 'Unknown';
-  final String uuid = fruit['uuid'];
+    final String uuid = fruit['uuid'];
 
     return Card(
       color: AppColors.white,

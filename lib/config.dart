@@ -7,7 +7,7 @@ class Config {
     // } else if (Platform.isIOS) {
       return "http://127.0.0.1:8000/api"; // iOS simulator uses localhost
     // } else {
-      // return "http://192.168.0.7:8000/api"; // Default for other platforms (Mac, Windows)
+      // return "http://192.168.0.26:8000/api"; // Default for other platforms (Mac, Windows)
     // }
   }
 

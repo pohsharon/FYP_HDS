@@ -342,6 +342,16 @@ class SyncService {
       print('� Found ${newOnes.length} new unsynced fruits');
       for (final fruit in newOnes) {
         try {
+          final payload = {
+            'tree_uuid': fruit.tree_uuid ?? '',
+            'harvest_uuid': fruit.harvest_uuid ?? '',
+            'weight': fruit.weight ?? 0.0,
+            'grade': fruit.grade ?? '',
+            'harvested_at': fruit.harvested_at ?? '',
+            'is_spoiled': fruit.is_spoiled,
+          };
+          print('🔁 Uploading fruit ${fruit.harvest_uuid} payload=$payload');
+
           final response = await FruitApi.createFruit(
             tree_uuid: fruit.tree_uuid ?? '',
             harvest_uuid: fruit.harvest_uuid ?? '',
@@ -351,14 +361,17 @@ class SyncService {
             is_spoiled: fruit.is_spoiled,
           );
 
+          print('📡 Server response for ${fruit.harvest_uuid}: $response');
+
           if (response['success'] == true || response.containsKey('data')) {
             await _localDB.markFruitAsSynced(fruit.harvest_uuid ?? '');
             print('✅ Synced new fruit ${fruit.harvest_uuid}');
           } else {
-            print('⚠️ Fruit create API returned unexpected response for ${fruit.harvest_uuid}');
+            print('⚠️ Fruit create API returned unexpected response for ${fruit.harvest_uuid}: $response');
           }
-        } catch (e) {
+        } catch (e, st) {
           print('❌ Failed to sync fruit ${fruit.harvest_uuid}: $e');
+          print(st);
         }
       }
     } catch (e) {

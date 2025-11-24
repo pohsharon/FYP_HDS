@@ -3,10 +3,13 @@ import 'package:intl/intl.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
 import 'package:fyp_hbs/services/api/fruit_api.dart';
+import 'package:fyp_hbs/repositories/tree_repository.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:fyp_hbs/services/local_db.dart'; 
+import 'package:fyp_hbs/services/local_db.dart';
 import 'package:fyp_hbs/models/fruit_model.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CreateFruitPage extends StatefulWidget {
   final Map<String, dynamic>? fruit;
@@ -16,6 +19,8 @@ class CreateFruitPage extends StatefulWidget {
   @override
   State<CreateFruitPage> createState() => _CreateFruitPageState();
 }
+ 
+
 
 class _CreateFruitPageState extends State<CreateFruitPage> {
   final _formKey = GlobalKey<FormState>();
@@ -32,34 +37,30 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
 
   List<Map<String, dynamic>> events = [];
   String? selectedHarvestUuid;
+  String? matchedEventLabel;
 
   @override
   void initState() {
     super.initState();
     _fetchTrees();
-    _fetchEvents();
   }
 
   Future<void> _fetchTrees() async {
   try {
-    final response = await TreeApi.fetchAllTrees();
+    // Use the repository which already handles network -> local fallback.
+    final repo = TreeRepository();
     List<Map<String, dynamic>> treeList = [];
     try {
-      // Try to extract nested list at response['data']['data'] (API shape)
-      final nested = (response as dynamic)['data']['data'];
-      if (nested is List) {
-        treeList = nested.map((e) => Map<String, dynamic>.from(e)).toList();
-      } else if (response is List) {
-        final respList = response as List;
-        treeList = respList.map((e) => Map<String, dynamic>.from(e)).toList();
-      }
-    } catch (_) {
-      // ignore and fall through to potential local DB fallback
+      final models = await repo.getTrees();
+      treeList = models
+          .map((t) => {'uuid': t.uuid, 'tree_tag': t.treeTag ?? 'Unknown'})
+          .toList();
+    } catch (e) {
+      print('⚠️ _fetchTrees: repository failed: $e');
     }
 
-
+    // As a last-resort fallback, read directly from local DB
     if (treeList.isEmpty) {
-      // Fallback: read from local DB (useful when offline)
       try {
         final local = await LocalDB.instance.fetchAllTrees();
         treeList = local
@@ -69,53 +70,140 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
                 })
             .toList();
       } catch (e) {
-        print('⚠️ _fetchTrees fallback failed: $e');
+        print('⚠️ _fetchTrees final fallback failed: $e');
       }
     }
 
     setState(() {
       trees = treeList;
     });
+
+    // If we have trees cached, pre-select the first and load its events
+    if (trees.isNotEmpty) {
+      selectedTreeUuid ??= trees[0]['uuid'];
+      // load events for selected tree (online preferred, falls back to cached)
+      _loadEventsForTree(selectedTreeUuid!);
+    }
   } catch (e) {
-   print(e);
+    print(e);
   }
 }
 
-  Future<void> _fetchEvents() async {
+
+  /// Load harvest events for a specific tree. When online, fetch from API and
+  /// cache per-tree events in SharedPreferences. When offline, load cached events.
+  Future<void> _loadEventsForTree(String treeUuid) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<Map<String, dynamic>> eventsForTree = [];
+
     try {
-      final fetchedEvents = await TreeApi.fetchEvents();
-      setState(() {
-        events = fetchedEvents;
-      });
+      if (await isOnline()) {
+        // ONLINE: fetch the global events list (we need to scan all events to
+        // choose the nearest/most relevant event, not just per-tree events).
+        final remote = await TreeApi.fetchEvents();
+        eventsForTree = List<Map<String, dynamic>>.from(remote);
+
+        try {
+          await prefs.setString('harvest_events_all', jsonEncode(eventsForTree));
+          print('📦 Cached ${eventsForTree.length} global events');
+        } catch (e) {
+          print('⚠️ Failed to cache global events: $e');
+        }
+      } else {
+        final raw = prefs.getString('harvest_events_all');
+        if (raw != null && raw.isNotEmpty) {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) eventsForTree = List<Map<String, dynamic>>.from(decoded);
+        }
+      }
     } catch (e) {
-      print(e);
+      print('⚠️ _loadEventsForTree error: $e — trying global cache');
+      final raw = prefs.getString('harvest_events_all');
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) eventsForTree = List<Map<String, dynamic>>.from(decoded);
+          print('📦 Loaded ${eventsForTree.length} events from global cache during error fallback');
+        } catch (err) {
+          print('⚠️ Failed to parse cached global events: $err');
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        events = eventsForTree;
+      });
+
+      final now = DateTime.now();
+      final nowDate = DateTime(now.year, now.month, now.day);
+      for (final ev in eventsForTree) {
+        try {
+          final startRaw = ev['start_date'] ?? ev['start'] ?? '';
+          if (startRaw == null || startRaw.toString().isEmpty) continue;
+          final startDt = DateTime.parse(startRaw.toString());
+          final start = DateTime(startDt.year, startDt.month, startDt.day);
+
+          final endRaw = ev['end_date'] ?? ev['end'];
+          if (endRaw == null || endRaw.toString().isEmpty || endRaw == 'null') {
+            if (!nowDate.isBefore(start)) {
+              selectedHarvestUuid = ev['uuid'];
+              break;
+            }
+          } else {
+            final endDt = DateTime.parse(endRaw.toString());
+            final end = DateTime(endDt.year, endDt.month, endDt.day);
+            if (!nowDate.isBefore(start) && !nowDate.isAfter(end)) {
+              selectedHarvestUuid = ev['uuid'];
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+      // compute matched event label for UI
+      if (selectedHarvestUuid != null) {
+        final matched = eventsForTree.firstWhere(
+            (e) => (e['uuid'] ?? e['id'])?.toString() == selectedHarvestUuid,
+            orElse: () => {});
+        if (matched.isNotEmpty) {
+          matchedEventLabel = (matched['event_name'] ?? matched['name'] ?? matched['title'] ?? matched['event'])?.toString();
+        } else {
+          matchedEventLabel = null;
+        }
+      } else {
+        matchedEventLabel = null;
+      }
+    }
   }
 
   void _updateHarvestEventForDate(DateTime date) {
+    final picked = DateTime(date.year, date.month, date.day);
     for (var event in events) {
-      final start = DateTime.parse(event['start_date']);
-      final endDateStr = event['end_date'];
+      try {
+        final startRaw = event['start_date'] ?? event['start'] ?? '';
+        if (startRaw == null || startRaw.toString().isEmpty) continue;
+        final startDt = DateTime.parse(startRaw.toString());
+        final start = DateTime(startDt.year, startDt.month, startDt.day);
 
-      // Handle active event (no end date yet)
-      if (endDateStr == null ||
-          endDateStr.toString().isEmpty ||
-          endDateStr == "null") {
-        if (date.isAtSameMomentAs(start) || date.isAfter(start)) {
-          setState(() {
-            selectedHarvestUuid = event['uuid'];
-          });
-          return;
+        final endRaw = event['end_date'] ?? event['end'];
+        if (endRaw == null || endRaw.toString().isEmpty || endRaw == 'null') {
+          if (!picked.isBefore(start)) {
+            setState(() {
+              selectedHarvestUuid = event['uuid'];
+            });
+            return;
+          }
+        } else {
+          final endDt = DateTime.parse(endRaw.toString());
+          final end = DateTime(endDt.year, endDt.month, endDt.day);
+          if (!picked.isBefore(start) && !picked.isAfter(end)) {
+            setState(() {
+              selectedHarvestUuid = event['uuid'];
+            });
+            return;
+          }
         }
-      } else {
-        final end = DateTime.parse(endDateStr);
-
-        if ((date.isAtSameMomentAs(start) || date.isAfter(start)) &&
-            (date.isAtSameMomentAs(end) || date.isBefore(end))) {
-          setState(() {
-            selectedHarvestUuid = event['uuid'];
-          });
-          return;
-        }
+      } catch (_) {
       }
     }
 
@@ -158,51 +246,102 @@ Future<void> _saveFruit() async {
     final grade = gradeController.text;
     final harvestedAt = harvestedAtController.text;
 
-    if (await isOnline()) {
-      await FruitApi.createFruit(
-        tree_uuid: treeUuid,
-        harvest_uuid: harvestUuid,
-        weight: weight,
-        grade: grade,
-        harvested_at: harvestedAt,
-        is_spoiled: isSpoiled,
-      );
+    final online = await isOnline();
+    // Build the FruitModel early so we can fall back to local save if network
+    // call fails or we're offline.
+    final fruitModel = FruitModel(
+      fruit_tag: (grade.isNotEmpty)
+          ? 'Grade $grade'
+          : (harvestedAt.isNotEmpty)
+              ? harvestedAt
+              : (harvestUuid.length > 8 ? harvestUuid.substring(0, 8) : harvestUuid),
+      harvest_uuid: harvestUuid,
+      transaction_uuid: null,
+      harvested_at: harvestedAt,
+      is_spoiled: isSpoiled,
+      tree_uuid: treeUuid,
+      weight: weight,
+      grade: grade,
+      synced: 0,
+      pendingUpdate: 0,
+      pendingDelete: 0,
+    );
 
-        // Don't show a Flushbar here because popping the route immediately after
-        // can cause Navigator push/pop race conditions. The caller (list page)
-        // should show confirmation when it receives the `true` result.
+    var savedLocally = false;
+    if (online) {
+      try {
+        await FruitApi.createFruit(
+          tree_uuid: treeUuid,
+          harvest_uuid: harvestUuid,
+          weight: weight,
+          grade: grade,
+          harvested_at: harvestedAt,
+          is_spoiled: isSpoiled,
+        );
+      } catch (e) {
+        // Network/server error — fall back to local save so user action is not lost.
+        print('⚠️ FruitApi.createFruit failed, saving locally: $e');
+        try {
+          await LocalDB.instance.insertFruit(fruitModel);
+          savedLocally = true;
+        } catch (insertErr) {
+          print('⚠️ Failed to save fruit locally after API failure: $insertErr');
+          // Re-throw original exception so upstream error UI shows it
+          rethrow;
+        }
+      }
     } else {
-      // Save locally using the FruitModel
-      final fruitModel = FruitModel(
-    fruit_tag: (grade.isNotEmpty)
-      ? 'Grade $grade'
-      : (harvestedAt.isNotEmpty)
-        ? harvestedAt
-        : (harvestUuid.length > 8 ? harvestUuid.substring(0, 8) : harvestUuid),
-        harvest_uuid: harvestUuid,
-        transaction_uuid: null,
-        harvested_at: harvestedAt,
-        is_spoiled: isSpoiled,
-        tree_uuid: treeUuid,
-        weight: weight,
-        grade: grade,
-        synced: 0,
-        pendingUpdate: 0,
-        pendingDelete: 0,
-      );
-
+      // Offline: save locally
       await LocalDB.instance.insertFruit(fruitModel);
-
-        // Saved offline; don't show Flushbar here to avoid navigator locking.
-        // The caller can show a notification after this page pops.
+      try {
+        final unsynced = await LocalDB.instance.getUnsyncedFruits();
+        print('🍏 Saved fruit locally (harvest_uuid=${fruitModel.harvest_uuid}). Unsynced count=${unsynced.length}');
+      } catch (e) {
+        print('⚠️ Could not read unsynced fruits after insert: $e');
+      }
+      savedLocally = true;
     }
 
-    if (mounted) Navigator.pop(context, true);
+    if (mounted) {
+      // Show a confirmation Flushbar and wait for it to dismiss before popping.
+      try {
+        if (online && !savedLocally) {
+          await Flushbar(
+            message: widget.fruit == null ? 'Fruit created successfully (online)' : 'Fruit updated successfully (online)',
+            icon: const Icon(Icons.check_circle, color: Colors.white),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 2),
+            borderRadius: BorderRadius.circular(12),
+            margin: const EdgeInsets.all(12),
+            flushbarPosition: FlushbarPosition.TOP,
+          ).show(context);
+        } else {
+          final offlineMsg = widget.fruit != null
+              ? 'Changes saved locally and will be synced'
+              : 'Fruit saved locally';
+          await Flushbar(
+            message: offlineMsg,
+            icon: const Icon(Icons.cloud_off, color: Colors.white),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 2),
+            borderRadius: BorderRadius.circular(12),
+            margin: const EdgeInsets.all(12),
+            flushbarPosition: FlushbarPosition.TOP,
+          ).show(context);
+        }
+      } catch (_) {
+        // If Flushbar fails for any reason, still attempt to pop to return to caller
+      }
+      Navigator.pop(context, true);
+    }
   } catch (e) {
     Flushbar(
       message: "Error saving fruit: $e",
+      icon: const Icon(Icons.error, color: Colors.white),
+      backgroundColor: Colors.red.shade700,
       duration: const Duration(seconds: 3),
-      backgroundColor: Colors.red,
+      borderRadius: BorderRadius.circular(8),
+      margin: const EdgeInsets.all(12),
     ).show(context);
   } finally {
     setState(() => isLoading = false);
@@ -244,10 +383,16 @@ Future<void> _saveFruit() async {
                         child: Text(tree['tree_tag'] ?? 'Unknown'),
                       );
                     }).toList(),
-                onChanged: (value) {
+                onChanged: (value) async {
                   setState(() {
                     selectedTreeUuid = value;
+                    // Clear prior selection when switching tree
+                    selectedHarvestUuid = null;
+                    events = [];
                   });
+                  if (value != null) {
+                    await _loadEventsForTree(value);
+                  }
                 },
                 validator:
                     (value) => value == null ? 'Please select a tree' : null,
@@ -282,6 +427,17 @@ Future<void> _saveFruit() async {
                     (value) =>
                         value == null || value.isEmpty ? 'Pick a date' : null,
               ),
+              const SizedBox(height: 8),
+              // show matched event / cached count for debugging and UX
+              Builder(builder: (context) {
+                final count = events.length;
+                if (count == 0) return const SizedBox.shrink();
+                final label = matchedEventLabel ?? 'No event matched yet';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Text('Events cached: $count · Matched: $label', style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                );
+              }),
               const SizedBox(height: 16),
 
               TextFormField(
@@ -344,5 +500,5 @@ Future<void> _saveFruit() async {
         ),
       ),
     );
-  }
+}
 }

@@ -33,11 +33,6 @@ class TreeRepository {
         );
       }).toList();
 
-      // Do NOT write to local DB here. Return parsed models and let caller decide
-      // how to cache them (so unsynced local rows are preserved correctly).
-      print("✅ Loaded from Supabase (parsed ${trees.length} trees)");
-
-      // DEBUG: dump local DB contents after caching to verify synced flags
       try {
         final allLocal = await _localDB.fetchAllTrees();
         print('📦 After caching, local DB has ${allLocal.length} trees');

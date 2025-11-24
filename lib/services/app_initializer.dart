@@ -25,7 +25,6 @@ class AppInitializer {
         // Fetch species list and cache to local DB for offline name lookups
         try {
           await TreeApi.fetchSpecies();
-          print('✅ Species fetched during init');
         } catch (e) {
           print('⚠️ Failed to fetch species during init: $e');
         }

@@ -111,7 +111,6 @@ class TreeApi {
 
         // 💾 Cache species locally for offline use (SharedPreferences)
         await prefs.setString('cached_species', jsonEncode(speciesList));
-        print("✅ Species cached locally (${speciesList.length})");
 
         // Also persist species into local SQLite for stronger offline lookup
         try {
