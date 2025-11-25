@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_growth_api.dart';
-import 'package:fyp_hbs/services/api/tree_api.dart';
+import 'package:fyp_hbs/models/tree_growth_model.dart';
+import 'package:fyp_hbs/services/local database/local_db.dart';
 
 class GrowthLogTabPage extends StatefulWidget {
   final String treeUuid;
@@ -28,6 +29,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
+      if (!mounted) return;
       setState(() {
         selectedTab = _tabController.index;
       });
@@ -36,10 +38,29 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
     _fetchGrowthLogs();
   }
 
-  Future<void> _fetchGrowthLogs() async {
-    try {
-      final logs = await TreeGrowthApi.fetchGrowthLogsByUuid(widget.treeUuid);
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
+  Future<void> _fetchGrowthLogs() async {
+    List<Map<String, dynamic>> logs = [];
+    try {
+      // Try remote API first
+      final remote = await TreeGrowthApi.fetchGrowthLogsByUuid(widget.treeUuid);
+      logs = List<Map<String, dynamic>>.from(remote);
+    } catch (e) {
+      print("⚠️ Remote growth fetch failed, falling back to local DB: $e");
+      try {
+        final local = await LocalDB.instance.fetchAllGrowths(treeUuid: widget.treeUuid);
+        logs = local.map((m) => m.toMap()).toList();
+      } catch (localErr) {
+        print("⚠️ Failed to load local growth logs: $localErr");
+      }
+    }
+
+    try {
       List<FlSpot> heights = [];
       List<FlSpot> diameters = [];
       List<String> labels = [];
@@ -81,6 +102,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
         }
       }
 
+      if (!mounted) return;
       setState(() {
         heightData = heights;
         diameterData = diameters;
@@ -88,7 +110,8 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
         isLoading = false;
       });
     } catch (e) {
-      print("Error fetching growth logs: $e");
+      print("Error processing growth logs: $e");
+      if (!mounted) return;
       setState(() {
         isLoading = false;
       });
@@ -212,35 +235,44 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                                     final height = heightController.text.trim();
                                     final diameter =
                                         diameterController.text.trim();
-                                    final tree = await TreeApi.getTreeByUuid(
-                                      widget.treeUuid,
-                                    );
-                                    final treeId = tree["id"];
-
                                     if (height.isNotEmpty &&
                                         diameter.isNotEmpty) {
                                       try {
-                                        final result =
-                                            await TreeGrowthApi.addGrowthLog(
-                                              treeUuid: widget.treeUuid,
-                                              height: double.parse(height),
-                                              diameter: double.parse(diameter),
-                                            );
+                                        // Try remote create first
+                                        await TreeGrowthApi.addGrowthLog(
+                                          treeUuid: widget.treeUuid,
+                                          height: double.parse(height),
+                                          diameter: double.parse(diameter),
+                                        );
 
                                         Navigator.pop(context, true);
                                         await _fetchGrowthLogs();
-                                        setState(() {});
+                                        if (mounted) setState(() {});
                                       } catch (e) {
-                                        print("Error: $e");
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              "Failed to save growth log: $e",
+                                        // Remote failed: save locally so user action isn't lost
+                                        print("⚠️ Remote add failed, saving growth locally: $e");
+                                        try {
+                                          final localUuid = 'local_${DateTime.now().millisecondsSinceEpoch}';
+                                          final g = TreeGrowthModel(
+                                            uuid: localUuid,
+                                            treeUuid: widget.treeUuid,
+                                            height: double.tryParse(height) ?? 0.0,
+                                            diameter: double.tryParse(diameter) ?? 0.0,
+                                            createdAt: DateTime.now().toIso8601String(),
+                                            synced: 0,
+                                          );
+                                          await LocalDB.instance.insertGrowth(g);
+                                          Navigator.pop(context, true);
+                                          await _fetchGrowthLogs();
+                                          if (mounted) setState(() {});
+                                        } catch (localErr) {
+                                          print('Failed to save growth locally: $localErr');
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Failed to save growth log: $localErr'),
                                             ),
-                                          ),
-                                        );
+                                          );
+                                        }
                                       }
                                     } else {
                                       ScaffoldMessenger.of(

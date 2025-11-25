@@ -3,7 +3,7 @@ import 'package:fyp_hbs/authentication/login.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'services/app_initializer.dart';
-import 'package:fyp_hbs/services/local_db.dart';
+import 'package:fyp_hbs/services/local%20database/local_db.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

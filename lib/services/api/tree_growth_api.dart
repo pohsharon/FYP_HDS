@@ -88,13 +88,52 @@ class TreeGrowthApi {
         if (data is Map<String, dynamic> && data.containsKey("data")) {
           return List<Map<String, dynamic>>.from(data["data"]);
         } else {
-          throw Exception("Unexpected API response format");
+          // Unexpected format -> return empty list so callers can fallback to local cache
+          print('⚠️ TreeGrowthApi.fetchGrowthLogsByUuid: unexpected response format: $data');
+          return <Map<String, dynamic>>[];
         }
       } else {
-        throw Exception(data["message"] ?? "Failed to fetch growth logs");
+        print('⚠️ TreeGrowthApi.fetchGrowthLogsByUuid: server returned ${response.statusCode}: $data');
+        return <Map<String, dynamic>>[];
       }
     } catch (e) {
-      throw Exception("Error: ${e.toString()}");
+      // Network or parsing error: log and return empty list so caller can use local cache
+      print('⚠️ TreeGrowthApi.fetchGrowthLogsByUuid error: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchAllGrowthLogs() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.get(
+        Uri.parse("${Config.apiBaseUrl}/tree-growth-logs"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        if (data is Map<String, dynamic> && data.containsKey("data")) {
+          return List<Map<String, dynamic>>.from(data["data"]);
+        } else {
+          // Unexpected format -> return empty list so callers can fallback to local cache
+          print('⚠️ TreeGrowthApi.fetchAllGrowthLogs: unexpected response format: $data');
+          return <Map<String, dynamic>>[];
+        }
+      } else {
+        print('⚠️ TreeGrowthApi.fetchAllGrowthLogs: server returned ${response.statusCode}: $data');
+        return <Map<String, dynamic>>[];
+      }
+    } catch (e) {
+      // Network or parsing error: log and return empty list so caller can use local cache
+      print('⚠️ TreeGrowthApi.fetchAllGrowthLogs error: $e');
+      return <Map<String, dynamic>>[];
     }
   }
 }

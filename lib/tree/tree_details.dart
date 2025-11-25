@@ -4,14 +4,14 @@ import 'package:fyp_hbs/services/api/tree_api.dart';
 import 'package:fyp_hbs/tree/tab/health/health_tab.dart';
 import 'package:fyp_hbs/tree/tab/harvest/harvest_tab.dart';
 import 'package:fyp_hbs/tree/tab/agrochemical/agrochemical_tab.dart';
-import 'dart:convert';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/tree/map_individual_tree.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:fyp_hbs/tree/tab/growthlog/growthlog_tab.dart';
 import '../config.dart';
-import 'package:fyp_hbs/services/local_db.dart';
+import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
+import 'package:fyp_hbs/models/tree_growth_model.dart';
 
 class TreeDetailsPage extends StatefulWidget {
   final String treeID;
@@ -35,17 +35,29 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   Future<void> _loadTreeDetails() async {
     try {
       final data = await TreeApi.getTreeByUuid(widget.treeID);
+      if (!mounted) return;
       setState(() {
         tree = data;
         isLoading = false;
       });
+      // Merge any cached growth measurements (offline cache) to show latest values
+      try {
+        final treeUuid = data['uuid'] ?? widget.treeID;
+        await _mergeCachedGrowth(treeUuid);
+      } catch (_) {}
     } catch (e1) {
       try {
         final data = await TreeApi.getTreeById(widget.treeID);
+        if (!mounted) return;
         setState(() {
           tree = data;
           isLoading = false;
         });
+        // Merge cached growth measurements (if any) after loading by numeric id
+        try {
+          final treeUuid = data['uuid'] ?? widget.treeID;
+          await _mergeCachedGrowth(treeUuid);
+        } catch (_) {}
       } catch (e2) {
         // Try to load from local DB as a fallback (offline-created tree)
         try {
@@ -90,21 +102,99 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
               'flowering_period': m.floweringPeriod ?? 0,
             };
 
+            if (!mounted) return;
             setState(() {
               tree = localMap;
               isLoading = false;
             });
+            // Merge cached growth measurements for this offline tree
+            try {
+              final treeUuid = localMap['uuid'] ?? widget.treeID;
+              await _mergeCachedGrowth(treeUuid);
+            } catch (_) {}
             return;
           }
         } catch (e3) {
           print('Failed to load tree from local DB: $e3');
         }
 
-        setState(() => isLoading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading tree: $e2')));
+        if (mounted) {
+          setState(() => isLoading = false);
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error loading tree: $e2')));
+        }
       }
+    }
+  }
+
+  Future<void> _mergeCachedGrowth(dynamic treeUuid) async {
+    final String uuid = (treeUuid?.toString() ?? widget.treeID);
+
+    try {
+      final growthDb = LocalDB.instance;
+      List<TreeGrowthModel> rows = await growthDb.fetchAllGrowths(
+        treeUuid: uuid,
+      );
+
+      // If no rows found, optionally try relaxed match for local trees
+      if (rows.isEmpty && uuid.startsWith('local_')) {
+        final fallbackUuid = uuid.replaceFirst('local_', '');
+        rows = await growthDb.fetchAllGrowths(treeUuid: fallbackUuid);
+        print('⚠️ Relax fallback matched rows: ${rows.length}');
+      }
+
+      // Nothing to merge
+      if (rows.isEmpty) {
+        // Also print total rows in DB for debugging
+        try {
+          final all = await growthDb.fetchAllGrowths();
+          print('ℹ️ No cached growth found for $uuid — total growth rows in DB=${all.length}');
+        } catch (_) {
+          print('ℹ️ No cached growth found for $uuid');
+        }
+        return;
+      }
+
+      // Helper to read & parse date safely
+      DateTime parseDate(TreeGrowthModel r) {
+        try {
+          return DateTime.tryParse(r.createdAt ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+        } catch (_) {
+          return DateTime.fromMillisecondsSinceEpoch(0);
+        }
+      }
+
+      // Select latest row
+      rows.sort((a, b) => parseDate(b).compareTo(parseDate(a)));
+      final latest = rows.first;
+
+      final double? latestHeight = latest.height;
+      final double? latestDiameter = latest.diameter; // <-- KEEP THIS NAME
+
+      print(
+        '🍃 Cached growth found for $uuid -> H:$latestHeight D:$latestDiameter',
+      );
+
+      if (!mounted) return;
+
+      // Update UI model cleanly
+      setState(() {
+        tree ??= {};
+
+        if (latestHeight != null && latestHeight > 0) {
+          tree!['height'] = latestHeight;
+        }
+
+        if (latestDiameter != null && latestDiameter > 0) {
+          // Keep both keys so UI that reads either 'width' or 'diameter' will show the value
+          tree!['diameter'] = latestDiameter;
+          tree!['width'] = latestDiameter;
+        }
+      });
+    } catch (e) {
+      print('❌ Failed to merge cached growth: $e');
     }
   }
 
@@ -426,19 +516,6 @@ class _InfoCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _TabContent extends StatelessWidget {
-  final String title;
-
-  const _TabContent({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(title, style: const TextStyle(color: Colors.grey)),
     );
   }
 }

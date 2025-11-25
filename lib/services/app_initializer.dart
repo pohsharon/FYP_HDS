@@ -4,12 +4,16 @@ import '../models/fruit_model.dart';
 import '../repositories/tree_repository.dart';
 import 'api/tree_api.dart';
 import 'api/fruit_api.dart';
-import '../services/local_db.dart';
+import 'api/tree_growth_api.dart';
+import 'local database/local_db.dart';
+import '../models/tree_growth_model.dart';
 import '../services/sync_services.dart';
 import '../utils/connectivity_helper.dart';
 
 class AppInitializer {
   static final SyncService _syncService = SyncService();
+  // Guard to ensure we only register the connectivity listener once
+  static bool _connectivityListenerInitialized = false;
 
   static Future<List<TreeModel>> initializeApp() async {
     final online = await ConnectivityHelper.hasInternetConnection();
@@ -22,7 +26,6 @@ class AppInitializer {
     } else {
       print('🌐 Online mode detected. Fetching from remote...');
       try {
-        // Fetch species list and cache to local DB for offline name lookups
         try {
           await TreeApi.fetchSpecies();
         } catch (e) {
@@ -39,6 +42,15 @@ class AppInitializer {
           print('🍎 Fruits fetched & cached during init');
         } catch (e) {
           print('⚠️ Failed to fetch/cache fruits during init: $e');
+        }
+        // Fetch and cache growth logs once, then group them per-tree before caching
+        try {
+          final remoteGrowth = await TreeGrowthApi.fetchAllGrowthLogs();
+          final growthModels = remoteGrowth.map((g) => TreeGrowthModel.fromMap(g)).toList();
+          await localDB.cacheRemoteGrowths(growthModels);
+          print('🌱 Growth logs fetched & cached during init');
+        } catch (e) {
+          print('⚠️ Failed to fetch/cache growth logs during init: $e');
         }
         await _syncService.syncUnsyncedTrees();
         // Also attempt to sync any fruits that were created offline
@@ -58,6 +70,12 @@ class AppInitializer {
   }
 
   static void initConnectivityListener() {
+    if (_connectivityListenerInitialized) {
+      print('⚠️ Connectivity listener already initialized — skipping duplicate registration');
+      return;
+    }
+    _connectivityListenerInitialized = true;
+    print('ℹ️ Registering connectivity listener');
     Connectivity().onConnectivityChanged.listen((status) async {
       final online = await ConnectivityHelper.hasInternetConnection();
       if (online) {
@@ -75,6 +93,36 @@ class AppInitializer {
             print('🍎 Fruits fetched & cached after reconnect');
           } catch (e) {
             print('⚠️ Failed to fetch/cache fruits after reconnect: $e');
+          }
+          // Fetch and cache growth logs once after reconnect, then group per tree
+          try {
+            final remoteGrowths = await TreeGrowthApi.fetchAllGrowthLogs();
+            print('ℹ️ Fetched ${remoteGrowths.length} remote growth rows total after reconnect');
+
+            // Group by tree UUID
+            final Map<String, List<Map<String, dynamic>>> growthsByTree = {};
+            for (final g in remoteGrowths) {
+              final tUuid = g['tree_uuid'] ?? g['treeUuid'] ?? '';
+              if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
+              growthsByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(g));
+            }
+
+            for (final t in refreshed) {
+              try {
+                final treeUuid = t.uuid;
+                final remoteForTree = growthsByTree[treeUuid] ?? [];
+                print('ℹ️ Fetched ${remoteForTree.length} remote growth rows for tree=$treeUuid after reconnect');
+                final growthModels = remoteForTree.map((g) => TreeGrowthModel.fromMap(g)).toList();
+                await localDB.cacheRemoteGrowths(growthModels);
+                final cached = await localDB.fetchAllGrowths(treeUuid: treeUuid);
+                print('✅ After caching (reconnect), local growth rows for tree=$treeUuid: ${cached.length}');
+              } catch (inner) {
+                print('⚠️ Failed to cache growths for a tree after reconnect: $inner');
+              }
+            }
+            print('🌱 Growth logs fetched & cached after reconnect');
+          } catch (e) {
+            print('⚠️ Failed to fetch/cache growth logs after reconnect: $e');
           }
           await _syncService.syncUnsyncedTrees();
           // Sync fruits after trees

@@ -3,7 +3,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/fruit/create_fruit.dart';
 import 'package:fyp_hbs/services/api/fruit_api.dart';
-import 'package:fyp_hbs/services/local_db.dart';
+import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 
