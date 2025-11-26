@@ -7,8 +7,13 @@ import 'api/fruit_api.dart';
 import 'api/tree_growth_api.dart';
 import 'local database/local_db.dart';
 import '../models/tree_growth_model.dart';
-import '../services/sync_services.dart';
+import 'local database/sync_services/sync_services.dart';
 import '../utils/connectivity_helper.dart';
+import '../services/local database/tree_db.dart';
+import '../services/local database/fruit_db.dart';
+import '../services/local database/growth_db.dart';
+import '../services/local database/sync_services/tree_sync.dart';
+import '../services/local database/sync_services/fruit_sync.dart';
 
 class AppInitializer {
   static final SyncService _syncService = SyncService();
@@ -18,11 +23,14 @@ class AppInitializer {
   static Future<List<TreeModel>> initializeApp() async {
     final online = await ConnectivityHelper.hasInternetConnection();
     final localDB = LocalDB.instance;
+    final treeDB = TreeDB();
+    final fruitDB = FruitDB();
+    final growthDB = GrowthDB();
     List<TreeModel> trees = [];
 
     if (!online) {
       print('📴 Offline mode detected. Loading from local DB...');
-      trees = await localDB.fetchAllTrees();
+      trees = await treeDB.fetchAllTrees();
     } else {
       print('🌐 Online mode detected. Fetching from remote...');
       try {
@@ -33,12 +41,12 @@ class AppInitializer {
         }
         final repo = TreeRepository();
         trees = await repo.getTrees();
-        await localDB.cacheRemoteTrees(trees);
+        await treeDB.cacheRemoteTrees(trees);
         // Fetch and cache fruits for offline use
         try {
           final remoteFruits = await FruitApi.fetchFruits();
           final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
-          await localDB.cacheRemoteFruits(fruitModels);
+          await fruitDB.cacheRemoteFruits(fruitModels);
           print('🍎 Fruits fetched & cached during init');
         } catch (e) {
           print('⚠️ Failed to fetch/cache fruits during init: $e');
@@ -47,22 +55,22 @@ class AppInitializer {
         try {
           final remoteGrowth = await TreeGrowthApi.fetchAllGrowthLogs();
           final growthModels = remoteGrowth.map((g) => TreeGrowthModel.fromMap(g)).toList();
-          await localDB.cacheRemoteGrowths(growthModels);
+          await growthDB.cacheRemoteGrowths(growthModels);
           print('🌱 Growth logs fetched & cached during init');
         } catch (e) {
           print('⚠️ Failed to fetch/cache growth logs during init: $e');
         }
-        await _syncService.syncUnsyncedTrees();
+        await SyncTrees().syncUnsyncedTrees();
         // Also attempt to sync any fruits that were created offline
         try {
-          await _syncService.syncFruits();
+          await SyncFruits().syncFruits();
           print('🍎 Fruit sync complete during init');
         } catch (e) {
           print('⚠️ Fruit sync during init failed: $e');
         }
       } catch (e) {
         print('⚠️ Remote fetch failed: $e');
-        trees = await localDB.fetchAllTrees();
+        trees = await treeDB.fetchAllTrees();
       }
     }
 
@@ -82,14 +90,17 @@ class AppInitializer {
         print('🌐 Reconnected — syncing...');
         try {
           final localDB = LocalDB.instance;
+          final treeDB = TreeDB();
+          final fruitDB = FruitDB();
+          final growthDB = GrowthDB();
           final repo = TreeRepository();
           final refreshed = await repo.getTrees();
-          await localDB.cacheRemoteTrees(refreshed);
+          await treeDB.cacheRemoteTrees(refreshed);
           // Fetch and cache fruits after reconnect
           try {
             final remoteFruits = await FruitApi.fetchFruits();
             final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
-            await localDB.cacheRemoteFruits(fruitModels);
+            await fruitDB.cacheRemoteFruits(fruitModels);
             print('🍎 Fruits fetched & cached after reconnect');
           } catch (e) {
             print('⚠️ Failed to fetch/cache fruits after reconnect: $e');
@@ -113,8 +124,8 @@ class AppInitializer {
                 final remoteForTree = growthsByTree[treeUuid] ?? [];
                 print('ℹ️ Fetched ${remoteForTree.length} remote growth rows for tree=$treeUuid after reconnect');
                 final growthModels = remoteForTree.map((g) => TreeGrowthModel.fromMap(g)).toList();
-                await localDB.cacheRemoteGrowths(growthModels);
-                final cached = await localDB.fetchAllGrowths(treeUuid: treeUuid);
+                await growthDB.cacheRemoteGrowths(growthModels);
+                final cached = await growthDB.fetchAllGrowths(treeUuid: treeUuid);
                 print('✅ After caching (reconnect), local growth rows for tree=$treeUuid: ${cached.length}');
               } catch (inner) {
                 print('⚠️ Failed to cache growths for a tree after reconnect: $inner');
@@ -124,10 +135,10 @@ class AppInitializer {
           } catch (e) {
             print('⚠️ Failed to fetch/cache growth logs after reconnect: $e');
           }
-          await _syncService.syncUnsyncedTrees();
+          await SyncTrees().syncUnsyncedTrees();
           // Sync fruits after trees
           try {
-            await _syncService.syncFruits();
+            await SyncFruits().syncFruits();
             print('🍎 Fruit sync complete after reconnect');
           } catch (e) {
             print('⚠️ Fruit sync after reconnect failed: $e');

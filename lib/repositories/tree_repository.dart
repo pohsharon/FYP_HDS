@@ -1,10 +1,10 @@
 import 'dart:io';
 import '../models/tree_model.dart';
-import '../services/local database/local_db.dart';
+import '../services/local database/tree_db.dart';
 import '../services/api/tree_api.dart';
 
 class TreeRepository {
-  final LocalDB _localDB = LocalDB.instance;
+  final TreeDB _localDB = TreeDB();
 
   Future<List<TreeModel>> getTrees() async {
     try {

@@ -3,7 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_growth_api.dart';
 import 'package:fyp_hbs/models/tree_growth_model.dart';
-import 'package:fyp_hbs/services/local database/local_db.dart';
+import 'package:fyp_hbs/services/local database/growth_db.dart';
 
 class GrowthLogTabPage extends StatefulWidget {
   final String treeUuid;
@@ -53,7 +53,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
     } catch (e) {
       print("⚠️ Remote growth fetch failed, falling back to local DB: $e");
       try {
-        final local = await LocalDB.instance.fetchAllGrowths(treeUuid: widget.treeUuid);
+        final local = await GrowthDB().fetchAllGrowths(treeUuid: widget.treeUuid);
         logs = local.map((m) => m.toMap()).toList();
       } catch (localErr) {
         print("⚠️ Failed to load local growth logs: $localErr");
@@ -261,7 +261,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                                             createdAt: DateTime.now().toIso8601String(),
                                             synced: 0,
                                           );
-                                          await LocalDB.instance.insertGrowth(g);
+                                          await GrowthDB().insertGrowth(g);
                                           Navigator.pop(context, true);
                                           await _fetchGrowthLogs();
                                           if (mounted) setState(() {});

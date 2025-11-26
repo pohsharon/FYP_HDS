@@ -1,16 +1,14 @@
+import '../tree_db.dart';
+import '../../api/tree_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'local database/local_db.dart';
-import 'api/tree_api.dart';
-import 'api/fruit_api.dart';
 
-class SyncService {
-  final LocalDB _localDB = LocalDB.instance;
+class SyncTrees {
   bool _isRunning = false;
   DateTime? _lastRun;
 
   bool get isRunning => _isRunning;
 
-  Future<void> syncUnsyncedTrees() async {
+ Future<void> syncUnsyncedTrees() async {
     final now = DateTime.now();
     // 🕒 Prevent duplicate runs
     if (_lastRun != null && now.difference(_lastRun!).inMilliseconds < 1200) {
@@ -34,7 +32,7 @@ class SyncService {
       }
 
       // 🧹 STEP 2: Handle pending deletes
-      final deletes = await _localDB.fetchPendingDeletes();
+      final deletes = await TreeDB().fetchPendingDeletes();
       print('🗑 Found ${deletes.length} pending deletes');
       for (final t in deletes) {
         try {
@@ -52,7 +50,7 @@ class SyncService {
             final serverId = treeObj['id']?.toString() ?? treeObj['server_id']?.toString();
             if (serverId != null && serverId.isNotEmpty) {
               await TreeApi.deleteTree(serverId);
-              await _localDB.deleteTreeByUuid(t.uuid);
+              await TreeDB().deleteTreeByUuid(t.uuid);
               print('✅ Deleted remote & local by resolved id: ${t.uuid} -> $serverId');
               continue;
             } else {
@@ -62,7 +60,7 @@ class SyncService {
             final msg = e.toString();
             if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('Not Found')) {
               // Remote already missing — remove local row and consider delete successful
-              await _localDB.deleteTreeByUuid(t.uuid);
+              await TreeDB().deleteTreeByUuid(t.uuid);
               print('ℹ️ Remote not found for uuid ${t.uuid}; removed local row');
               continue;
             } else {
@@ -74,12 +72,12 @@ class SyncService {
           if (t.id != null) {
             try {
               await TreeApi.deleteTree(t.id.toString());
-              await _localDB.deleteTreeByUuid(t.uuid);
+              await TreeDB().deleteTreeByUuid(t.uuid);
               print('✅ Deleted remote & local by local id fallback: ${t.uuid}');
             } catch (e) {
               final msg = e.toString();
               if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('Not Found')) {
-                await _localDB.deleteTreeByUuid(t.uuid);
+                await TreeDB().deleteTreeByUuid(t.uuid);
                 print('ℹ️ Remote record not found for id ${t.id}; removed local row ${t.uuid}');
               } else {
                 print('⚠️ Delete by id fallback failed for ${t.uuid}: $e');
@@ -94,7 +92,7 @@ class SyncService {
       }
 
       // 📝 STEP 3: Handle pending updates
-      final updates = await _localDB.fetchPendingUpdates();
+      final updates = await TreeDB().fetchPendingUpdates();
       print('🧩 Found ${updates.length} pending updates');
       for (final t in updates) {
         try {
@@ -112,7 +110,7 @@ class SyncService {
                 imageFile: t.imageFile,
               );
               if (resp['success'] == true || resp.containsKey('data')) {
-                await _localDB.clearPendingUpdate(t.uuid);
+                await TreeDB().clearPendingUpdate(t.uuid);
                 print('✅ Synced update by id: ${t.uuid}');
                 updated = true;
               } else {
@@ -152,7 +150,7 @@ class SyncService {
                   imageFile: t.imageFile,
                 );
                 if (resp3['success'] == true || resp3.containsKey('data')) {
-                  await _localDB.clearPendingUpdate(t.uuid);
+                  await TreeDB().clearPendingUpdate(t.uuid);
                   print('✅ Synced update by resolved server id: ${t.uuid} -> $serverId');
                   updated = true;
                 } else {
@@ -180,7 +178,7 @@ class SyncService {
       }
 
       // 🌱 STEP 4: Handle unsynced new trees
-      final unsynced = await _localDB.fetchUnsyncedTrees();
+      final unsynced = await TreeDB().fetchUnsyncedTrees();
       print('🌱 Found ${unsynced.length} new unsynced trees');
       for (final tree in unsynced) {
         try {
@@ -230,7 +228,7 @@ class SyncService {
               response['status'] == 'success' ||
               response.containsKey('data')) {
             // mark as synced
-            final updated = await _localDB.markAsSynced(tree.uuid);
+            final updated = await TreeDB().markAsSynced(tree.uuid);
             if (updated > 0) {
               print('✅ Synced new tree: ${tree.uuid}');
             } else {
@@ -249,136 +247,4 @@ class SyncService {
       print('🔁 Sync process complete.');
     }
   }
-
-  Future<void> syncFruits() async {
-    // Full fruit sync: deletes -> updates -> new creations
-    try {
-      final hasInternet = await Connectivity().checkConnectivity() != ConnectivityResult.none;
-      if (!hasInternet) {
-        print('📴 Offline — fruit sync postponed');
-        return;
-      }
-
-      // 1) Pending deletes
-      final deletes = await _localDB.fetchPendingFruitDeletes();
-      print('🗑️ Found ${deletes.length} pending fruit deletes');
-      for (final f in deletes) {
-        try {
-          try {
-            await FruitApi.deleteFruit(f.harvest_uuid ?? '');
-            await _localDB.deleteFruitByHarvestUuid(f.harvest_uuid ?? '');
-            print('✅ Deleted remote & local fruit ${f.harvest_uuid}');
-          } catch (e) {
-            final msg = e.toString();
-            if (msg.contains('404') || msg.contains('Not Found') || msg.contains('No query results')) {
-              // treat as already deleted
-              await _localDB.deleteFruitByHarvestUuid(f.harvest_uuid ?? '');
-              print('ℹ️ Remote fruit not found ${f.harvest_uuid}; removed local row');
-            } else {
-              print('⚠️ Failed to delete remote fruit ${f.harvest_uuid}: $e');
-            }
-          }
-        } catch (e) {
-          print('⚠️ Error during fruit delete for ${f.harvest_uuid}: $e');
-        }
-      }
-
-      // 2) Pending updates
-      final updates = await _localDB.fetchPendingFruitUpdates();
-      print('🔁 Found ${updates.length} pending fruit updates');
-      for (final f in updates) {
-        try {
-          try {
-            await FruitApi.updateFruit(
-              uuid: f.harvest_uuid ?? '',
-              tree_uuid: f.tree_uuid ?? '',
-              harvest_uuid: f.harvest_uuid ?? '',
-              weight: f.weight ?? 0.0,
-              grade: f.grade ?? '',
-              harvested_at: f.harvested_at ?? '',
-              is_spoiled: f.is_spoiled,
-            );
-            await _localDB.clearFruitPendingUpdate(f.harvest_uuid ?? '');
-            print('✅ Synced fruit update ${f.harvest_uuid}');
-            continue;
-          } catch (e) {
-            final msg = e.toString();
-            if (msg.contains('404') || msg.contains('Not Found') || msg.contains('No query results')) {
-              print('ℹ️ Fruit update returned 404 for ${f.harvest_uuid}; will try to create instead');
-              // fallthrough to create
-            } else {
-              print('⚠️ Fruit update failed for ${f.harvest_uuid}: $e');
-              continue;
-            }
-          }
-
-          // If update wasn't possible, try creating as a fallback
-          try {
-            final resp = await FruitApi.createFruit(
-              tree_uuid: f.tree_uuid ?? '',
-              harvest_uuid: f.harvest_uuid ?? '',
-              weight: f.weight ?? 0.0,
-              grade: f.grade ?? '',
-              harvested_at: f.harvested_at ?? '',
-              is_spoiled: f.is_spoiled,
-            );
-            if (resp['success'] == true || resp.containsKey('data')) {
-              await _localDB.clearFruitPendingUpdate(f.harvest_uuid ?? '');
-              print('✅ Created fruit during update fallback ${f.harvest_uuid}');
-            } else {
-              print('⚠️ Create fallback for fruit ${f.harvest_uuid} returned unexpected response');
-            }
-          } catch (e) {
-            print('❌ Create fallback failed for fruit ${f.harvest_uuid}: $e');
-          }
-        } catch (e) {
-          print('⚠️ Failed to process pending fruit update ${f.harvest_uuid}: $e');
-        }
-      }
-
-      // 3) New unsynced fruits (skip ones marked pending_update or pending_delete)
-      final unsynced = await _localDB.getUnsyncedFruits();
-      final newOnes = unsynced.where((f) => f.pendingUpdate == 0 && f.pendingDelete == 0).toList();
-      print('� Found ${newOnes.length} new unsynced fruits');
-      for (final fruit in newOnes) {
-        try {
-          final payload = {
-            'tree_uuid': fruit.tree_uuid ?? '',
-            'harvest_uuid': fruit.harvest_uuid ?? '',
-            'weight': fruit.weight ?? 0.0,
-            'grade': fruit.grade ?? '',
-            'harvested_at': fruit.harvested_at ?? '',
-            'is_spoiled': fruit.is_spoiled,
-          };
-          print('🔁 Uploading fruit ${fruit.harvest_uuid} payload=$payload');
-
-          final response = await FruitApi.createFruit(
-            tree_uuid: fruit.tree_uuid ?? '',
-            harvest_uuid: fruit.harvest_uuid ?? '',
-            weight: fruit.weight ?? 0.0,
-            grade: fruit.grade ?? '',
-            harvested_at: fruit.harvested_at ?? '',
-            is_spoiled: fruit.is_spoiled,
-          );
-
-          print('📡 Server response for ${fruit.harvest_uuid}: $response');
-
-          if (response['success'] == true || response.containsKey('data')) {
-            await _localDB.markFruitAsSynced(fruit.harvest_uuid ?? '');
-            print('✅ Synced new fruit ${fruit.harvest_uuid}');
-          } else {
-            print('⚠️ Fruit create API returned unexpected response for ${fruit.harvest_uuid}: $response');
-          }
-        } catch (e, st) {
-          print('❌ Failed to sync fruit ${fruit.harvest_uuid}: $e');
-          print(st);
-        }
-      }
-    } catch (e) {
-      print('⚠️ syncFruits failed: $e');
-    }
-}
-
-
-  
 }

@@ -6,10 +6,11 @@ import 'package:fyp_hbs/services/api/fruit_api.dart';
 import 'package:fyp_hbs/repositories/tree_repository.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import 'package:fyp_hbs/models/fruit_model.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fyp_hbs/services/local database/tree_db.dart';
+import 'package:fyp_hbs/services/local database/fruit_db.dart';
 
 class CreateFruitPage extends StatefulWidget {
   final Map<String, dynamic>? fruit;
@@ -62,7 +63,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
     // As a last-resort fallback, read directly from local DB
     if (treeList.isEmpty) {
       try {
-        final local = await LocalDB.instance.fetchAllTrees();
+        final local = await TreeDB().fetchAllTrees();
         treeList = local
             .map((t) => {
                   'uuid': t.uuid,
@@ -283,7 +284,7 @@ Future<void> _saveFruit() async {
         // Network/server error — fall back to local save so user action is not lost.
         print('⚠️ FruitApi.createFruit failed, saving locally: $e');
         try {
-          await LocalDB.instance.insertFruit(fruitModel);
+          await FruitDB().insertFruit(fruitModel);
           savedLocally = true;
         } catch (insertErr) {
           print('⚠️ Failed to save fruit locally after API failure: $insertErr');
@@ -293,9 +294,9 @@ Future<void> _saveFruit() async {
       }
     } else {
       // Offline: save locally
-      await LocalDB.instance.insertFruit(fruitModel);
+      await FruitDB().insertFruit(fruitModel);
       try {
-        final unsynced = await LocalDB.instance.getUnsyncedFruits();
+        final unsynced = await FruitDB().getUnsyncedFruits();
         print('🍏 Saved fruit locally (harvest_uuid=${fruitModel.harvest_uuid}). Unsynced count=${unsynced.length}');
       } catch (e) {
         print('⚠️ Could not read unsynced fruits after insert: $e');

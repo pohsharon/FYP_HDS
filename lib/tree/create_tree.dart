@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:fyp_hbs/services/local%20database/tree_db.dart';
 
 class CreateTreePage extends StatefulWidget {
   final Map<String, dynamic>? tree;
@@ -163,7 +164,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
             // Do not clear thumbnail here; imageFile is stored separately in TreeModel.imageFile
           };
 
-          final updatedRows = await LocalDB.instance.updateTreeByUuid(uuidExisting, changes, markPendingUpdate: true);
+          final updatedRows = await TreeDB().updateTreeByUuid(uuidExisting, changes, markPendingUpdate: true);
           print('🌱 Offline edit saved locally for uuid=$uuidExisting (updated rows: $updatedRows)');
 
           await Flushbar(
@@ -190,7 +191,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
             imageFile: _selectedImage,
           );
 
-          final insertedId = await LocalDB.instance.insertTree(offlineTree);
+          final insertedId = await TreeDB().insertTree(offlineTree);
 
           print(
             '🌱 Offline tree saved locally: ${offlineTree.treeTag} (row id: $insertedId)',
@@ -198,7 +199,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
 
           // DEBUG: verify unsynced rows count immediately after insert
           try {
-            final unsyncedNow = await LocalDB.instance.fetchUnsyncedTrees();
+            final unsyncedNow = await TreeDB().fetchUnsyncedTrees();
             print(
               '📦 After offline insert, unsynced count: ${unsyncedNow.length}',
             );
@@ -282,7 +283,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
                   try {
                     final online = await ConnectivityHelper.hasInternetConnection();
                     if (!online) {
-                      await LocalDB.instance.markAsPendingDelete(
+                      await TreeDB().markAsPendingDelete(
                         widget.tree!['uuid'],
                       );
                       await Flushbar(

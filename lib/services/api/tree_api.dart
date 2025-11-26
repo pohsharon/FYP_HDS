@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:fyp_hbs/services/local%20database/species_db.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fyp_hbs/services/local%20database/local_db.dart';
@@ -114,7 +115,7 @@ class TreeApi {
 
         // Also persist species into local SQLite for stronger offline lookup
         try {
-          await LocalDB.instance.saveSpeciesList(speciesList);
+          await SpeciesDB().saveSpeciesList(speciesList);
           print('✅ Species saved to local DB (${speciesList.length})');
         } catch (e) {
           print('⚠️ Failed to save species to local DB: $e');

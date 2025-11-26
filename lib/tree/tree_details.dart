@@ -12,6 +12,10 @@ import '../config.dart';
 import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/models/tree_growth_model.dart';
+import 'package:fyp_hbs/services/local%20database/tree_db.dart';
+import 'package:fyp_hbs/services/local%20database/species_db.dart';
+import 'package:fyp_hbs/services/local%20database/growth_db.dart';
+
 
 class TreeDetailsPage extends StatefulWidget {
   final String treeID;
@@ -61,7 +65,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
       } catch (e2) {
         // Try to load from local DB as a fallback (offline-created tree)
         try {
-          final local = await LocalDB.instance.fetchAllTrees();
+          final local = await TreeDB().fetchAllTrees();
           TreeModel? match;
           for (final m in local) {
             if (m.uuid == widget.treeID || m.id?.toString() == widget.treeID) {
@@ -76,7 +80,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
             // try to resolve species name from local species table
             String speciesName = m.speciesId ?? 'Unknown';
             try {
-              final speciesRows = await LocalDB.instance.getAllSpecies();
+              final speciesRows = await SpeciesDB().getAllSpecies();
               for (final s in speciesRows) {
                 final sid = s['id']?.toString();
                 if (sid != null && sid == (m.speciesId?.toString() ?? '')) {
@@ -132,15 +136,14 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     final String uuid = (treeUuid?.toString() ?? widget.treeID);
 
     try {
-      final growthDb = LocalDB.instance;
-      List<TreeGrowthModel> rows = await growthDb.fetchAllGrowths(
+      List<TreeGrowthModel> rows = await GrowthDB().fetchAllGrowths(
         treeUuid: uuid,
       );
 
       // If no rows found, optionally try relaxed match for local trees
       if (rows.isEmpty && uuid.startsWith('local_')) {
         final fallbackUuid = uuid.replaceFirst('local_', '');
-        rows = await growthDb.fetchAllGrowths(treeUuid: fallbackUuid);
+        rows = await GrowthDB().fetchAllGrowths(treeUuid: fallbackUuid);
         print('⚠️ Relax fallback matched rows: ${rows.length}');
       }
 
@@ -148,7 +151,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
       if (rows.isEmpty) {
         // Also print total rows in DB for debugging
         try {
-          final all = await growthDb.fetchAllGrowths();
+          final all = await GrowthDB().fetchAllGrowths();
           print('ℹ️ No cached growth found for $uuid — total growth rows in DB=${all.length}');
         } catch (_) {
           print('ℹ️ No cached growth found for $uuid');

@@ -3,9 +3,11 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/fruit/create_fruit.dart';
 import 'package:fyp_hbs/services/api/fruit_api.dart';
-import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
+import 'package:fyp_hbs/services/local database/fruit_db.dart';
+import 'package:fyp_hbs/services/local database/tree_db.dart';
+import 'package:fyp_hbs/services/local database/species_db.dart';
 
 class FruitPage extends StatefulWidget {
   const FruitPage({super.key});
@@ -45,10 +47,10 @@ class _FruitPageState extends State<FruitPage> {
     } catch (e) {
       // On error (likely offline), try to load fruits from local DB cache
       try {
-        final localFruits = await LocalDB.instance.getAllFruits();
+        final localFruits = await FruitDB().getAllFruits();
         // build tree/species lookup to populate nested fields similar to API shape
-        final localTrees = await LocalDB.instance.fetchAllTrees();
-        final speciesRows = await LocalDB.instance.getAllSpecies();
+        final localTrees = await TreeDB().fetchAllTrees();
+        final speciesRows = await SpeciesDB().getAllSpecies();
         final Map<String, String> speciesLookup = {};
         for (final s in speciesRows) {
           final key = s['id']?.toString();

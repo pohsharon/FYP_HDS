@@ -4,7 +4,8 @@ import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
-import 'package:fyp_hbs/services/local%20database/local_db.dart';
+import 'package:fyp_hbs/services/local%20database/tree_db.dart';
+import 'package:fyp_hbs/services/local%20database/species_db.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:intl/intl.dart';
 import 'package:fyp_hbs/tree/map.dart';
@@ -78,9 +79,9 @@ class _TreePageState extends State<TreePage> {
     print('Offline mode: falling back to local DB');
 
     try {
-      final local = await LocalDB.instance.fetchAllTrees();
+      final local = await TreeDB().fetchAllTrees();
       // build species lookup from local species table
-      final speciesRows = await LocalDB.instance.getAllSpecies();
+      final speciesRows = await SpeciesDB().getAllSpecies();
       final Map<String, String> speciesLookup = {};
       for (final s in speciesRows) {
         final key = s['id']?.toString();
