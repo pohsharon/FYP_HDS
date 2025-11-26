@@ -73,13 +73,12 @@ class HealthApi {
   }
 
   static Future<List<Map<String, dynamic>>> fetchHealthRecords(
-    String treeUuid,
   ) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
     final response = await http.get(
-      Uri.parse("${Config.apiBaseUrl}/trees/$treeUuid/health-records"),
+      Uri.parse("${Config.apiBaseUrl}/health-records"),
       headers: {
         "Accept": "application/json",
         if (token != null) "Authorization": "Bearer $token",

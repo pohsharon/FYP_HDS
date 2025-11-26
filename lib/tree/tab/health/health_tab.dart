@@ -32,7 +32,7 @@ Widget build(BuildContext context) {
         _buildSearchAndAddButton(),
         const SizedBox(height: 16),
         FutureBuilder<List<Map<String, dynamic>>>(
-          future: HealthApi.fetchHealthRecords(widget.treeUuid),
+          future: HealthApi.fetchTreeHealthRecords(widget.treeUuid),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
