@@ -4,15 +4,37 @@ import 'package:path/path.dart';
 class LocalDB {
   static final LocalDB instance = LocalDB._init();
   static Database? _db;
+  // Keep a single source of truth for DB version used by the code
+  static const int _targetDbVersion = 3;
 
   LocalDB._init();
 
    static Future<Database> getDatabase() async {
-    if (_db != null) return _db!;
+    // If we already opened a DB, ensure its on-disk user_version matches the
+    // target version. If it's older, close and reopen to trigger onUpgrade.
+    if (_db != null) {
+      try {
+        final existingVersion = await _db!.getVersion();
+        if (existingVersion < _targetDbVersion) {
+          print('ℹ️ LocalDB: detected DB version $existingVersion < $_targetDbVersion, reopening to run migrations');
+          await _db!.close();
+          _db = null;
+        } else {
+          return _db!;
+        }
+      } catch (e) {
+        // If anything goes wrong reading version, close and reopen to be safe
+        print('⚠️ LocalDB: error checking DB version: $e — reopening DB to ensure migrations');
+        try {
+          await _db!.close();
+        } catch (_) {}
+        _db = null;
+      }
+    }
 
     _db = await openDatabase(
       join(await getDatabasesPath(), 'durian_farm.db'),
-      version: 2,
+      version: _targetDbVersion,
       onCreate: (db, version) async {
         await _createDB(db);
       },
@@ -93,6 +115,8 @@ class LocalDB {
         status TEXT,
         recorded_at TEXT,
         treatment TEXT,
+        disease_name TEXT,
+        thumbnail TEXT,
         synced INTEGER DEFAULT 0,
         pending_update INTEGER DEFAULT 0,
         pending_delete INTEGER DEFAULT 0
@@ -117,6 +141,16 @@ class LocalDB {
         print('✅ upgradeDB: added thumbnail column to health_record');
       } catch (e) {
         print('⚠️ upgradeDB: could not add thumbnail column to health_record: $e');
+      }
+    }
+
+    // Migration from version 2 -> 3: add disease_name column to health_record so we can persist friendly names
+    if (oldVersion < 3) {
+      try {
+        await db.execute('ALTER TABLE health_record ADD COLUMN disease_name TEXT');
+        print('✅ upgradeDB: added disease_name column to health_record');
+      } catch (e) {
+        print('⚠️ upgradeDB: could not add disease_name column to health_record: $e');
       }
     }
   }

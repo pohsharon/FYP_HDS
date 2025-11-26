@@ -1,6 +1,7 @@
 class HealthModel {
   final String? tree_uuid;
   final String? diseaseId;
+  final String? diseaseName;
   final String? status;
   final String? recorded_at;
   final String? treatment;
@@ -17,6 +18,7 @@ class HealthModel {
     this.recorded_at,
     this.treatment,
     this.thumbnail,
+    this.diseaseName,
     this.synced = 0,
     this.pendingUpdate = 0,
     this.pendingDelete = 0,
@@ -26,6 +28,7 @@ class HealthModel {
   Map<String, dynamic> toMap() => {
     'tree_uuid': tree_uuid,
         'diseaseId': diseaseId,
+        'disease_name': diseaseName,
         'status': status,
         'recorded_at': recorded_at,
         'treatment': treatment,
@@ -39,6 +42,7 @@ class HealthModel {
     return HealthModel(
       tree_uuid: (map['tree_uuid'] ?? map['treeUuid'] ?? map['uuid'] ?? map['id'])?.toString(),
       diseaseId: (map['diseaseId'] ?? map['disease_id'])?.toString(),
+      diseaseName: (map['disease_name'] ?? map['diseaseName'] ?? (map['disease'] is Map ? (map['disease']['diseaseName'] ?? map['disease']['name']) : null))?.toString(),
       status: (map['status'])?.toString(),
       recorded_at: (map['recorded_at'] ?? map['recordedAt'])?.toString(),
       treatment: (map['treatment'])?.toString(),
@@ -53,6 +57,7 @@ class HealthModel {
   HealthModel copyWith({
     String? tree_uuid,
     String? diseaseId,
+    String? diseaseName,
     String? status,
     String? recorded_at,
     String? treatment,
@@ -64,6 +69,7 @@ class HealthModel {
     return HealthModel(
       tree_uuid: tree_uuid ?? this.tree_uuid,
       diseaseId: diseaseId ?? this.diseaseId,
+      diseaseName: diseaseName ?? this.diseaseName,
       status: status ?? this.status,
       recorded_at: recorded_at ?? this.recorded_at,
       treatment: treatment ?? this.treatment,
@@ -77,7 +83,7 @@ class HealthModel {
   /// Helpful for debugging
   @override
   String toString() {
-    return 'HealthModel(tree_uuid: $tree_uuid, diseaseId: $diseaseId, status: $status, '
+    return 'HealthModel(tree_uuid: $tree_uuid, diseaseId: $diseaseId, diseaseName: $diseaseName, status: $status, '
         'recorded_at: $recorded_at, treatment: $treatment, thumbnail: $thumbnail, synced: $synced, '
         'pendingUpdate: $pendingUpdate, pendingDelete: $pendingDelete)';
   }

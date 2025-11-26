@@ -157,7 +157,6 @@ class AppInitializer {
               for (final t in refreshed) {
                 try {
                   final remoteHealth = await HealthApi.fetchTreeHealthRecords(t.uuid);
-                  print('ℹ️ Fetched ${remoteHealth.length} remote health rows for tree=${t.uuid} after reconnect');
                   final healthModels = remoteHealth.map((h) => HealthModel.fromMap(h)).toList();
                   await healthDB.cacheRemoteHealth(healthModels);
                   // Optionally check counts (not implemented in HealthDB)
