@@ -11,7 +11,7 @@ class ForgotPasswordPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final TextEditingController phoneController = TextEditingController();
-    final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+    final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
     Future isPhoneRegistered(String phone) async {
       final result = await AuthService.checkPhone(phone);
@@ -47,7 +47,7 @@ class ForgotPasswordPage extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Form(
-            key: _formKey,
+            key: formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -98,7 +98,7 @@ class ForgotPasswordPage extends StatelessWidget {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () async {
-                      if (!_formKey.currentState!.validate()) return;
+                      if (!formKey.currentState!.validate()) return;
                       final phone = phoneController.text.trim();
                       final registered = await isPhoneRegistered(phone);
                       if (!registered) {

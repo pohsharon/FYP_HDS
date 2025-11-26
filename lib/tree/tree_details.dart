@@ -9,7 +9,6 @@ import 'package:fyp_hbs/tree/map_individual_tree.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:fyp_hbs/tree/tab/growthlog/growthlog_tab.dart';
 import '../config.dart';
-import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/models/tree_growth_model.dart';
 import 'package:fyp_hbs/services/local%20database/tree_db.dart';

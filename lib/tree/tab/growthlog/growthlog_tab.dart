@@ -314,7 +314,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                         LineChart(
                       LineChartData(
                         minX: 0,
-                        maxX: xLabels.length > 0
+                        maxX: xLabels.isNotEmpty
                             ? (xLabels.length - 1).toDouble()
                             : 0,
                         gridData: FlGridData(show: true),

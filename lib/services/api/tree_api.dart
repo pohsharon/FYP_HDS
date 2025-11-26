@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:fyp_hbs/services/local%20database/species_db.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import '../../config.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 

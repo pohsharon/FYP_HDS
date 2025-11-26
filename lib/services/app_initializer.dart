@@ -5,15 +5,18 @@ import '../repositories/tree_repository.dart';
 import 'api/tree_api.dart';
 import 'api/fruit_api.dart';
 import 'api/tree_growth_api.dart';
+import 'api/health_api.dart';
 import 'local database/local_db.dart';
 import '../models/tree_growth_model.dart';
-import 'local database/sync_services/sync_services.dart';
+import 'sync_services/sync_services.dart';
 import '../utils/connectivity_helper.dart';
 import '../services/local database/tree_db.dart';
 import '../services/local database/fruit_db.dart';
 import '../services/local database/growth_db.dart';
-import '../services/local database/sync_services/tree_sync.dart';
-import '../services/local database/sync_services/fruit_sync.dart';
+import '../services/local database/health_db.dart';
+import '../models/health_model.dart';
+import 'sync_services/tree_sync.dart';
+import 'sync_services/fruit_sync.dart';
 
 class AppInitializer {
   static final SyncService _syncService = SyncService();
@@ -50,6 +53,23 @@ class AppInitializer {
           print('🍎 Fruits fetched & cached during init');
         } catch (e) {
           print('⚠️ Failed to fetch/cache fruits during init: $e');
+        }
+        // Fetch and cache health records per tree
+        try {
+          final healthDB = HealthDB();
+          for (final t in trees) {
+            try {
+              final remoteHealth = await HealthApi.fetchTreeHealthRecords(t.uuid);
+              final healthModels = remoteHealth.map((h) => HealthModel.fromMap(h)).toList();
+              await healthDB.cacheRemoteHealth(healthModels);
+            } catch (e) {
+              // per-tree failure should not stop init
+              print('⚠️ Failed to fetch/cache health for tree=${t.uuid} during init: $e');
+            }
+          }
+          print('🌱 Health records fetched & cached during init');
+        } catch (e) {
+          print('⚠️ Failed to fetch/cache health records during init: $e');
         }
         // Fetch and cache growth logs once, then group them per-tree before caching
         try {
@@ -130,6 +150,24 @@ class AppInitializer {
               } catch (inner) {
                 print('⚠️ Failed to cache growths for a tree after reconnect: $inner');
               }
+            }
+            // Fetch and cache health records per-tree after reconnect
+            try {
+              final healthDB = HealthDB();
+              for (final t in refreshed) {
+                try {
+                  final remoteHealth = await HealthApi.fetchTreeHealthRecords(t.uuid);
+                  print('ℹ️ Fetched ${remoteHealth.length} remote health rows for tree=${t.uuid} after reconnect');
+                  final healthModels = remoteHealth.map((h) => HealthModel.fromMap(h)).toList();
+                  await healthDB.cacheRemoteHealth(healthModels);
+                  // Optionally check counts (not implemented in HealthDB)
+                } catch (e) {
+                  print('⚠️ Failed to fetch/cache health for tree=${t.uuid} after reconnect: $e');
+                }
+              }
+              print('🌱 Health records fetched & cached after reconnect');
+            } catch (e) {
+              print('⚠️ Failed to fetch/cache health records after reconnect: $e');
             }
             print('🌱 Growth logs fetched & cached after reconnect');
           } catch (e) {

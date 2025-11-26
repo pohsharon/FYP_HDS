@@ -3,6 +3,8 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'create_health_info.dart';
 import 'package:fyp_hbs/services/health_api.dart';
 import 'disease_list.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import '../../../services/local database/health_db.dart';
 
 class HealthTabPage extends StatefulWidget {
   final String treeTag;
@@ -32,7 +34,7 @@ Widget build(BuildContext context) {
         _buildSearchAndAddButton(),
         const SizedBox(height: 16),
         FutureBuilder<List<Map<String, dynamic>>>(
-          future: HealthApi.fetchTreeHealthRecords(widget.treeUuid),
+          future: _fetchRecords(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -42,17 +44,23 @@ Widget build(BuildContext context) {
               return const Center(child: Text("No health records found."));
             }
 
-            final filteredRecords = snapshot.data!
-                .where((record) => record['disease']['diseaseName']
-                    .toString()
-                    .toLowerCase()
-                    .contains(searchQuery.toLowerCase()))
-                .toList();
+            final filteredRecords = snapshot.data!.where((record) {
+              // robust disease name extraction for remote (nested) or local (flattened) rows
+              String name = '';
+              try {
+                if (record['disease'] is Map) {
+                  name = (record['disease']['diseaseName'] ?? record['disease']['name'] ?? '').toString();
+                } else {
+                  name = (record['diseaseId'] ?? record['disease_id'] ?? '').toString();
+                }
+              } catch (_) {
+                name = (record['diseaseId'] ?? record['disease_id'] ?? '').toString();
+              }
+              return name.toLowerCase().contains(searchQuery.toLowerCase());
+            }).toList();
 
             return Column(
-              children: filteredRecords
-                  .map((record) => _buildRecordCard(record))
-                  .toList(),
+              children: filteredRecords.map((record) => _buildRecordCard(record)).toList(),
             );
           },
         ),
@@ -60,6 +68,32 @@ Widget build(BuildContext context) {
     ),
   );
 }
+
+  // Try fetching remote records when online; fallback to local DB when offline or on API failure
+  Future<List<Map<String, dynamic>>> _fetchRecords() async {
+    final conn = await Connectivity().checkConnectivity();
+    final healthDB = HealthDB();
+
+    if (conn == ConnectivityResult.none) {
+      // offline -> return local cached records
+      final local = await healthDB.fetchByTreeUuid(widget.treeUuid);
+      return local.map((h) => h.toMap()).toList();
+    }
+
+    try {
+      final remote = await HealthApi.fetchTreeHealthRecords(widget.treeUuid);
+      if (remote.isEmpty) {
+        // no remote rows -> fall back to local cached
+        final local = await healthDB.fetchByTreeUuid(widget.treeUuid);
+        return local.map((h) => h.toMap()).toList();
+      }
+      return remote.map((m) => Map<String, dynamic>.from(m)).toList();
+    } catch (e) {
+      // API failure -> fallback to local
+      final local = await healthDB.fetchByTreeUuid(widget.treeUuid);
+      return local.map((h) => h.toMap()).toList();
+    }
+  }
 
   Widget _buildSearchAndAddButton() {
   return Row(
@@ -194,14 +228,27 @@ Widget build(BuildContext context) {
         children: [
           Row(
             children: [
-              // Disease name
-              Text(
-                record['disease']['diseaseName'],
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
+              // Disease name (handle remote nested 'disease' or local flattened 'diseaseId')
+              Builder(builder: (_) {
+                String diseaseName = '';
+                try {
+                  if (record['disease'] is Map) {
+                    diseaseName = (record['disease']['diseaseName'] ?? record['disease']['name'] ?? '').toString();
+                  } else {
+                    diseaseName = (record['diseaseId'] ?? record['disease_id'] ?? '').toString();
+                  }
+                } catch (_) {
+                  diseaseName = (record['diseaseId'] ?? record['disease_id'] ?? '').toString();
+                }
+                if (diseaseName.trim().isEmpty) diseaseName = 'Unknown disease';
+                return Text(
+                  diseaseName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                );
+              }),
               const SizedBox(width: 8),
               // Date chip (right after disease name)
               if (recordedAt.isNotEmpty)

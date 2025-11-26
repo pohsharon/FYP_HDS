@@ -50,7 +50,9 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
         permission == LocationPermission.deniedForever) {
       permission = await Geolocator.requestPermission();
       if (permission != LocationPermission.always &&
-          permission != LocationPermission.whileInUse) return;
+          permission != LocationPermission.whileInUse) {
+        return;
+      }
     }
 
     Geolocator.getPositionStream(

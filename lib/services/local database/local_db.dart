@@ -1,8 +1,5 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../../models/tree_model.dart';
-import '../../models/fruit_model.dart';
-import '../../models/tree_growth_model.dart';
 
 class LocalDB {
   static final LocalDB instance = LocalDB._init();
@@ -15,9 +12,12 @@ class LocalDB {
 
     _db = await openDatabase(
       join(await getDatabasesPath(), 'durian_farm.db'),
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await _createDB(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        await _upgradeDB(db, oldVersion, newVersion);
       },
     );
 
@@ -109,38 +109,17 @@ class LocalDB {
     ''');
   }
 
-  // Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-  //   if (oldVersion < 3) {
-  //     await db.execute(
-  //       'CREATE TABLE IF NOT EXISTS species(id INTEGER PRIMARY KEY, name TEXT)',
-  //     );
-  //     await db.execute(
-  //       'ALTER TABLE trees ADD COLUMN pending_update INTEGER DEFAULT 0',
-  //     );
-  //     await db.execute(
-  //       'ALTER TABLE trees ADD COLUMN pending_delete INTEGER DEFAULT 0',
-  //     );
-  //     await db.execute('ALTER TABLE trees ADD COLUMN synced INTEGER DEFAULT 0');
-  //     await db.execute('ALTER TABLE species ADD COLUMN species_name TEXT');
-  //   }
-  //   if (oldVersion < 3) {
-  //     // Add fruit_tag column to fruits table for storing server-provided fruit tags
-  //     try {
-  //       await db.execute('ALTER TABLE fruits ADD COLUMN fruit_tag TEXT');
-  //     } catch (e) {
-  //       print('⚠️ upgradeDB: could not add fruit_tag column: $e');
-  //     }
-  //   }
-  //   if (oldVersion < 4) {
-  //     // Add created_at column for ordering and sync clarity
-  //     try {
-  //       await db.execute('ALTER TABLE fruits ADD COLUMN created_at TEXT');
-  //       print('✅ upgradeDB: added created_at to fruits');
-  //     } catch (e) {
-  //       print('⚠️ upgradeDB: could not add created_at column: $e');
-  //     }
-  //   }
-  // }
+  static Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    // Migration from version 1 -> 2: add thumbnail column to health_record
+    if (oldVersion < 2) {
+      try {
+        await db.execute('ALTER TABLE health_record ADD COLUMN thumbnail TEXT');
+        print('✅ upgradeDB: added thumbnail column to health_record');
+      } catch (e) {
+        print('⚠️ upgradeDB: could not add thumbnail column to health_record: $e');
+      }
+    }
+  }
 
   //Tree CRUD operations
   // Future<int> insertTree(TreeModel tree) async {

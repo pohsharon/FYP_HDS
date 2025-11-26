@@ -8,7 +8,6 @@ import '../config.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:uuid/uuid.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
-import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/services/local%20database/tree_db.dart';
 

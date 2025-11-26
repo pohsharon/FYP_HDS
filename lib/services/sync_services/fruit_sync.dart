@@ -1,5 +1,5 @@
-import '../fruit_db.dart';
-import '../../api/fruit_api.dart';
+import '../local database/fruit_db.dart';
+import '../api/fruit_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SyncFruits {

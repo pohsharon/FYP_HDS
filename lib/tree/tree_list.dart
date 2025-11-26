@@ -23,7 +23,7 @@ class _TreePageState extends State<TreePage> {
   List<dynamic> trees = [];
   List<dynamic> _allTrees = [];
   List<dynamic> _filteredTrees = [];
-  List<String> _speciesList = [];
+  final List<String> _speciesList = [];
   String? _selectedSpecies;
   final ScrollController _scrollController = ScrollController();
 

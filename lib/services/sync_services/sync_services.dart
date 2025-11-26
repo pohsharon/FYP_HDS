@@ -1,9 +1,3 @@
-import 'package:connectivity_plus/connectivity_plus.dart';
-import '../local_db.dart';
-import '../../api/tree_api.dart';
-import '../../api/fruit_api.dart';
-import '../tree_db.dart';
-import '../fruit_db.dart';
 
 
 class SyncService {

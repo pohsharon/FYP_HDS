@@ -1,5 +1,5 @@
-import '../tree_db.dart';
-import '../../api/tree_api.dart';
+import '../local database/tree_db.dart';
+import '../api/tree_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 class SyncTrees {

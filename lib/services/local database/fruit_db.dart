@@ -14,8 +14,6 @@ class FruitDB{
 
   Future<List<FruitModel>> getAllFruits() async {
     final db = await LocalDB.getDatabase();
-    // Order: unsynced (0) first, then by created_at descending so newly created
-    // local items appear at the top.
     final result = await db.query(
       'fruits',
       orderBy: 'synced ASC, created_at DESC',
@@ -141,7 +139,7 @@ class FruitDB{
 
       // If server provides empty or duplicate harvest id, generate a stable
       // fallback id so we don't replace previous rows.
-      if (hid == null) hid = '';
+      hid ??= '';
       if (hid.toString().trim().isEmpty || seen.contains(hid.toString())) {
         genCounter++;
         final generated =

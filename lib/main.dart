@@ -50,8 +50,8 @@ class MainApp extends StatelessWidget {
           ),
         ),
         switchTheme: SwitchThemeData(
-          thumbColor: MaterialStateProperty.all(AppColors.pakistanGreen),
-          trackColor: MaterialStateProperty.all(
+          thumbColor: WidgetStateProperty.all(AppColors.pakistanGreen),
+          trackColor: WidgetStateProperty.all(
             AppColors.pakistanGreen.withOpacity(0.5),
           ),
         ),
