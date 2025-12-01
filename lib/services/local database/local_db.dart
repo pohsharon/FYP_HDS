@@ -124,9 +124,9 @@ class LocalDB {
     ''');
 
     await db.execute('''
-    CREATE TABLE IF NOT EXISTS disease (
+    CREATE TABLE IF NOT EXISTS diseases (
         id INTEGER PRIMARY KEY,
-        diease_name TEXT,
+        disease_name TEXT,
         symptoms TEXT,
         remarks TEXT
       )

@@ -7,6 +7,7 @@ import 'api/fruit_api.dart';
 import 'api/tree_growth_api.dart';
 import 'api/health_api.dart';
 import 'api/agrochemical_api.dart';
+import 'api/disease_api.dart';
 // local_db import not required here
 import '../models/tree_growth_model.dart';
 import 'sync_services/sync_services.dart';
@@ -20,6 +21,7 @@ import '../models/health_model.dart';
 import '../models/agrochemical_model.dart';
 import 'sync_services/tree_sync.dart';
 import 'sync_services/fruit_sync.dart';
+import '../services/local database/disease_db.dart';
 
 class AppInitializer {
   static final SyncService _syncService = SyncService();
@@ -48,6 +50,14 @@ class AppInitializer {
           await TreeApi.fetchSpecies();
         } catch (e) {
           print('⚠️ Failed to fetch species during init: $e');
+        }
+        // Fetch and cache disease list for offline use
+        try {
+          final remoteDiseases = await DiseaseApi.fetchDiseases();
+          await DiseaseDB().saveDiseaseList(remoteDiseases);
+          print('🦠 Diseases fetched & cached during init (${remoteDiseases.length})');
+        } catch (e) {
+          print('⚠️ Failed to fetch/cache diseases during init: $e');
         }
   final repo = TreeRepository();
   // Force a fresh remote fetch during initialization
@@ -228,6 +238,14 @@ class AppInitializer {
               print('🌱 Health records fetched & cached after reconnect');
             } catch (e) {
               print('⚠️ Failed to fetch/cache health records after reconnect: $e');
+            }
+            // Fetch and cache global diseases list after reconnect
+            try {
+              final remoteDiseases = await DiseaseApi.fetchDiseases();
+              await DiseaseDB().saveDiseaseList(remoteDiseases);
+              print('🦠 Diseases fetched & cached after reconnect (${remoteDiseases.length})');
+            } catch (e) {
+              print('⚠️ Failed to fetch/cache diseases after reconnect: $e');
             }
             // Fetch and cache agrochemical records in bulk after reconnect, then group per-tree
             try {

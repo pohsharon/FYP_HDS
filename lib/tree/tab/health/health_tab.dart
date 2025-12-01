@@ -5,6 +5,7 @@ import 'package:fyp_hbs/services/health_api.dart';
 import 'disease_list.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../../services/local database/health_db.dart';
+import '../../../services/local database/disease_db.dart';
 
 class HealthTabPage extends StatefulWidget {
   final String treeTag;
@@ -21,6 +22,31 @@ class HealthTabPage extends StatefulWidget {
 
 class _HealthTabPageState extends State<HealthTabPage> {
   String searchQuery = '';
+  // Cache of disease id -> disease_name for offline lookups
+  final Map<String, String> _diseaseCache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDiseaseCache();
+  }
+
+  Future<void> _loadDiseaseCache() async {
+    try {
+      final rows = await DiseaseDB().getAllDiseases();
+      final Map<String, String> map = {};
+      for (final r in rows) {
+        final id = (r['id'] ?? '').toString();
+        final name = (r['disease_name'] ?? r['diseaseName'] ?? '').toString();
+        if (id.isNotEmpty && name.isNotEmpty) map[id] = name;
+      }
+      if (mounted) setState(() => _diseaseCache
+        ..clear()
+        ..addAll(map));
+    } catch (e) {
+      print('⚠️ Failed to load disease cache: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -185,9 +211,17 @@ class _HealthTabPageState extends State<HealthTabPage> {
         return (d['diseaseName'] ?? d['name'] ?? '').toString();
       }
     } catch (_) {}
+    // Local cached format: prefer explicit disease_name, otherwise try diseaseId lookup
+    final explicit = (record['disease_name'] ?? record['diseaseName'])?.toString() ?? '';
+    if (explicit.isNotEmpty) return explicit;
 
-    // Local cached format
-    return (record['disease_name'] ?? '').toString();
+    final did = (record['diseaseId'] ?? record['disease_id'])?.toString() ?? '';
+    if (did.isNotEmpty) {
+      final fromCache = _diseaseCache[did];
+      if (fromCache != null && fromCache.isNotEmpty) return fromCache;
+    }
+
+    return '';
   }
 
   Widget _buildRecordCard(Map<String, dynamic> record) {
@@ -195,6 +229,8 @@ class _HealthTabPageState extends State<HealthTabPage> {
     String recordedAt = record['recorded_at'] ?? "";
     String status = record['status'] ?? "";
     final diseaseName = extractDiseaseName(record);
+    print("Disease Name: "+ diseaseName);
+
 
     // Status color logic
     Color statusColor;

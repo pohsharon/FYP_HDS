@@ -172,6 +172,5 @@ class GrowthDB{
     final total = Sqflite.firstIntValue(
       await db.rawQuery('SELECT COUNT(*) FROM tree_growth'),
     );
-    print('✅ Cached remote growths. Total growth rows: $total');
   }
 }

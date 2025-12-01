@@ -2,6 +2,12 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/health_api.dart';
+import 'package:fyp_hbs/services/api/disease_api.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:fyp_hbs/services/local database/disease_db.dart';
+import 'package:another_flushbar/flushbar.dart';
+import 'package:fyp_hbs/models/health_model.dart';
+import 'package:fyp_hbs/services/local database/health_db.dart';
 import 'package:fyp_hbs/tree/tab/health/create_disease.dart';
 
 class CreateHealthInfoPage extends StatefulWidget {
@@ -52,50 +58,136 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
 
   Future<void> _saveHealthInfo() async {
     if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please complete the form')));
+      await Flushbar(
+        message: 'Please complete the form',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
       return;
     }
 
+    setState(() => isLoading = true);
     try {
-      setState(() => isLoading = true);
-
-      if (widget.existingRecord != null) {
-        // update existing
-        await HealthApi.updateHealthRecord(
-          id: widget.existingRecord!['id'].toString(),
-          treeUuid: widget.treeUuid,
-          diseaseId: selectedDiseaseId!,
-          date: dateController.text,
-          status: selectedStatus!,
-          treatment: treatmentController.text,
+      // Resolve diseaseName for local storage (best-effort)
+      String? diseaseName;
+      try {
+        final all = await DiseaseDB().getAllDiseases();
+        final match = all.firstWhere(
+          (d) => (d['id']?.toString() ?? '') == (selectedDiseaseId?.toString() ?? ''),
+          orElse: () => {},
         );
-      } else {
-        // create new
-        await HealthApi.createHealthRecord(
-          treeUuid: widget.treeUuid,
-          diseaseId: selectedDiseaseId!,
-          date: dateController.text,
-          status: selectedStatus!,
-          treatment: treatmentController.text,
-        );
+        if (match.isNotEmpty) diseaseName = match['disease_name'] ?? match['diseaseName'];
+      } catch (_) {
+        // ignore
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.existingRecord != null
-                ? 'Health record updated successfully'
-                : 'Health record saved successfully',
-          ),
-        ),
+      final healthModel = HealthModel(
+        tree_uuid: widget.treeUuid,
+        diseaseId: selectedDiseaseId?.toString(),
+        diseaseName: diseaseName,
+        status: selectedStatus,
+        recorded_at: dateController.text,
+        treatment: treatmentController.text,
+        synced: 0,
+        pendingUpdate: 0,
+        pendingDelete: 0,
       );
-      Navigator.pop(context, true);
+
+      final online = await ConnectivityHelper.hasInternetConnection();
+      var savedLocally = false;
+
+      if (online) {
+        try {
+          if (widget.existingRecord != null) {
+            // Attempt remote update
+            await HealthApi.updateHealthRecord(
+              id: widget.existingRecord!['id'].toString(),
+              treeUuid: widget.treeUuid,
+              diseaseId: int.parse(selectedDiseaseId!.toString()),
+              date: dateController.text,
+              status: selectedStatus!,
+              treatment: treatmentController.text,
+            );
+          } else {
+            // Attempt remote create
+            await HealthApi.createHealthRecord(
+              treeUuid: widget.treeUuid,
+              diseaseId: int.parse(selectedDiseaseId!.toString()),
+              date: dateController.text,
+              status: selectedStatus!,
+              treatment: treatmentController.text,
+            );
+          }
+        } catch (e) {
+          // Remote call failed — save locally as pending
+          print('⚠️ Health API failed, saving locally: $e');
+          try {
+            final toSave = widget.existingRecord != null
+                ? healthModel.copyWith(pendingUpdate: 1)
+                : healthModel;
+            await HealthDB().insertHealth(toSave);
+            savedLocally = true;
+          } catch (insErr) {
+            print('⚠️ Failed to save health locally after API failure: $insErr');
+            rethrow;
+          }
+        }
+      } else {
+        // Offline: save locally and mark pending appropriately
+        try {
+          final toSave = widget.existingRecord != null
+              ? healthModel.copyWith(pendingUpdate: 1)
+              : healthModel;
+          await HealthDB().insertHealth(toSave);
+          savedLocally = true;
+        } catch (insErr) {
+          print('⚠️ Failed to save health locally while offline: $insErr');
+          rethrow;
+        }
+      }
+
+      // Notify user
+      if (mounted) {
+        if (online && !savedLocally) {
+          await Flushbar(
+            message: widget.existingRecord != null ? 'Health record updated successfully' : 'Health record saved successfully',
+            icon: const Icon(Icons.check_circle, color: Colors.white),
+            backgroundColor: Colors.green.shade700,
+            duration: const Duration(seconds: 2),
+            borderRadius: BorderRadius.circular(12),
+            margin: const EdgeInsets.all(12),
+            flushbarPosition: FlushbarPosition.TOP,
+          ).show(context);
+        } else {
+          final offlineMsg = widget.existingRecord != null
+              ? 'Changes saved locally and will be synced when online'
+              : 'Health record saved locally and will be synced when online';
+          await Flushbar(
+            message: offlineMsg,
+            icon: const Icon(Icons.cloud_off, color: Colors.white),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 2),
+            borderRadius: BorderRadius.circular(12),
+            margin: const EdgeInsets.all(12),
+            flushbarPosition: FlushbarPosition.TOP,
+          ).show(context);
+        }
+        Navigator.pop(context, true);
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      await Flushbar(
+        message: 'Error: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
     } finally {
       setState(() => isLoading = false);
     }
@@ -161,13 +253,19 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
               ),
               const SizedBox(height: 16),
 
+
               FutureBuilder<List<Map<String, dynamic>>>(
-                future: HealthApi.fetchDiseases(),
+                future: _loadDiseases(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final diseaseList = snapshot.data!;
+                  if (snapshot.hasError) {
+                    // fallback to empty list on error
+                    print('⚠️ _loadDiseases error: ${snapshot.error}');
+                    return const Center(child: Text('Failed to load diseases'));
+                  }
+                  final diseaseList = snapshot.data ?? <Map<String, dynamic>>[];
 
                   return DropdownButtonFormField<String>(
                     value: selectedDiseaseId?.toString(),
@@ -215,6 +313,9 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                   );
                 },
               ),
+
+              // helper to load diseases with offline fallback
+              
 
               const SizedBox(height: 16),
 
@@ -276,5 +377,42 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
         ),
       ),
     );
+  }
+
+  Future<List<Map<String, dynamic>>> _loadDiseases() async {
+    // Try online first
+    try {
+      final online = await ConnectivityHelper.hasInternetConnection();
+      if (online) {
+        try {
+          final remote = await DiseaseApi.fetchDiseases();
+          // Ensure remote is in expected shape (id, diseaseName)
+          return remote.map((e) {
+            return {
+              'id': e['id'],
+              'diseaseName': e['diseaseName'] ?? e['disease_name'] ?? e['name'] ?? ''
+            };
+          }).toList();
+        } catch (e) {
+          print('⚠️ Remote disease fetch failed: $e');
+        }
+      }
+    } catch (e) {
+      print('⚠️ Connectivity check failed: $e');
+    }
+
+    // Fallback: load from local DB
+    try {
+      final local = await DiseaseDB().getAllDiseases();
+      return local.map((e) {
+        return {
+          'id': e['id'],
+          'diseaseName': e['disease_name'] ?? e['diseaseName'] ?? ''
+        };
+      }).toList();
+    } catch (e) {
+      print('⚠️ Failed to load diseases from local DB: $e');
+      return <Map<String, dynamic>>[];
+    }
   }
 }
