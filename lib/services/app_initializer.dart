@@ -21,6 +21,7 @@ import '../models/agrochemical_model.dart';
 import 'sync_services/tree_sync.dart';
 import 'sync_services/fruit_sync.dart';
 import 'sync_services/health_sync.dart';
+import 'sync_services/agro_sync.dart';
 import '../services/local database/disease_db.dart';
 
 class AppInitializer {
@@ -57,6 +58,14 @@ class AppInitializer {
           print('🦠 Diseases fetched & cached during init (${remoteDiseases.length})');
         } catch (e) {
           print('⚠️ Failed to fetch/cache diseases during init: $e');
+        }
+        // Fetch and cache agrochemical master list for offline use
+        try {
+          final agroTypes = await AgrochemicalApi.getAgrochemical();
+          await AgroDB().saveAgrochemicalList(agroTypes);
+          print('🧾 Agrochemical master list fetched & cached during init (${agroTypes.length})');
+        } catch (e) {
+          print('⚠️ Failed to fetch/cache agrochemical master list during init: $e');
         }
   final repo = TreeRepository();
   // Force a fresh remote fetch during initialization
@@ -149,6 +158,13 @@ class AppInitializer {
           print('🩺 Health sync attempted during init');
         } catch (e) {
           print('⚠️ Health sync during init failed: $e');
+        }
+        // Attempt to sync any pending agrochemical records created while offline
+        try {
+          await SyncAgro().syncAgro();
+          print('🧪 Agrochemical sync attempted during init');
+        } catch (e) {
+          print('⚠️ Agrochemical sync during init failed: $e');
         }
           // We performed the initial full cache during init; skip the first reconnect
           // event in the connectivity listener (if it fires immediately after registration)
@@ -254,6 +270,14 @@ class AppInitializer {
             } catch (e) {
               print('⚠️ Failed to fetch/cache diseases after reconnect: $e');
             }
+            // Fetch and cache agrochemical master list after reconnect
+            try {
+              final agroTypes = await AgrochemicalApi.getAgrochemical();
+              await AgroDB().saveAgrochemicalList(agroTypes);
+              print('🧾 Agrochemical master list fetched & cached after reconnect (${agroTypes.length})');
+            } catch (e) {
+              print('⚠️ Failed to fetch/cache agrochemical master list after reconnect: $e');
+            }
             // Fetch and cache agrochemical records in bulk after reconnect, then group per-tree
             try {
               final agroDB = AgroDB();
@@ -299,6 +323,13 @@ class AppInitializer {
             print('🩺 Health sync complete after reconnect');
           } catch (e) {
             print('⚠️ Health sync after reconnect failed: $e');
+          }
+          // Sync agrochemical after health
+          try {
+            await SyncAgro().syncAgro();
+            print('🧪 Agrochemical sync complete after reconnect');
+          } catch (e) {
+            print('⚠️ Agrochemical sync after reconnect failed: $e');
           }
         } catch (e) {
           print('⚠️ Sync error: $e');

@@ -125,4 +125,36 @@ class AgroDB {
     final total = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM agrochemical_record'));
     print('✅ Local agrochemical cache updated. Total agrochemical rows in DB: $total');
   }
+
+  // Save master list of agrochemical types (from API) into `agrochemical` lookup table
+  Future<void> saveAgrochemicalList(List<Map<String, dynamic>> list) async {
+    final db = await LocalDB.getDatabase();
+    for (final s in list) {
+      final idVal = s['id'] ?? s['uuid'] ?? s['ID'];
+      final name = s['name'] ?? s['agrochemical_name'] ?? s['agrochemicalName'] ?? '';
+      final entry = <String, dynamic>{
+        'id': idVal,
+        'agrochemical_name': name,
+      };
+      try {
+        await db.insert('agrochemical', entry, conflictAlgorithm: ConflictAlgorithm.replace);
+      } catch (e) {
+        print('⚠️ saveAgrochemicalList: failed to insert $entry: $e');
+      }
+    }
+    final total = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM agrochemical'));
+    print('✅ Saved ${list.length} agrochemical types to local lookup (total=$total)');
+  }
+
+  // Return all agrochemical master/type rows from local DB
+  Future<List<Map<String, dynamic>>> getAllAgrochemicals() async {
+    final db = await LocalDB.getDatabase();
+    try {
+      final res = await db.query('agrochemical');
+      return res;
+    } catch (e) {
+      print('⚠️ getAllAgrochemicals: failed to read agrochemical lookup: $e');
+      return <Map<String, dynamic>>[];
+    }
+  }
 }

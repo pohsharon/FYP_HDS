@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/agrochemical_api.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:fyp_hbs/services/local database/agro_db.dart';
+import 'package:another_flushbar/flushbar.dart';
+import 'package:fyp_hbs/models/agrochemical_model.dart';
 
 class CreateAgrochemicalPage extends StatefulWidget {
   final Map<String, dynamic>? agrochemicalRecord;
@@ -43,17 +47,76 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
   }
 
   Future<void> _fetchAgrochemicalOptions() async {
+    setState(() => _isDropdownLoading = true);
     try {
-      final options = await AgrochemicalApi.getAgrochemical();
+      final online = await ConnectivityHelper.hasInternetConnection();
+      if (online) {
+        final options = await AgrochemicalApi.getAgrochemical();
+        // cache master list locally for offline fallback
+        try {
+          await AgroDB().saveAgrochemicalList(options);
+        } catch (e) {
+          print('⚠️ Failed to save agrochemical master list locally: $e');
+        }
+        setState(() {
+          _agrochemicalOptions = options;
+          _isDropdownLoading = false;
+        });
+        return;
+      }
+    } catch (e) {
+      print('⚠️ _fetchAgrochemicalOptions: remote fetch failed: $e');
+    }
+
+    // Fallback to local cached agrochemical master list
+    try {
+      final local = await AgroDB().getAllAgrochemicals();
+      final mapped = local.map<Map<String, dynamic>>((row) {
+        return {
+          'uuid': (row['id'] ?? '').toString(),
+          'name': row['agrochemical_name'] ?? 'Unknown',
+        };
+      }).toList();
       setState(() {
-        _agrochemicalOptions = options;
+        _agrochemicalOptions = mapped;
         _isDropdownLoading = false;
       });
-    } catch (e) {
+      } catch (e) {
       setState(() => _isDropdownLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading agrochemicals: $e')),
-      );
+      await Flushbar(
+        message: 'Error loading agrochemicals (offline): $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
+    }
+  }
+
+  Future<void> _saveLocally(String formattedDate) async {
+    final selectedName = _agrochemicalOptions.firstWhere(
+      (e) => (e['uuid'] ?? e['id'] ?? '') == selectedAgrochemicalUuid,
+      orElse: () => {'name': 'Unknown'},
+    )['name']?.toString();
+
+    final model = AgrochemicalModel(
+      tree_uuid: widget.treeUuid,
+      agrochemicalId: selectedAgrochemicalUuid,
+      agrochemicalName: selectedName,
+      applied_at: formattedDate,
+      description: descriptionController.text,
+      synced: 0,
+      pendingUpdate: widget.agrochemicalRecord != null ? 1 : 0,
+    );
+
+    try {
+      await AgroDB().insertAgrochemical(model);
+      print('✅ Saved agrochemical locally for tree=${widget.treeUuid}');
+    } catch (e) {
+      print('⚠️ Failed to save agrochemical locally: $e');
+      rethrow;
     }
   }
 
@@ -74,9 +137,15 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
     if (!_formKey.currentState!.validate() ||
         selectedAgrochemicalUuid == null ||
         appliedAt == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please complete all fields')),
-      );
+      await Flushbar(
+        message: 'Please complete all fields',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
       return;
     }
 
@@ -85,42 +154,86 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
 
       final formattedDate = DateFormat('yyyy-MM-dd').format(appliedAt!);
 
-      if (widget.agrochemicalRecord == null) {
-        // CREATE
-        await AgrochemicalApi.createAgrochemicalRecord(
-          tree_uuid: widget.treeUuid,
-          agrochemical_uuid: selectedAgrochemicalUuid!,
-          applied_at: formattedDate,
-          description: descriptionController.text,
-        );
+      final online = await ConnectivityHelper.hasInternetConnection();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Agrochemical record created successfully'),
-          ),
-        );
+      if (online) {
+        // Attempt to create/update remotely. If remote fails, fall back to local save.
+        try {
+          if (widget.agrochemicalRecord == null) {
+            // CREATE remotely
+            await AgrochemicalApi.createAgrochemicalRecord(
+              tree_uuid: widget.treeUuid,
+              agrochemical_uuid: selectedAgrochemicalUuid!,
+              applied_at: formattedDate,
+              description: descriptionController.text,
+            );
+            await Flushbar(
+              message: 'Agrochemical record created successfully',
+              icon: const Icon(Icons.check_circle, color: Colors.white),
+              backgroundColor: Colors.green.shade700,
+              duration: const Duration(seconds: 2),
+              borderRadius: BorderRadius.circular(12),
+              margin: const EdgeInsets.all(12),
+              flushbarPosition: FlushbarPosition.TOP,
+            ).show(context);
+          } else {
+            // UPDATE remotely
+            await AgrochemicalApi.updateAgrochemicalRecord(
+              tree_uuid: widget.treeUuid,
+              record_uuid: widget.agrochemicalRecord!['uuid'],
+              agrochemical_uuid: selectedAgrochemicalUuid!,
+              applied_at: formattedDate,
+              description: descriptionController.text,
+            );
+            await Flushbar(
+              message: 'Agrochemical record updated successfully',
+              icon: const Icon(Icons.check_circle, color: Colors.white),
+              backgroundColor: Colors.green.shade700,
+              duration: const Duration(seconds: 2),
+              borderRadius: BorderRadius.circular(12),
+              margin: const EdgeInsets.all(12),
+              flushbarPosition: FlushbarPosition.TOP,
+            ).show(context);
+          }
+        } catch (e) {
+          print('⚠️ Remote agrochemical save failed, saving locally instead: $e');
+          // fall through to local save below
+          await _saveLocally(formattedDate);
+          await Flushbar(
+            message: 'Saved locally — will sync when online',
+            icon: const Icon(Icons.cloud_off, color: Colors.white),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 2),
+            borderRadius: BorderRadius.circular(12),
+            margin: const EdgeInsets.all(12),
+            flushbarPosition: FlushbarPosition.TOP,
+          ).show(context);
+        }
       } else {
-        // UPDATE (need update API in AgrochemicalApi)
-        await AgrochemicalApi.updateAgrochemicalRecord(
-          tree_uuid: widget.treeUuid,
-          record_uuid: widget.agrochemicalRecord!['uuid'],
-          agrochemical_uuid: selectedAgrochemicalUuid!,
-          applied_at: formattedDate,
-          description: descriptionController.text,
-        );
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Agrochemical record updated successfully'),
-          ),
-        );
+        // Offline: save locally and mark as unsynced
+        await _saveLocally(formattedDate);
+        await Flushbar(
+          message: 'Saved locally — will sync when online',
+          icon: const Icon(Icons.cloud_off, color: Colors.white),
+          backgroundColor: Colors.orange.shade700,
+          duration: const Duration(seconds: 2),
+          borderRadius: BorderRadius.circular(12),
+          margin: const EdgeInsets.all(12),
+          flushbarPosition: FlushbarPosition.TOP,
+        ).show(context);
       }
 
       Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      await Flushbar(
+        message: 'Error: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
     } finally {
       setState(() => isLoading = false);
     }
