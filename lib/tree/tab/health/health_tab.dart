@@ -229,8 +229,6 @@ class _HealthTabPageState extends State<HealthTabPage> {
     String recordedAt = record['recorded_at'] ?? "";
     String status = record['status'] ?? "";
     final diseaseName = extractDiseaseName(record);
-    print("Disease Name: "+ diseaseName);
-
 
     // Status color logic
     Color statusColor;

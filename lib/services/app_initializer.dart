@@ -10,7 +10,6 @@ import 'api/agrochemical_api.dart';
 import 'api/disease_api.dart';
 // local_db import not required here
 import '../models/tree_growth_model.dart';
-import 'sync_services/sync_services.dart';
 import '../utils/connectivity_helper.dart';
 import '../services/local database/tree_db.dart';
 import '../services/local database/fruit_db.dart';
@@ -21,10 +20,10 @@ import '../models/health_model.dart';
 import '../models/agrochemical_model.dart';
 import 'sync_services/tree_sync.dart';
 import 'sync_services/fruit_sync.dart';
+import 'sync_services/health_sync.dart';
 import '../services/local database/disease_db.dart';
 
 class AppInitializer {
-  static final SyncService _syncService = SyncService();
   // Guard to ensure we only register the connectivity listener once
   static bool _connectivityListenerInitialized = false;
   // When true, the connectivity listener will ignore the first reconnect event.
@@ -142,6 +141,14 @@ class AppInitializer {
           print('🍎 Fruit sync complete during init');
         } catch (e) {
           print('⚠️ Fruit sync during init failed: $e');
+        }
+
+        // Attempt to sync any pending health records created while offline
+        try {
+          await SyncHealth().syncHealth();
+          print('🩺 Health sync attempted during init');
+        } catch (e) {
+          print('⚠️ Health sync during init failed: $e');
         }
           // We performed the initial full cache during init; skip the first reconnect
           // event in the connectivity listener (if it fires immediately after registration)
@@ -285,6 +292,13 @@ class AppInitializer {
             print('🍎 Fruit sync complete after reconnect');
           } catch (e) {
             print('⚠️ Fruit sync after reconnect failed: $e');
+          }
+          // Sync health after fruits
+          try {
+            await SyncHealth().syncHealth();
+            print('🩺 Health sync complete after reconnect');
+          } catch (e) {
+            print('⚠️ Health sync after reconnect failed: $e');
           }
         } catch (e) {
           print('⚠️ Sync error: $e');
