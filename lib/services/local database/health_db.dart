@@ -123,6 +123,5 @@ class HealthDB {
     }
 
     final total = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM health_record'));
-    print('✅ Local health cache updated. Total health rows in DB: $total');
   }
 }

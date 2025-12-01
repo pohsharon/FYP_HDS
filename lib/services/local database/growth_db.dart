@@ -102,7 +102,6 @@ class GrowthDB{
 
     try {
       final before = await db.query('tree_growth');
-      print('ℹ️ cacheRemoteGrowths: rows before caching=${before.length}');
     } catch (e) {
       print('⚠️ cacheRemoteGrowths: failed to dump before rows: $e');
     }
@@ -119,9 +118,6 @@ class GrowthDB{
     // to wipe local caches. Skipping avoids accidental global deletes when the
     // caller invokes cacheRemoteGrowths per-tree and the server returns 0 rows.
     if (remote.isEmpty) {
-      print(
-        'ℹ️ cacheRemoteGrowths: remote batch empty — skipping delete/insert to preserve local cache',
-      );
       return;
     }
 

@@ -5,7 +5,7 @@ class LocalDB {
   static final LocalDB instance = LocalDB._init();
   static Database? _db;
   // Keep a single source of truth for DB version used by the code
-  static const int _targetDbVersion = 3;
+  static const int _targetDbVersion = 4;
 
   LocalDB._init();
 
@@ -131,6 +131,29 @@ class LocalDB {
         remarks TEXT
       )
     ''');
+
+    // Agrochemical lookup table (optional metadata)
+    await db.execute('''
+    CREATE TABLE IF NOT EXISTS agrochemical (
+        id INTEGER PRIMARY KEY,
+        agrochemical_name TEXT
+      )
+    ''');
+
+    // Per-tree agrochemical application records (local cache + pending flags)
+    await db.execute('''
+    CREATE TABLE IF NOT EXISTS agrochemical_record (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        agrochemical_name TEXT,
+        tree_uuid TEXT,
+        agrochemicalId TEXT,
+        applied_at TEXT,
+        description TEXT,
+        synced INTEGER DEFAULT 0,
+        pending_update INTEGER DEFAULT 0,
+        pending_delete INTEGER DEFAULT 0
+      )
+    ''');
   }
 
   static Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -151,6 +174,34 @@ class LocalDB {
         print('✅ upgradeDB: added disease_name column to health_record');
       } catch (e) {
         print('⚠️ upgradeDB: could not add disease_name column to health_record: $e');
+      }
+    }
+
+    // Migration from version 3 -> 4: create agrochemical lookup + agrochemical_record cache tables
+    if (oldVersion < 4) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS agrochemical (
+            id INTEGER PRIMARY KEY,
+            agrochemical_name TEXT
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS agrochemical_record (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agrochemical_name TEXT,
+            tree_uuid TEXT,
+            agrochemicalId TEXT,
+            applied_at TEXT,
+            description TEXT,
+            synced INTEGER DEFAULT 0,
+            pending_update INTEGER DEFAULT 0,
+            pending_delete INTEGER DEFAULT 0
+          )
+        ''');
+        print('✅ upgradeDB: created agrochemical and agrochemical_record tables');
+      } catch (e) {
+        print('⚠️ upgradeDB: could not create agrochemical tables: $e');
       }
     }
   }

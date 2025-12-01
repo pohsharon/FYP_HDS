@@ -5,15 +5,36 @@ import '../services/api/tree_api.dart';
 
 class TreeRepository {
   final TreeDB _localDB = TreeDB();
+  List<TreeModel>? _cachedTrees;
+  DateTime? _lastFetch;
+  Future<List<TreeModel>>? _ongoingFetch;
 
-  Future<List<TreeModel>> getTrees() async {
+  // Cache TTL in seconds
+  static const int _cacheTtlSeconds = 60;
+
+  Future<List<TreeModel>> getTrees({bool forceRefresh = false}) async {
     try {
-      // Try to fetch from Supabase (backend)
-      final response = await TreeApi.fetchAllTrees();
-      final treeList = response['data']['data'] as List<dynamic>;
+      // If we have a recent cached copy and refresh isn't forced, return it
+      if (!forceRefresh && _cachedTrees != null && _lastFetch != null) {
+        final age = DateTime.now().difference(_lastFetch!).inSeconds;
+        if (age < _cacheTtlSeconds) {
+          return _cachedTrees!;
+        }
+      }
 
-      // Convert and store locally
-      List<TreeModel> trees = treeList.map((tree) {
+      // If a fetch is already in progress, await it to dedupe concurrent callers
+      if (_ongoingFetch != null) {
+        return await _ongoingFetch!;
+      }
+
+      // Start remote fetch and store the future so other callers can await it
+      _ongoingFetch = () async {
+        // Try to fetch from Supabase (backend)
+        final response = await TreeApi.fetchAllTrees();
+        final treeList = response['data']['data'] as List<dynamic>;
+
+        // Convert and store locally
+        List<TreeModel> trees = treeList.map((tree) {
         return TreeModel(
           uuid: tree['uuid'],
           treeTag: tree['tree_tag'] ?? '',
@@ -31,15 +52,28 @@ class TreeRepository {
           // These records come from the server, so mark them as already synced locally
           synced: 1,
         );
-      }).toList();
+        }).toList();
+
+        // update in-memory cache
+        _cachedTrees = trees;
+        _lastFetch = DateTime.now();
+
+        try {
+          final allLocal = await _localDB.fetchAllTrees();
+          print('📦 After caching, local DB has ${allLocal.length} trees');
+        } catch (e) {
+          print('⚠️ Error reading local DB after caching: $e');
+        }
+
+        return trees;
+      }();
 
       try {
-        final allLocal = await _localDB.fetchAllTrees();
-        print('📦 After caching, local DB has ${allLocal.length} trees');
-      } catch (e) {
-        print('⚠️ Error reading local DB after caching: $e');
+        final result = await _ongoingFetch!;
+        return result;
+      } finally {
+        _ongoingFetch = null;
       }
-      return trees;
     } on SocketException catch (_) {
       print("📴 Offline mode — loading from local DB");
       return await _localDB.fetchAllTrees();

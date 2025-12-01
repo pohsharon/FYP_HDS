@@ -144,4 +144,30 @@ class AgrochemicalApi {
       throw Exception("Error: ${e.toString()}");
     }
   }
+
+  // Fetch all agrochemical records (global endpoint) and return the list of rows
+  static Future<List<Map<String, dynamic>>> fetchAllAgroRecords() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.get(
+        Uri.parse("${Config.apiBaseUrl}/agrochemical-records"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(decoded['data']);
+      } else {
+        final body = jsonDecode(response.body);
+        throw Exception(body['message'] ?? 'Failed to fetch agrochemical records');
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
 }

@@ -5,7 +5,6 @@ import 'package:fyp_hbs/services/health_api.dart';
 import 'disease_list.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../../services/local database/health_db.dart';
-import '../../../models/health_model.dart';
 
 class HealthTabPage extends StatefulWidget {
   final String treeTag;

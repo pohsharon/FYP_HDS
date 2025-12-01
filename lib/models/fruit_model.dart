@@ -1,5 +1,3 @@
-// import 'dart:io'; // not currently used
-
 class FruitModel {
   final String? fruit_tag;
   final String? harvest_uuid;

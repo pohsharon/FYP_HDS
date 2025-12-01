@@ -48,30 +48,27 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
 
   Future<void> _fetchTrees() async {
   try {
-    // Use the repository which already handles network -> local fallback.
-    final repo = TreeRepository();
+    // Prefer the local DB for UI dropdowns to avoid triggering remote fetches
     List<Map<String, dynamic>> treeList = [];
     try {
-      final models = await repo.getTrees();
-      treeList = models
+      final local = await TreeDB().fetchAllTrees();
+      treeList = local
           .map((t) => {'uuid': t.uuid, 'tree_tag': t.treeTag ?? 'Unknown'})
           .toList();
     } catch (e) {
-      print('⚠️ _fetchTrees: repository failed: $e');
+      print('⚠️ _fetchTrees: local DB read failed: $e');
     }
 
-    // As a last-resort fallback, read directly from local DB
+    // If no local trees exist (fresh install), fall back to repository remote fetch
     if (treeList.isEmpty) {
       try {
-        final local = await TreeDB().fetchAllTrees();
-        treeList = local
-            .map((t) => {
-                  'uuid': t.uuid,
-                  'tree_tag': t.treeTag ?? 'Unknown',
-                })
+        final repo = TreeRepository();
+        final models = await repo.getTrees();
+        treeList = models
+            .map((t) => {'uuid': t.uuid, 'tree_tag': t.treeTag ?? 'Unknown'})
             .toList();
       } catch (e) {
-        print('⚠️ _fetchTrees final fallback failed: $e');
+        print('⚠️ _fetchTrees: repository remote fetch failed: $e');
       }
     }
 

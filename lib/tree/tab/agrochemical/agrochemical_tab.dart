@@ -3,6 +3,9 @@ import 'package:fyp_hbs/config.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/agrochemical_api.dart';
 import 'package:fyp_hbs/tree/tab/agrochemical/create_agrochemical.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:fyp_hbs/services/local database/agro_db.dart';
+import 'package:fyp_hbs/models/agrochemical_model.dart';
 
 class AgrochemicalTabPage extends StatefulWidget {
   final String treeUuid;
@@ -17,10 +20,43 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
   int? selectedIndex;
 
   Future<List<Map<String, dynamic>>> fetchAgrochemical() async {
-    final response = await AgrochemicalApi.fetchAgrochemicals(
-      treeUuid: widget.treeUuid,
-    );
-    return response;
+    // Prefer remote when online, but fall back to local DB when offline or when API fails
+    try {
+      final online = await ConnectivityHelper.hasInternetConnection();
+      if (online) {
+        final response = await AgrochemicalApi.fetchAgrochemicals(
+          treeUuid: widget.treeUuid,
+        );
+        return response;
+      }
+    } catch (e) {
+      print('⚠️ Agrochemical fetch remote failed or no connectivity: $e');
+    }
+
+    // Offline or remote failed: read from local DB
+    try {
+      final local = await AgroDB().fetchByTreeUuid(widget.treeUuid);
+      // Convert AgrochemicalModel -> Map<String,dynamic> shape expected by UI
+      final mapped = local.map((AgrochemicalModel m) {
+        return {
+          'agrochemical': {
+            'name': m.agrochemicalName ?? 'Unknown Agrochemical',
+            'thumbnail': null,
+          },
+          'applied_at': m.applied_at ?? '',
+          'description': m.description ?? '',
+          'tree_uuid': m.tree_uuid ?? widget.treeUuid,
+          // keep sync flags for UI/diagnostics
+          'synced': m.synced,
+          'pending_update': m.pendingUpdate,
+          'pending_delete': m.pendingDelete,
+        };
+      }).toList();
+      return mapped;
+    } catch (e) {
+      print('⚠️ Failed to read local agrochemical DB: $e');
+      return <Map<String, dynamic>>[];
+    }
   }
 
   @override
@@ -166,26 +202,7 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                           vertical: 8,
                           horizontal: 12,
                         ),
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child:
-                              agro['thumbnail'] != null
-                                  ? Image.network(
-                                    "${Config.apiBaseUrl}/${agro['thumbnail']}",
-                                    width: 50,
-                                    height: 50,
-                                    fit: BoxFit.cover,
-                                  )
-                                  : Container(
-                                    width: 50,
-                                    height: 50,
-                                    color: AppColors.gray200,
-                                    child: const Icon(
-                                      Icons.image,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                        ),
+                        
                         title: Text(
                           agro['name'] ?? 'Unknown Agrochemical',
                           style: const TextStyle(
