@@ -16,6 +16,7 @@ import '../services/local database/fruit_db.dart';
 import '../services/local database/growth_db.dart';
 import '../services/local database/health_db.dart';
 import '../services/local database/agro_db.dart';
+import '../services/local database/harvest_db.dart';
 import '../models/health_model.dart';
 import '../models/agrochemical_model.dart';
 import 'sync_services/tree_sync.dart';
@@ -166,6 +167,14 @@ class AppInitializer {
         } catch (e) {
           print('⚠️ Agrochemical sync during init failed: $e');
         }
+        // Fetch and cache harvest events for offline use
+        try {
+          final harvestDB = HarvestDB();
+          await harvestDB.fetchAndCacheFromCloud();
+          print('🌾 Harvest events fetched & cached during init');
+        } catch (e) {
+          print('⚠️ Failed to fetch/cache harvest events during init: $e');
+        }
           // We performed the initial full cache during init; skip the first reconnect
           // event in the connectivity listener (if it fires immediately after registration)
           _skipFirstReconnect = true;
@@ -304,6 +313,14 @@ class AppInitializer {
               print('🧪 Agrochemical records fetched & cached after reconnect');
             } catch (e) {
               print('⚠️ Failed to fetch/cache agrochemical records after reconnect: $e');
+            }
+            // Fetch and cache harvest events after reconnect
+            try {
+              final harvestDB = HarvestDB();
+              await harvestDB.fetchAndCacheFromCloud();
+              print('🌾 Harvest events fetched & cached after reconnect');
+            } catch (e) {
+              print('⚠️ Failed to fetch/cache harvest events after reconnect: $e');
             }
             print('🌱 Growth logs fetched & cached after reconnect');
           } catch (e) {

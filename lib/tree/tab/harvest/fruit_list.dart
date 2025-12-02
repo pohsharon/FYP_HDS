@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
+import 'package:fyp_hbs/services/local database/fruit_db.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 class FruitListPage extends StatefulWidget {
   final String treeUuid; // <-- pass in the tree UUID
+  final String? harvestUuid; // optional: show a single harvest's fruits
 
-  const FruitListPage({super.key, required this.treeUuid});
+  const FruitListPage({super.key, required this.treeUuid, this.harvestUuid});
 
   @override
   State<FruitListPage> createState() => _FruitPageState();
@@ -26,6 +28,82 @@ class _FruitPageState extends State<FruitListPage> {
     try {
       final events = await TreeApi.getHarvestsByTreeId(widget.treeUuid);
 
+      // If a specific harvestUuid was requested, try to find it in remote events
+      if (widget.harvestUuid != null && widget.harvestUuid!.isNotEmpty) {
+        final String target = widget.harvestUuid!;
+        // first try remote payload
+        Map<String, dynamic>? matched;
+        for (final ev in events) {
+          final evUuid = (ev['uuid'] ?? ev['id'] ?? ev['harvest_uuid'])?.toString();
+          if (evUuid == target) {
+            matched = Map<String, dynamic>.from(ev);
+            break;
+          }
+          // if fruits present, check their harvest_uuid / tree_uuid
+          if (ev['fruits'] is List) {
+            final list = List.from(ev['fruits']);
+            if (list.any((f) => (f['harvest_uuid'] ?? '') == target || (f['tree_uuid'] ?? '') == widget.treeUuid)) {
+              matched = Map<String, dynamic>.from(ev);
+              break;
+            }
+          }
+        }
+
+        if (matched != null) {
+          // restrict fruits to this tree if possible
+          List<Map<String, dynamic>> fruits = [];
+          if (matched['fruits'] is List) {
+            for (final f in matched['fruits']) {
+              if ((f['tree_uuid'] ?? '') == widget.treeUuid || (f['harvest_uuid'] ?? '') == target) {
+                fruits.add(Map<String, dynamic>.from(f));
+              }
+            }
+          }
+
+          // if remote didn't contain fruits for this tree, fall back to local DB
+          if (fruits.isEmpty) {
+            final local = await FruitDB().getAllFruits();
+            final localMatches = local.where((f) => (f.harvest_uuid ?? '') == target && (f.tree_uuid ?? '') == widget.treeUuid).toList();
+            for (final lm in localMatches) fruits.add(lm.toMap());
+          }
+
+          final matchedNonNull = matched;
+          setState(() {
+            _harvestEvents = [
+              {
+                'uuid': widget.harvestUuid,
+                'event_name': matchedNonNull['event_name'] ?? 'Harvest ${widget.harvestUuid}',
+                'start_date': matchedNonNull['start_date'] ?? '',
+                'end_date': matchedNonNull['end_date'] ?? '',
+                'fruits': fruits,
+              }
+            ];
+            _isLoading = false;
+          });
+          return;
+        }
+
+        // if not found remotely, try local DB for this harvest
+        final local = await FruitDB().getAllFruits();
+        final localMatches = local.where((f) => (f.harvest_uuid ?? '') == widget.harvestUuid && (f.tree_uuid ?? '') == widget.treeUuid).toList();
+        if (localMatches.isNotEmpty) {
+          setState(() {
+            _harvestEvents = [
+              {
+                'uuid': widget.harvestUuid,
+                'event_name': 'Cached harvest ${widget.harvestUuid?.substring(0, widget.harvestUuid!.length > 8 ? 8 : widget.harvestUuid!.length) ?? ''}',
+                'start_date': localMatches.first.harvested_at ?? '',
+                'end_date': localMatches.first.harvested_at ?? '',
+                'fruits': localMatches.map((f) => f.toMap()).toList(),
+              }
+            ];
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+
+      // default: show all remote events (existing behavior)
       setState(() {
         _harvestEvents = events;
         _isLoading = false;

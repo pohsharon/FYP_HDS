@@ -21,6 +21,18 @@ class FruitDB{
     return result.map((json) => FruitModel.fromMap(json)).toList();
   }
 
+  /// Fetch fruits belonging to a specific tree UUID.
+  Future<List<FruitModel>> fetchFruitsByTree(String treeUuid) async {
+    final db = await LocalDB.getDatabase();
+    final result = await db.query(
+      'fruits',
+      where: 'tree_uuid = ?',
+      whereArgs: [treeUuid],
+      orderBy: 'synced ASC, created_at DESC',
+    );
+    return result.map((json) => FruitModel.fromMap(json)).toList();
+  }
+
   Future<int> updateFruit(FruitModel fruit) async {
     final db = await LocalDB.getDatabase();
     return await db.update(
