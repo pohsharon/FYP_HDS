@@ -245,7 +245,12 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
 
     final String treeTag = tree!['tree_tag'] ?? 'Unknown';
     final String treeType = tree!['species']?['name'] ?? 'Unknown Type';
-    final String treeDate = tree!['planted_at'] ?? 'Unknown Date';
+  final rawPlanted = tree!['planted_at'] ?? '';
+  final String treeDate = rawPlanted.toString().trim().isEmpty
+    ? 'Unknown Date'
+    : (rawPlanted.toString().contains('T')
+      ? rawPlanted.toString().split('T').first
+      : rawPlanted.toString());
     final String treeImage = tree!['thumbnail'] ?? '';
     final String uuid = tree!['uuid'] ?? 'Unknown UUID';
     final String floweringPeriod = tree!['flowering_period']?.toString() ?? '-';

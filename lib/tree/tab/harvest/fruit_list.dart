@@ -109,12 +109,71 @@ class _FruitPageState extends State<FruitListPage> {
         _isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error loading harvest events: $e")),
-      );
+      // Remote fetch failed (likely offline) — try local cache
+      try {
+        if (widget.harvestUuid != null && widget.harvestUuid!.isNotEmpty) {
+          final local = await FruitDB().getAllFruits();
+          final localMatches = local.where((f) => (f.harvest_uuid ?? '') == widget.harvestUuid && (f.tree_uuid ?? '') == widget.treeUuid).toList();
+          if (localMatches.isNotEmpty) {
+            setState(() {
+              _harvestEvents = [
+                {
+                  'uuid': widget.harvestUuid,
+                  'event_name': 'Cached harvest ${widget.harvestUuid?.substring(0, widget.harvestUuid!.length > 8 ? 8 : widget.harvestUuid!.length) ?? ''}',
+                  'start_date': localMatches.first.harvested_at ?? '',
+                  'end_date': localMatches.first.harvested_at ?? '',
+                  'fruits': localMatches.map((f) => f.toMap()).toList(),
+                }
+              ];
+              _isLoading = false;
+            });
+            return;
+          }
+        }
+
+        // If no specific harvest requested or not found, group by harvest_uuid for this tree
+        final localAll = await FruitDB().fetchFruitsByTree(widget.treeUuid);
+        if (localAll.isEmpty) {
+          setState(() {
+            _isLoading = false;
+            _harvestEvents = [];
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Offline: no cached fruits found: $e")),
+          );
+          return;
+        }
+
+        // group local fruits by harvest_uuid
+        final Map<String, List<Map<String, dynamic>>> grouped = {};
+        for (final f in localAll) {
+          final h = f.harvest_uuid ?? 'unknown';
+          grouped.putIfAbsent(h, () => []).add(f.toMap());
+        }
+
+        final events = <Map<String, dynamic>>[];
+        grouped.forEach((harvestUuid, items) {
+          events.add({
+            'uuid': harvestUuid,
+            'event_name': 'Cached harvest ${harvestUuid.substring(0, harvestUuid.length > 8 ? 8 : harvestUuid.length)}',
+            'start_date': items.first['harvested_at'] ?? '',
+            'end_date': items.first['harvested_at'] ?? '',
+            'fruits': items,
+          });
+        });
+
+        setState(() {
+          _harvestEvents = events;
+          _isLoading = false;
+        });
+      } catch (localErr) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error loading harvest events: $e | $localErr")),
+        );
+      }
     }
   }
 
@@ -187,7 +246,7 @@ class _FruitPageState extends State<FruitListPage> {
     final String tag = fruit['fruit_tag'] ?? 'Unknown';
     final String weight = fruit['weight']?.toString() ?? 'Unknown';
     final String grade = fruit['grade'] ?? 'Unknown';
-    final String uuid = fruit['uuid'];
+    final String uuid = (fruit['uuid'] ?? fruit['id'] ?? fruit['harvest_uuid'] ?? '').toString();
 
     return Card(
       color: AppColors.white,
@@ -201,7 +260,9 @@ class _FruitPageState extends State<FruitListPage> {
         leading: SizedBox(
           width: 50,
           height: 50,
-          child: QrImageView(data: uuid, version: QrVersions.auto),
+          child: uuid.isNotEmpty
+              ? QrImageView(data: uuid, version: QrVersions.auto)
+              : Icon(Icons.local_florist, color: AppColors.hunterGreen),
         ),
         title: Text(
           tag,

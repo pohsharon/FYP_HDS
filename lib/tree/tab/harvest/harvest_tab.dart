@@ -87,29 +87,69 @@ class HarvestTabPage extends StatelessWidget {
     // Offline or remote failed: build harvest events from local fruits table
     try {
       final treeFruits = await FruitDB().fetchFruitsByTree(treeUuid);
-      print("Fruits offline:"+ treeFruits.toString());
       if (treeFruits.isEmpty) return <Map<String, dynamic>>[];
 
-      // group by harvest_uuid
+      // group by harvest_uuid — but for generated per-fruit ids (gen_...)
+      // cluster them by harvest date (YYYY-MM-DD) so multiple fruits created
+      // offline in the same harvest are shown as one event.
       final Map<String, List<Map<String, dynamic>>> grouped = {};
       for (final f in treeFruits) {
-        final h = f.harvest_uuid ?? 'unknown';
-        grouped.putIfAbsent(h, () => []).add(f.toMap());
+        String rawHarvest = f.harvest_uuid ?? '';
+        String key;
+        if (rawHarvest.isNotEmpty && !rawHarvest.startsWith('gen_') && rawHarvest != 'unknown') {
+          key = rawHarvest;
+        } else {
+          // derive date key (prefer harvested_at, fallback to created_at)
+          final dateRaw = (f.harvested_at ?? f.created_at ?? '').toString();
+          String dateKey = '';
+          if (dateRaw.isNotEmpty) {
+            dateKey = dateRaw.contains('T') ? dateRaw.split('T').first : dateRaw;
+          }
+          if (dateKey.isEmpty) {
+            // fall back to the original generated id so we don't lose it
+            key = rawHarvest.isNotEmpty ? rawHarvest : 'unknown';
+          } else {
+            key = 'gen_$dateKey';
+          }
+        }
+
+        grouped.putIfAbsent(key, () => []).add(f.toMap());
       }
 
       // convert groups into harvest event shapes expected by UI
       // Prefer returning real UUID groups (not generated ones like 'gen_...')
       final events = <Map<String, dynamic>>[];
 
-      // choose which harvest uuids to show: prefer non-generated UUIDs
-      final realKeys = grouped.keys.where((k) => k != 'unknown' && !k.toString().startsWith('gen_')).toList();
-      final keysToInclude = realKeys.isNotEmpty ? realKeys : grouped.keys.toList();
+      // choose which harvest uuids to show: include all groups but sort so
+      // server-provided UUIDs appear first and generated offline ids (gen_...)
+      // appear after. This ensures generated harvests are still visible.
+      final allKeys = grouped.keys.toList();
+      bool isReal(String k) => k != 'unknown' && !k.toString().startsWith('gen_');
+      allKeys.sort((a, b) {
+        final ra = isReal(a) ? 0 : 1;
+        final rb = isReal(b) ? 0 : 1;
+        if (ra != rb) return ra - rb;
+        return a.compareTo(b);
+      });
 
-      // Debug: print selected harvest uuids
-      print('Selected harvest UUIDs for display: ${keysToInclude.join(', ')}');
+      // If there are any real server UUID groups, merge generated per-fruit
+      // groups (gen_...) into the first real group so the UI shows a single
+      // event containing all fruits for that server event when offline.
+      final realKeys = allKeys.where((k) => isReal(k)).toList();
+      if (realKeys.isNotEmpty) {
+        final firstReal = realKeys.first;
+        for (final k in List<String>.from(grouped.keys)) {
+          if (!isReal(k) && k != firstReal) {
+            // move items from generated key into firstReal
+            final itemsToMove = grouped[k] ?? [];
+            grouped[firstReal] = (grouped[firstReal] ?? []) + itemsToMove;
+            grouped.remove(k);
+          }
+        }
+      }
 
       final db = await LocalDB.getDatabase();
-      for (final harvestUuid in keysToInclude) {
+      for (final harvestUuid in grouped.keys.toList()) {
         final items = grouped[harvestUuid]!;
         String displayName = 'Cached harvest ${harvestUuid.substring(0, harvestUuid.length > 8 ? 8 : harvestUuid.length)}';
 
