@@ -4,12 +4,17 @@ import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
+// AppInitializer is invoked from the shared PersistentAppBar when manual sync is requested.
+import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/services/local%20database/tree_db.dart';
+import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/services/local%20database/species_db.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:intl/intl.dart';
 import 'package:fyp_hbs/tree/map.dart';
 import 'package:fyp_hbs/authentication/login.dart';
+import 'package:fyp_hbs/authentication/reset_password.dart';
+import 'package:fyp_hbs/widgets/persistent_appbar.dart';
 
 class TreePage extends StatefulWidget {
   const TreePage({super.key});
@@ -47,86 +52,6 @@ class _TreePageState extends State<TreePage> {
     });
   }
 
-  Future<void> fetchTrees({int page = 1, bool isLoadMore = false}) async {
-  try {
-    final response = await TreeApi.fetchTrees(page: page);
-
-    final pagination = response['data'] as Map<String, dynamic>;
-    final List<dynamic> treeList = pagination['data'] ?? [];
-    final int lastPage = pagination['last_page'] ?? 1;
-
-    final cleanedTrees = treeList.map((tree) {
-      final t = tree as Map<String, dynamic>;
-      return {
-        ...t,
-        'latitude': t['latitude'] ?? 0.0,
-        'longitude': t['longitude'] ?? 0.0,
-      };
-    }).toList();
-
-    setState(() {
-      _lastPage = lastPage;
-      if (isLoadMore) {
-        _filteredTrees.addAll(cleanedTrees);
-      } else {
-        _filteredTrees = cleanedTrees;
-        _allTrees = cleanedTrees;
-      }
-    });
-
-    _currentPage = page;
-  } catch (e) {
-    print('Offline mode: falling back to local DB');
-
-    try {
-      final local = await TreeDB().fetchAllTrees();
-      // build species lookup from local species table
-      final speciesRows = await SpeciesDB().getAllSpecies();
-      final Map<String, String> speciesLookup = {};
-      for (final s in speciesRows) {
-        final key = s['id']?.toString();
-        final name = s['name']?.toString() ?? '';
-        if (key != null) speciesLookup[key] = name;
-      }
-
-      final cleanedLocal = local.map((TreeModel m) {
-        final sid = m.speciesId?.toString();
-        final speciesName = (sid != null && speciesLookup.containsKey(sid))
-            ? speciesLookup[sid]
-            : (m.speciesId ?? 'Unknown');
-
-        return {
-          'id': m.id ?? m.uuid,
-          'uuid': m.uuid,
-          'tree_tag': m.treeTag ?? 'Offline Tree',
-          'species': {'id': m.speciesId, 'name': speciesName},
-          'planted_at': m.plantedAt != null ? DateFormat('yyyy-MM-dd').format(m.plantedAt!) : '',
-          'latitude': m.latitude ?? 0.0,
-          'longitude': m.longitude ?? 0.0,
-          'thumbnail': m.thumbnail ?? '',
-          'height': m.height ?? 0.0,
-          'diameter': m.diameter ?? 0.0,
-          'synced': m.synced,
-        };
-      }).toList();
-
-      setState(() {
-        _lastPage = 1;
-        if (isLoadMore) {
-          _filteredTrees.addAll(cleanedLocal);
-        } else {
-          _filteredTrees = cleanedLocal;
-          _allTrees = cleanedLocal;
-        }
-      });
-
-      _currentPage = 1;
-    } catch (e2) {
-      print('Failed to load trees from local DB: $e2');
-    }
-  }
-}
-
   Future<void> _loadMoreTrees() async {
     setState(() => _isLoadingMore = true);
     await fetchTrees(page: _currentPage + 1, isLoadMore: true);
@@ -134,14 +59,96 @@ class _TreePageState extends State<TreePage> {
   }
 
   void filterTrees(String query) {
-    final filtered =
-        _allTrees.where((tree) {
-          final treeId = tree['tree_tag']?.toString().toLowerCase() ?? '';
-          return treeId.contains(query.toLowerCase());
-        }).toList();
+    final filtered = _allTrees.where((tree) {
+      final treeId = tree['tree_tag']?.toString().toLowerCase() ?? '';
+      return treeId.contains(query.toLowerCase());
+    }).toList();
     setState(() {
       _filteredTrees = filtered;
     });
+  }
+
+  Future<void> fetchTrees({int page = 1, bool isLoadMore = false}) async {
+    try {
+      final response = await TreeApi.fetchTrees(page: page);
+
+      final pagination = response['data'] as Map<String, dynamic>;
+      final List<dynamic> treeList = pagination['data'] ?? [];
+      final int lastPage = pagination['last_page'] ?? 1;
+
+      final cleanedTrees =
+          treeList.map((tree) {
+            final t = tree as Map<String, dynamic>;
+            return {
+              ...t,
+              'latitude': t['latitude'] ?? 0.0,
+              'longitude': t['longitude'] ?? 0.0,
+            };
+          }).toList();
+
+      setState(() {
+        _lastPage = lastPage;
+        if (isLoadMore) {
+          _filteredTrees.addAll(cleanedTrees);
+        } else {
+          _filteredTrees = cleanedTrees;
+          _allTrees = cleanedTrees;
+        }
+      });
+
+      _currentPage = page;
+    } catch (e) {
+      print('Offline mode: falling back to local DB');
+
+      try {
+        final local = await TreeDB().fetchAllTrees();
+        // build species lookup from local species table
+        final speciesRows = await SpeciesDB().getAllSpecies();
+        final Map<String, String> speciesLookup = {};
+        for (final s in speciesRows) {
+          final key = s['id']?.toString();
+          final name = s['name']?.toString() ?? '';
+          if (key != null) speciesLookup[key] = name;
+        }
+
+        final cleanedLocal = local.map((TreeModel m) {
+          final sid = m.speciesId?.toString();
+          final speciesName = (sid != null && speciesLookup.containsKey(sid))
+              ? speciesLookup[sid]
+              : (m.speciesId ?? 'Unknown');
+
+          return {
+            'id': m.id ?? m.uuid,
+            'uuid': m.uuid,
+            'tree_tag': m.treeTag ?? 'Offline Tree',
+            'species': {'id': m.speciesId, 'name': speciesName},
+            'planted_at': m.plantedAt != null
+                ? DateFormat('yyyy-MM-dd').format(m.plantedAt!)
+                : '',
+            'latitude': m.latitude ?? 0.0,
+            'longitude': m.longitude ?? 0.0,
+            'thumbnail': m.thumbnail ?? '',
+            'height': m.height ?? 0.0,
+            'diameter': m.diameter ?? 0.0,
+            'synced': m.synced,
+          };
+        }).toList();
+
+        setState(() {
+          _lastPage = 1;
+          if (isLoadMore) {
+            _filteredTrees.addAll(cleanedLocal);
+          } else {
+            _filteredTrees = cleanedLocal;
+            _allTrees = cleanedLocal;
+          }
+        });
+
+        _currentPage = 1;
+      } catch (e2) {
+        print('Failed to load trees from local DB: $e2');
+      }
+    }
   }
 
   void _showSpeciesFilterDialog(BuildContext context) {
@@ -221,7 +228,8 @@ class _TreePageState extends State<TreePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar: PersistentAppBar(
+        title: 'Trees',
         leading: IconButton(
           icon: const Icon(Icons.settings),
           onPressed: () {
@@ -232,68 +240,101 @@ class _TreePageState extends State<TreePage> {
               ),
               builder: (context) {
                 return Column(
-                  mainAxisSize: MainAxisSize.max,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     ListTile(
+                      contentPadding: const EdgeInsets.only(
+                        left: 20,
+                        right: 20,
+                        top: 10,
+                        bottom: 0,
+                      ),
                       leading: const Icon(Icons.lock),
                       title: const Text('Change Password'),
                       onTap: () {
-                        Navigator.pop(context);
-                        // TODO: Navigate to change password page
-                        // Navigator.push(context, MaterialPageRoute(builder: (_) => ChangePasswordPage()));
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ResetPasswordPage(fromSettings: true),
+                          ),
+                        );
                       },
                     ),
+                    ListTile(
+                      contentPadding: const EdgeInsets.only(
+                        left: 20,
+                        right: 20,
+                        top: 0,
+                        bottom: 20,
+                      ),
+                      leading: const Icon(Icons.logout),
+                      title: const Text('Logout'),
+                      onTap: () async {
+                        final shouldLogout = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Confirm Logout'),
+                            content: const Text('Are you sure you want to logout?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(false),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.of(context).pop(true),
+                                child: const Text('Logout'),
+                              ),
+                            ],
+                          ),
+                        );
 
-                    // Add more actions here if needed
+                        if (shouldLogout == true) {
+                          try {
+                            final ok = await AuthService.logout();
+
+                            if (ok) {
+                              await Flushbar(
+                                message: 'Logged out',
+                                icon: const Icon(Icons.check_circle, color: Colors.white),
+                                backgroundColor: Colors.green.shade700,
+                                duration: const Duration(seconds: 2),
+                                borderRadius: BorderRadius.circular(8),
+                                margin: const EdgeInsets.all(12),
+                              ).show(context);
+                            } else {
+                              await Flushbar(
+                                message: 'Logged out (server revoke pending)',
+                                icon: const Icon(Icons.info, color: Colors.white),
+                                backgroundColor: Colors.orange.shade700,
+                                duration: const Duration(seconds: 2),
+                                borderRadius: BorderRadius.circular(8),
+                                margin: const EdgeInsets.all(12),
+                              ).show(context);
+                            }
+
+                            Navigator.of(context).pushAndRemoveUntil(
+                              MaterialPageRoute(builder: (_) => LoginPage()),
+                              (route) => false,
+                            );
+                          } catch (e) {
+                            await Flushbar(
+                              message: 'Logout failed: $e',
+                              icon: const Icon(Icons.error, color: Colors.white),
+                              backgroundColor: Colors.red.shade700,
+                              duration: const Duration(seconds: 3),
+                              borderRadius: BorderRadius.circular(8),
+                              margin: const EdgeInsets.all(12),
+                            ).show(context);
+                          }
+                        }
+                      },
+                    ),
                   ],
                 );
               },
             );
           },
         ),
-        title: const Text(
-          "Trees",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        backgroundColor: AppColors.pakistanGreen,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final shouldLogout = await showDialog<bool>(
-                context: context,
-                builder:
-                    (context) => AlertDialog(
-                      title: const Text('Confirm Logout'),
-                      content: const Text('Are you sure you want to logout?'),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                        ElevatedButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Logout'),
-                        ),
-                      ],
-                    ),
-              );
-
-              if (shouldLogout == true) {
-                // Clear authentication data here (e.g., SharedPreferences)
-                // Example:
-                // final prefs = await SharedPreferences.getInstance();
-                // await prefs.clear();
-
-                // Navigate to login page and remove all previous routes
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => LoginPage()),
-                  (route) => false,
-                );
-              }
-            },
-          ),
-        ],
       ),
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -401,7 +442,6 @@ class _TreePageState extends State<TreePage> {
 
               if (result == true) {
                 fetchTrees();
-                
               }
             },
             child: Container(
@@ -423,7 +463,7 @@ class _TreePageState extends State<TreePage> {
     required Map<String, dynamic> tree, // ✅ Accept tree map
   }) {
     final String tag = tree['tree_tag'] ?? 'Tree';
-  // Sync status handling temporarily disabled in UI while debugging sync issues.
+    // Sync status handling temporarily disabled in UI while debugging sync issues.
     // Format planted date uniformly
     final String rawDate = tree['planted_at']?.toString() ?? '';
     String displayDate = rawDate;
@@ -438,7 +478,7 @@ class _TreePageState extends State<TreePage> {
         }
       }
     }
-  final String type = tree['species']?['name'] ?? 'Unknown Species';
+    final String type = tree['species']?['name'] ?? 'Unknown Species';
     final String uuid = tree['uuid'];
 
     // Color statusColor =
@@ -520,8 +560,8 @@ class _TreePageState extends State<TreePage> {
                 final shouldRefresh = await Navigator.push(
                   context,
                   MaterialPageRoute(
-        builder:
-          (_) => TreeDetailsPage(treeID: tree['id'].toString()),
+                    builder:
+                        (_) => TreeDetailsPage(treeID: tree['id'].toString()),
                   ),
                 );
 

@@ -485,7 +485,9 @@ Future<void> _saveFruit() async {
                 onPressed: isLoading ? null : _saveFruit,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.pakistanGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
+                
                 child:
                     isLoading
                         ? const CircularProgressIndicator(color: Colors.white)

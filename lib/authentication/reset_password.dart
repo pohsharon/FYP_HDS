@@ -26,22 +26,18 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'Reset Password',
-          style: TextStyle(
-            fontSize: 24,
+        title: Text(
+         "Reset Password",
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
-            color: Colors.black,
+            color: Colors.white,
           ),
         ),
-        iconTheme: const IconThemeData(color: Colors.black),
+        backgroundColor: AppColors.pakistanGreen,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 50),
+          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
           child: Form(
             key: _formKey,
             child: Column(
@@ -72,12 +68,11 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   _hideConfirm,
                   () => setState(() => _hideConfirm = !_hideConfirm),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 25),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
-                      // TODO logic to reset password
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -87,7 +82,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.hunterGreen,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

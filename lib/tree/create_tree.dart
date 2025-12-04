@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
 import '../config.dart';
@@ -10,6 +11,41 @@ import 'package:uuid/uuid.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/services/local%20database/tree_db.dart';
+
+// Formatter that allows decimals and limits fractional digits
+// e.g. DecimalTextInputFormatter(decimalRange: 2) allows up to 2 decimals
+class DecimalTextInputFormatter extends TextInputFormatter {
+  final int decimalRange;
+
+  DecimalTextInputFormatter({this.decimalRange = 2}) : assert(decimalRange >= 0);
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    String text = newValue.text;
+    if (text == '') return newValue;
+
+    // Allow only digits and one decimal point
+    if (text == '.') {
+      // transform leading dot to 0.
+      text = '0.';
+      return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+    }
+
+    final regExp = RegExp(r'^\d*\.?\d*\$');
+    if (!regExp.hasMatch(text)) {
+      return oldValue;
+    }
+
+    if (decimalRange > 0 && text.contains('.')) {
+      final parts = text.split('.');
+      if (parts.length > 1 && parts[1].length > decimalRange) {
+        return oldValue;
+      }
+    }
+
+    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+  }
+}
 
 class CreateTreePage extends StatefulWidget {
   final Map<String, dynamic>? tree;
@@ -152,9 +188,14 @@ class _CreateTreePageState extends State<CreateTreePage> {
         // update the existing row and mark it as pending update. Otherwise insert a new offline row.
         if (widget.tree != null) {
           // Editing an existing tree while offline -> update local row by uuid
-          final uuidExisting = widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString() ?? const Uuid().v4();
+          final uuidExisting =
+              widget.tree!['uuid']?.toString() ??
+              widget.tree!['id']?.toString() ??
+              const Uuid().v4();
           final changes = {
-            'tree_tag': widget.tree!['tree_tag'] ?? "Offline-${DateTime.now().millisecondsSinceEpoch}",
+            'tree_tag':
+                widget.tree!['tree_tag'] ??
+                "Offline-${DateTime.now().millisecondsSinceEpoch}",
             'species_id': selectedSpeciesId!,
             'planted_at': plantingDateController.text,
             'height': double.tryParse(heightController.text),
@@ -163,8 +204,14 @@ class _CreateTreePageState extends State<CreateTreePage> {
             // Do not clear thumbnail here; imageFile is stored separately in TreeModel.imageFile
           };
 
-          final updatedRows = await TreeDB().updateTreeByUuid(uuidExisting, changes, markPendingUpdate: true);
-          print('🌱 Offline edit saved locally for uuid=$uuidExisting (updated rows: $updatedRows)');
+          final updatedRows = await TreeDB().updateTreeByUuid(
+            uuidExisting,
+            changes,
+            markPendingUpdate: true,
+          );
+          print(
+            '🌱 Offline edit saved locally for uuid=$uuidExisting (updated rows: $updatedRows)',
+          );
 
           await Flushbar(
             message: 'No internet — changes saved locally and will be synced',
@@ -248,15 +295,15 @@ class _CreateTreePageState extends State<CreateTreePage> {
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         backgroundColor: AppColors.pakistanGreen,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete, color: Colors.white),
-            onPressed: () async {
-              if (widget.tree != null) {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder:
-                      (context) => AlertDialog(
+        actions: widget.tree != null
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.white),
+                  onPressed: () async {
+                    // Only reachable when editing an existing tree (widget.tree != null)
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
                         title: const Text('Delete Tree'),
                         content: const Text(
                           'Are you sure you want to delete this tree?',
@@ -276,61 +323,51 @@ class _CreateTreePageState extends State<CreateTreePage> {
                           ),
                         ],
                       ),
-                );
+                    );
 
-                if (confirm == true) {
-                  try {
-                    final online = await ConnectivityHelper.hasInternetConnection();
-                    if (!online) {
-                      await TreeDB().markAsPendingDelete(
-                        widget.tree!['uuid'],
-                      );
-                      await Flushbar(
-                        message:
-                            'Tree will be deleted when you are back online',
-                      ).show(context);
-                      Navigator.pop(context, true);
-                    } else {
-                      await TreeApi.deleteTree(widget.tree!['id'].toString());
+                    if (confirm == true) {
+                      try {
+                        final online =
+                            await ConnectivityHelper.hasInternetConnection();
+                        if (!online) {
+                          await TreeDB().markAsPendingDelete(widget.tree!['uuid']);
+                          await Flushbar(
+                            message:
+                                'Tree will be deleted when you are back online',
+                          ).show(context);
+                          Navigator.pop(context, true);
+                        } else {
+                          await TreeApi.deleteTree(widget.tree!['id'].toString());
+                        }
+
+                        await Flushbar(
+                          message: 'Tree deleted successfully',
+                          icon: const Icon(Icons.check_circle, color: Colors.white),
+                          backgroundColor: Colors.green.shade700,
+                          duration: const Duration(seconds: 2),
+                          borderRadius: BorderRadius.circular(12),
+                          margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
+                        ).show(context);
+
+                        if (!mounted) return;
+                        Navigator.pop(context);
+                        Navigator.pop(context, true);
+                      } catch (e) {
+                        await Flushbar(
+                          message: 'Error deleting tree: $e',
+                          icon: const Icon(Icons.error, color: Colors.white),
+                          backgroundColor: Colors.red.shade700,
+                          duration: const Duration(seconds: 3),
+                          borderRadius: BorderRadius.circular(8),
+                          margin: const EdgeInsets.all(12),
+                        ).show(context);
+                      }
                     }
-
-                    await Flushbar(
-                      message: 'Tree deleted successfully',
-                      icon: const Icon(Icons.check_circle, color: Colors.white),
-                      backgroundColor: Colors.green.shade700,
-                      duration: const Duration(seconds: 2),
-                      borderRadius: BorderRadius.circular(12),
-                      margin: const EdgeInsets.all(12),
-                      flushbarPosition: FlushbarPosition.TOP,
-                    ).show(context);
-
-                    if (!mounted) return;
-                    Navigator.pop(context);
-                    Navigator.pop(context, true);
-                  } catch (e) {
-                    await Flushbar(
-                      message: 'Error deleting tree: $e',
-                      icon: const Icon(Icons.error, color: Colors.white),
-                      backgroundColor: Colors.red.shade700,
-                      duration: const Duration(seconds: 3),
-                      borderRadius: BorderRadius.circular(8),
-                      margin: const EdgeInsets.all(12),
-                    ).show(context);
-                  }
-                }
-              } else {
-                await Flushbar(
-                  message: 'No tree to delete',
-                  icon: const Icon(Icons.info, color: Colors.white),
-                  backgroundColor: Colors.grey.shade700,
-                  duration: const Duration(seconds: 2),
-                  borderRadius: BorderRadius.circular(8),
-                  margin: const EdgeInsets.all(12),
-                ).show(context);
-              }
-            },
-          ),
-        ],
+                  },
+                ),
+              ]
+            : null,
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
@@ -341,28 +378,33 @@ class _CreateTreePageState extends State<CreateTreePage> {
               _buildImagePreview(),
               const SizedBox(height: 16),
 
-              DropdownButtonFormField<String>(
-                value: selectedSpeciesId,
-                onChanged: (value) {
-                  setState(() {
-                    selectedSpeciesId = value!;
-                  });
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final menuWidth = constraints.maxWidth;
+                  return SizedBox(
+                    width: double.infinity,
+                    child: DropdownMenu<String>(
+                      // set the trigger width; DropdownMenu.width should also influence popup width
+                      width: menuWidth,
+                      initialSelection: selectedSpeciesId,
+                      label: const Text('Species'),
+                      dropdownMenuEntries: speciesList
+                          .map<DropdownMenuEntry<String>>(
+                            (species) => DropdownMenuEntry(
+                              value: species['id'].toString(),
+                              label: species['name']?.toString() ?? '',
+                            ),
+                          )
+                          .toList(),
+                      onSelected: (String? v) {
+                        if (v == null) return;
+                        setState(() {
+                          selectedSpeciesId = v;
+                        });
+                      },
+                    ),
+                  );
                 },
-                items:
-                    speciesList.map<DropdownMenuItem<String>>((species) {
-                      return DropdownMenuItem<String>(
-                        value: species['id'].toString(),
-                        child: Text(species['name']),
-                      );
-                    }).toList(),
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Species',
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-                validator:
-                    (value) => value == null ? 'Please select a species' : null,
               ),
 
               const SizedBox(height: 16),
@@ -407,7 +449,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
                   filled: true,
                   fillColor: Colors.white,
                 ),
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [DecimalTextInputFormatter(decimalRange: 2)],
                 validator:
                     (value) =>
                         value == null || value.isEmpty ? 'Enter height' : null,
@@ -423,7 +466,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
                   filled: true,
                   fillColor: Colors.white,
                 ),
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [DecimalTextInputFormatter(decimalRange: 2)],
                 validator:
                     (value) =>
                         value == null || value.isEmpty ? 'Enter width' : null,
@@ -447,18 +491,32 @@ class _CreateTreePageState extends State<CreateTreePage> {
               ),
               const SizedBox(height: 24),
 
-              ElevatedButton(
-                onPressed: isLoading ? null : _saveTree,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.pakistanGreen,
-                ),
-                child:
-                    isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: isLoading ? null : _saveTree,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.hunterGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : const Text(
                           'Save',
-                          style: TextStyle(color: Colors.white),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                            color: Colors.white,
+                          ),
                         ),
+                ),
               ),
             ],
           ),

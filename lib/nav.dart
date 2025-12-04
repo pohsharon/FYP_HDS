@@ -57,7 +57,6 @@ class _NavState extends State<Nav> {
               _buildTabIcon(Icons.nature, 'Tree', 0),
               const SizedBox(width: 48), 
               _buildTabIcon(Icons.bar_chart, 'Fruit', 1),
-              // _buildTabIcon(Icons.settings, 'Settings', 3),
             ],
           ),
         ),

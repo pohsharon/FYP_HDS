@@ -63,5 +63,52 @@ class AuthService {
     print('Error checking phone: $e');
     return {'exists': false, 'message': 'Network error'};
   }
-}
+  }
+
+  /// Attempt to logout on the server (if online) and always clear local auth state.
+  ///
+  /// Returns `true` when the server-side logout completed (or responded
+  /// with an expected idempotent response). If a network error occurred the
+  /// method still clears local state and returns `false` (server revocation
+  /// pending). The caller should handle navigation after calling this.
+  static Future<bool> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    bool serverOk = false;
+
+    // attempt server-side logout, but don't fail the whole flow if it errors
+    try {
+      if (token != null) {
+        final res = await http.post(
+          Uri.parse("${Config.apiBaseUrl}/api/logout"),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+        );
+        // treat 200/204/401/403 as success (idempotent)
+        if ([200, 204, 401, 403].contains(res.statusCode)) {
+          serverOk = true;
+        } else {
+          // unexpected status
+          serverOk = false;
+        }
+      }
+    } catch (e) {
+      // network issue or server error: mark pending logout for later retry
+      await prefs.setBool('pending_server_logout', true);
+      serverOk = false;
+    }
+
+    // Always clear local auth state (support older/newer key names)
+    await prefs.remove('token');
+    await prefs.remove('user');
+    await prefs.remove('access_token');
+    await prefs.remove('refresh_token');
+    await prefs.remove('user_json');
+
+    return serverOk;
+  }
 }
