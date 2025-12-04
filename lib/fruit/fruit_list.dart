@@ -9,6 +9,7 @@ import 'package:fyp_hbs/services/local database/fruit_db.dart';
 import 'package:fyp_hbs/services/local database/tree_db.dart';
 import 'package:fyp_hbs/services/local database/species_db.dart';
 import 'package:fyp_hbs/widgets/persistent_appbar.dart';
+import 'dart:math';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/authentication/reset_password.dart';
@@ -26,11 +27,18 @@ class _FruitPageState extends State<FruitPage> {
   List<Map<String, dynamic>> _filteredFruits = [];
   List<String> _speciesList = [];
   String? _selectedSpecies;
+  final TextEditingController _speciesFilterController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     fetchFruits();
+  }
+
+  @override
+  void dispose() {
+    _speciesFilterController.dispose();
+    super.dispose();
   }
 
   Future<void> fetchFruits() async {
@@ -158,50 +166,131 @@ class _FruitPageState extends State<FruitPage> {
   void _showSpeciesFilterDialog(BuildContext context) {
     String? tempSelectedSpecies = _selectedSpecies;
 
+    // initialize controller text for visual consistency
+    _speciesFilterController.text = tempSelectedSpecies ?? '';
+
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text("Filter by Species"),
-          content: StatefulBuilder(
-            builder: (context, setStateDialog) {
-              return DropdownButton<String>(
-                isExpanded: true,
-                hint: const Text("Select a species"),
-                value: tempSelectedSpecies,
-                onChanged: (value) {
-                  setStateDialog(() {
-                    tempSelectedSpecies = value;
-                  });
+        final dialogWidth = min(MediaQuery.of(context).size.width * 0.9, 520.0);
+
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: dialogWidth),
+              child: StatefulBuilder(
+                builder: (context, setStateDialog) {
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(top:10, bottom: 8.0),
+                        child: Text(
+                          'Filter by Species',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      SizedBox(
+                        width: dialogWidth,
+                        child: Builder(builder: (context) {
+                          // local open state for the pseudo-dropdown
+                          bool isOpen = false;
+                          return StatefulBuilder(
+                            builder: (context, setStateDialogInner) {
+                              final displayText = tempSelectedSpecies ?? 'Select a species';
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  GestureDetector(
+                                    onTap: () => setStateDialogInner(() => isOpen = !isOpen),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.grey.shade400),
+                                        color: Colors.white,
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(displayText, style: const TextStyle(color: Colors.black87)),
+                                          ),
+                                          Icon(isOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down, color: Colors.black54),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  if (isOpen)
+                                    const SizedBox(height: 8),
+                                  if (isOpen)
+                                    Material(
+                                      elevation: 4,
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: ConstrainedBox(
+                                        constraints: BoxConstraints(maxHeight: 260, minWidth: dialogWidth, maxWidth: dialogWidth),
+                                        child: ListView.separated(
+                                          shrinkWrap: true,
+                                          itemCount: _speciesList.length,
+                                          separatorBuilder: (_, __) => const Divider(height: 1),
+                                          itemBuilder: (context, idx) {
+                                            final species = _speciesList[idx];
+                                            return InkWell(
+                                              onTap: () {
+                                                setStateDialogInner(() {
+                                                  tempSelectedSpecies = species;
+                                                  _speciesFilterController.text = species;
+                                                  isOpen = false;
+                                                });
+                                              },
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                                child: Text(species),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              );
+                            },
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _clearSpeciesFilter();
+                            },
+                            child: const Text('Clear Filter'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              if (tempSelectedSpecies != null) {
+                                _filterBySpecies(tempSelectedSpecies!);
+                              }
+                            },
+                            child: const Text('Apply'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
                 },
-                items:
-                    _speciesList.map((species) {
-                      return DropdownMenuItem<String>(
-                        value: species,
-                        child: Text(species),
-                      );
-                    }).toList(),
-              );
-            },
+              ),
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _clearSpeciesFilter();
-              },
-              child: const Text("Clear Filter"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                if (tempSelectedSpecies != null) {
-                  _filterBySpecies(tempSelectedSpecies!);
-                }
-              },
-              child: const Text("Apply"),
-            ),
-          ],
         );
       },
     );

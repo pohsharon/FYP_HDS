@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:intl/intl.dart';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
@@ -62,6 +63,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
   final heightController = TextEditingController();
   final widthController = TextEditingController();
   final floweringPeriodController = TextEditingController();
+  final TextEditingController speciesController = TextEditingController();
 
   List<Map<String, dynamic>> speciesList = [];
   String? selectedSpeciesId;
@@ -86,6 +88,16 @@ class _CreateTreePageState extends State<CreateTreePage> {
         _existingThumbnailPath = tree['thumbnail'];
       }
     });
+  }
+
+  @override
+  void dispose() {
+    plantingDateController.dispose();
+    heightController.dispose();
+    widthController.dispose();
+    floweringPeriodController.dispose();
+    speciesController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchSpecies() async {
@@ -384,8 +396,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
                   return SizedBox(
                     width: double.infinity,
                     child: DropdownMenu<String>(
-                      // set the trigger width; DropdownMenu.width should also influence popup width
-                      width: menuWidth,
+                      // ensure popup has a reasonable minimum width on larger screens
+                      width: max(menuWidth, 360),
+                      controller: speciesController,
+                      requestFocusOnTap: true,
                       initialSelection: selectedSpeciesId,
                       label: const Text('Species'),
                       dropdownMenuEntries: speciesList
@@ -400,6 +414,12 @@ class _CreateTreePageState extends State<CreateTreePage> {
                         if (v == null) return;
                         setState(() {
                           selectedSpeciesId = v;
+                          try {
+                            final found = speciesList.firstWhere((s) => s['id'].toString() == v);
+                            speciesController.text = found['name']?.toString() ?? '';
+                          } catch (_) {
+                            speciesController.text = '';
+                          }
                         });
                       },
                     ),
