@@ -213,4 +213,17 @@ class FruitDB{
     print('✅ Local cache updated. Total fruits in DB: $total');
   }
 
+  /// Reassign tree_uuid for local fruit rows when a locally-created tree
+  /// receives a server UUID. This ensures fruit records created offline are
+  /// linked to the correct server tree when syncing.
+  Future<int> reassignTreeUuid(String oldUuid, String newUuid) async {
+    final db = await LocalDB.getDatabase();
+    return await db.update(
+      'fruits',
+      {'tree_uuid': newUuid},
+      where: 'tree_uuid = ?',
+      whereArgs: [oldUuid],
+    );
+  }
+
 }

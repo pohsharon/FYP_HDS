@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:another_flushbar/flushbar.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/app_initializer.dart';
 
@@ -23,6 +24,41 @@ class PersistentAppBar extends StatelessWidget implements PreferredSizeWidget {
         // context remains valid even if this widget gets disposed while
         // awaiting (for example AppInitializer.initializeApp()).
         final overlayContext = Navigator.of(context, rootNavigator: true).overlay?.context ?? context;
+
+        // Quick offline check — if there's no network, show a clear error
+        // message and don't attempt the full sync flow.
+        try {
+          final conn = await Connectivity().checkConnectivity();
+          if (conn == ConnectivityResult.none) {
+            // Show a concise modal telling the user we can't sync without
+            // internet. A dialog is a clear, professional affordance and
+            // avoids overlay/context lifecycle issues.
+            await showDialog<void>(
+              context: overlayContext,
+              barrierDismissible: true,
+              builder: (ctx) => AlertDialog(
+                title: Row(
+                  children: const [
+                    Icon(Icons.wifi_off, color: Colors.red),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('No internet')),
+                  ],
+                ),
+                content: const Text('No internet connection — please try again later.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('OK'),
+                  ),
+                ],
+              ),
+            );
+            return;
+          }
+        } catch (e) {
+          // If connectivity check fails for some reason, continue and let
+          // AppInitializer surface more detailed errors.
+        }
 
         try {
           await Flushbar(

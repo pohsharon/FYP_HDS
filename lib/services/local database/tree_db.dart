@@ -179,4 +179,18 @@ class TreeDB{
     );
     print('✅ Local cache updated. Total trees in DB: $total');
   }
+
+  /// Reassign a tree's uuid from [oldUuid] to [newUuid]. This is used when
+  /// the server returns a different authoritative UUID for a tree that was
+  /// created offline locally. We update the local `trees` row so child
+  /// records can be remapped to the server UUID before syncing them.
+  Future<int> reassignUuid(String oldUuid, String newUuid) async {
+    final db = await LocalDB.getDatabase();
+    return await db.update(
+      'trees',
+      {'uuid': newUuid},
+      where: 'uuid = ?',
+      whereArgs: [oldUuid],
+    );
+  }
 }

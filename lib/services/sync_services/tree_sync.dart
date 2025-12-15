@@ -1,4 +1,8 @@
 import '../local database/tree_db.dart';
+import '../local database/agro_db.dart';
+import '../local database/health_db.dart';
+import '../local database/growth_db.dart';
+import '../local database/fruit_db.dart';
 import '../api/tree_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
@@ -233,6 +237,47 @@ class SyncTrees {
               print('✅ Synced new tree: ${tree.uuid}');
             } else {
               print('⚠️ markAsSynced updated 0 rows for ${tree.uuid}');
+            }
+
+            // If the server returned an authoritative UUID different from the
+            // local one, update local rows so child records reference the
+            // server UUID before child sync runs. Response shape may vary
+            // so handle common keys.
+            try {
+              Map<String, dynamic> serverObj = {};
+              if (response.containsKey('data') && response['data'] is Map) {
+                serverObj = Map<String, dynamic>.from(response['data']);
+              } else {
+                serverObj = Map<String, dynamic>.from(response);
+              }
+
+              final serverUuid = (serverObj['uuid'] ?? serverObj['id'] ?? serverObj['server_id'])?.toString();
+              if (serverUuid != null && serverUuid.isNotEmpty && serverUuid != tree.uuid) {
+                // Update trees table uuid
+                final changed = await TreeDB().reassignUuid(tree.uuid, serverUuid);
+                print('🔁 Reassigned tree uuid locally: ${tree.uuid} -> $serverUuid (rows updated: $changed)');
+
+                // Remap child records to point to serverUuid
+                try {
+                  final agroUpdated = await AgroDB().reassignTreeUuid(tree.uuid, serverUuid);
+                  final healthUpdated = await HealthDB().reassignTreeUuid(tree.uuid, serverUuid);
+                  final growthUpdated = await GrowthDB().reassignTreeUuid(tree.uuid, serverUuid);
+                  final fruitUpdated = await FruitDB().reassignTreeUuid(tree.uuid, serverUuid);
+                  print('🔁 Reassigned child rows -> agro:$agroUpdated health:$healthUpdated growth:$growthUpdated fruit:$fruitUpdated');
+                } catch (childErr) {
+                  print('⚠️ Failed to remap child records for ${tree.uuid} -> $serverUuid: $childErr');
+                }
+                // If the server provided an authoritative tree_tag, persist it locally
+                try {
+                  final serverTag = (serverObj['tree_tag'] ?? serverObj['treeTag'] ?? serverObj['tag'])?.toString();
+                  if (serverTag != null && serverTag.isNotEmpty) {
+                    await TreeDB().updateTreeByUuid(serverUuid, {'tree_tag': serverTag}, markPendingUpdate: false);
+                    print('🔁 Updated local tree_tag for $serverUuid -> $serverTag');
+                  }
+                } catch (_) {}
+              }
+            } catch (e) {
+              print('⚠️ Failed to extract server uuid after tree create: $e');
             }
           } else {
             print('⚠️ Server rejected new tree ${tree.uuid}');

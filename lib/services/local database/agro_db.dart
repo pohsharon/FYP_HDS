@@ -146,6 +146,19 @@ class AgroDB {
     print('✅ Saved ${list.length} agrochemical types to local lookup (total=$total)');
   }
 
+  /// Replace tree_uuid for agrochemical rows when a locally-created tree
+  /// receives a server UUID. This allows child records created while offline
+  /// to be re-linked to the server tree before sync.
+  Future<int> reassignTreeUuid(String oldUuid, String newUuid) async {
+    final db = await LocalDB.getDatabase();
+    return await db.update(
+      'agrochemical_record',
+      {'tree_uuid': newUuid},
+      where: 'tree_uuid = ?',
+      whereArgs: [oldUuid],
+    );
+  }
+
   // Return all agrochemical master/type rows from local DB
   Future<List<Map<String, dynamic>>> getAllAgrochemicals() async {
     final db = await LocalDB.getDatabase();

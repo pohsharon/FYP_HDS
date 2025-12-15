@@ -173,4 +173,17 @@ class GrowthDB{
       await db.rawQuery('SELECT COUNT(*) FROM tree_growth'),
     );
   }
+
+  /// Replace tree_uuid for growth rows when an offline-created tree receives
+  /// a server UUID. This remaps local growth entries so they reference the
+  /// server tree before sync.
+  Future<int> reassignTreeUuid(String oldUuid, String newUuid) async {
+    final db = await LocalDB.getDatabase();
+    return await db.update(
+      'tree_growth',
+      {'tree_uuid': newUuid},
+      where: 'tree_uuid = ?',
+      whereArgs: [oldUuid],
+    );
+  }
 }

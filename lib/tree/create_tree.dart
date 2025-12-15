@@ -290,9 +290,65 @@ class _CreateTreePageState extends State<CreateTreePage> {
         } else {
           // Creating a new offline tree
           final uuid = const Uuid().v4();
+          // Derive a tree tag with the same style as online tags: <prefix>-<sequence>
+          // e.g. D197-054 where 'D197' is derived from species id and sequence is 3 digits.
+          String prefix = 'OFF';
+          try {
+            // Use species id as part of prefix (if numeric-like)
+            final sid = selectedSpeciesId?.toString() ?? '';
+            final digits = sid.replaceAll(RegExp(r'[^0-9]'), '');
+            if (digits.isNotEmpty) {
+              prefix = 'D$digits';
+            } else {
+              // fallback: use species name initials
+              final found = speciesList.firstWhere((s) => s['id'].toString() == selectedSpeciesId);
+              final name = (found['name']?.toString() ?? 'OFF');
+              prefix = name.split(' ').map((p) => p.isNotEmpty ? p[0] : '').join().toUpperCase();
+            }
+          } catch (_) {}
+
+          // Calculate next sequence by scanning existing local trees with same prefix
+          int nextSeq = 1;
+          try {
+            final existing = await TreeDB().fetchAllTrees();
+            int maxSeq = 0;
+            for (final t in existing) {
+              // Prefer matching by speciesId first (server/cached rows should have speciesId)
+              if ((t.speciesId?.toString() ?? '') == (selectedSpeciesId?.toString() ?? '')) {
+                final tag = (t.treeTag ?? '').toString();
+                if (tag.contains('-')) {
+                  final parts = tag.split('-');
+                  final seqStr = parts.last.replaceAll(RegExp(r'[^0-9]'), '');
+                  final val = int.tryParse(seqStr) ?? 0;
+                  if (val > maxSeq) maxSeq = val;
+                }
+              }
+            }
+
+            // If none matched by speciesId, fall back to scanning all tags for the prefix
+            if (maxSeq == 0) {
+              for (final t in existing) {
+                final tag = (t.treeTag ?? '').toString();
+                if (tag.startsWith('$prefix-')) {
+                  final parts = tag.split('-');
+                  if (parts.length >= 2) {
+                    final seqStr = parts.last.replaceAll(RegExp(r'[^0-9]'), '');
+                    final val = int.tryParse(seqStr) ?? 0;
+                    if (val > maxSeq) maxSeq = val;
+                  }
+                }
+              }
+            }
+
+            nextSeq = maxSeq + 1;
+          } catch (_) {}
+
+          final seqPadded = nextSeq.toString().padLeft(3, '0');
+          final derivedTag = '$prefix-$seqPadded';
+
           final offlineTree = TreeModel(
             uuid: uuid,
-            treeTag: "Offline-${DateTime.now().millisecondsSinceEpoch}",
+            treeTag: derivedTag,
             speciesId: selectedSpeciesId!,
             plantedAt: DateTime.parse(plantingDateController.text),
             height: double.tryParse(heightController.text),
@@ -331,6 +387,11 @@ class _CreateTreePageState extends State<CreateTreePage> {
             margin: const EdgeInsets.all(12),
             flushbarPosition: FlushbarPosition.TOP,
           ).show(context);
+
+          // Return the created uuid to the caller so the UI can open details
+          if (!mounted) return;
+          Navigator.pop(context, {'createdUuid': uuid});
+          return;
         }
       }
 

@@ -124,4 +124,17 @@ class HealthDB {
 
     final total = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM health_record'));
   }
+
+  /// Replace tree_uuid for health rows when an offline-created tree gets a
+  /// server UUID. This remaps local pending health rows to the server tree
+  /// so subsequent sync attempts will reference the correct tree.
+  Future<int> reassignTreeUuid(String oldUuid, String newUuid) async {
+    final db = await LocalDB.getDatabase();
+    return await db.update(
+      'health_record',
+      {'tree_uuid': newUuid},
+      where: 'tree_uuid = ?',
+      whereArgs: [oldUuid],
+    );
+  }
 }

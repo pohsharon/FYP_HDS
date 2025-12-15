@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/health_api.dart';
@@ -31,6 +32,8 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
 
   final dateController = TextEditingController();
   final treatmentController = TextEditingController();
+  final diseaseController = TextEditingController();
+  final statusController = TextEditingController();
 
   int? selectedDiseaseId;
   String? selectedStatus;
@@ -40,6 +43,8 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
   void dispose() {
     dateController.dispose();
     treatmentController.dispose();
+    diseaseController.dispose();
+    statusController.dispose();
     super.dispose();
   }
 
@@ -53,6 +58,8 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
       treatmentController.text = record['treatment'] ?? '';
       selectedDiseaseId = record['disease']['id'];
       selectedStatus = record['status'];
+      diseaseController.text = selectedDiseaseId?.toString() ?? '';
+      statusController.text = selectedStatus ?? '';
     }
   }
 
@@ -267,50 +274,55 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                   }
                   final diseaseList = snapshot.data ?? <Map<String, dynamic>>[];
 
-                  return DropdownButtonFormField<String>(
-                    value: selectedDiseaseId?.toString(),
-                    items:
-                        diseaseList.map((d) {
-                            return DropdownMenuItem(
-                              value: d['id'].toString(),
-                              child: Text(d['diseaseName'] ?? ""),
-                            );
-                          }).toList()
+                  return LayoutBuilder(builder: (context, constraints) {
+                    final menuWidth = constraints.maxWidth;
+                    return SizedBox(
+                      width: double.infinity,
+                      child: DropdownMenu<String>(
+                        width: max(menuWidth, 360),
+                        controller: diseaseController,
+                        requestFocusOnTap: true,
+                        initialSelection: selectedDiseaseId?.toString(),
+                        label: const Text('Disease'),
+                        dropdownMenuEntries: diseaseList
+                            .map<DropdownMenuEntry<String>>(
+                              (d) => DropdownMenuEntry(
+                                value: d['id'].toString(),
+                                label: d['diseaseName'] ?? '',
+                              ),
+                            )
+                            .toList()
                           ..add(
-                            const DropdownMenuItem(
-                              value: 'new',
-                              child: Text('Add New Disease'),
-                            ),
+                            const DropdownMenuEntry(value: 'new', label: 'Add New Disease'),
                           ),
-                    onChanged: (value) async {
-                      if (value == 'new') {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) => CreateDiseasePage(
+                        onSelected: (String? v) async {
+                          if (v == null) return;
+                          if (v == 'new') {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CreateDiseasePage(
                                   treeTag: widget.treeTag,
                                   treeUuid: widget.treeUuid,
                                 ),
-                          ),
-                        );
-                        setState(() {});
-                      } else {
-                        setState(() => selectedDiseaseId = int.parse(value!));
-                      }
-                    },
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: 'Disease',
-                      filled: true,
-                      fillColor: Colors.white,
-                    ),
-                    validator:
-                        (value) =>
-                            value == null || value.isEmpty || value == 'new'
-                                ? 'Select disease'
-                                : null,
-                  );
+                              ),
+                            );
+                            setState(() {});
+                            return;
+                          }
+                          setState(() {
+                            selectedDiseaseId = int.tryParse(v);
+                            try {
+                              final found = diseaseList.firstWhere((d) => d['id'].toString() == v);
+                              diseaseController.text = found['diseaseName'] ?? '';
+                            } catch (_) {
+                              diseaseController.text = '';
+                            }
+                          });
+                        },
+                      ),
+                    );
+                  });
                 },
               ),
 
@@ -320,28 +332,23 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
               const SizedBox(height: 16),
 
               // Status Dropdown
-              DropdownButtonFormField<String>(
-                value: selectedStatus,
-                items:
-                    ['Recovered', 'Severe', 'Medium']
-                        .map(
-                          (status) => DropdownMenuItem(
-                            value: status,
-                            child: Text(status),
-                          ),
-                        )
+              LayoutBuilder(builder: (context, constraints) {
+                final menuWidth = constraints.maxWidth;
+                return SizedBox(
+                  width: double.infinity,
+                  child: DropdownMenu<String>(
+                    width: max(menuWidth, 360),
+                    controller: statusController,
+                    requestFocusOnTap: true,
+                    initialSelection: selectedStatus,
+                    label: const Text('Status'),
+                    dropdownMenuEntries: ['Recovered', 'Severe', 'Medium']
+                        .map<DropdownMenuEntry<String>>((status) => DropdownMenuEntry(value: status, label: status))
                         .toList(),
-                onChanged: (value) => setState(() => selectedStatus = value),
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Status',
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-                validator:
-                    (value) =>
-                        value == null || value.isEmpty ? 'Select status' : null,
-              ),
+                    onSelected: (v) => setState(() => selectedStatus = v),
+                  ),
+                );
+              }),
               const SizedBox(height: 16),
 
               // Treatment Field

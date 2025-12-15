@@ -86,15 +86,91 @@ class _TreePageState extends State<TreePage> {
             };
           }).toList();
 
-      setState(() {
-        _lastPage = lastPage;
-        if (isLoadMore) {
-          _filteredTrees.addAll(cleanedTrees);
-        } else {
-          _filteredTrees = cleanedTrees;
-          _allTrees = cleanedTrees;
+      // Merge local unsynced trees (if any) so they appear at the top of the list.
+      List<dynamic> merged = List<Map<String, dynamic>>.from(cleanedTrees);
+      try {
+        final localUnsynced = await TreeDB().fetchUnsyncedTrees();
+        final mappedLocal = localUnsynced.map((TreeModel m) {
+          return {
+            'id': m.id ?? m.uuid,
+            'uuid': m.uuid,
+            'tree_tag': m.treeTag ?? 'Offline Tree',
+            'species': {'id': m.speciesId, 'name': m.speciesId ?? 'Unknown'},
+            'planted_at': m.plantedAt != null
+                ? DateFormat('yyyy-MM-dd').format(m.plantedAt!)
+                : '',
+            'latitude': m.latitude ?? 0.0,
+            'longitude': m.longitude ?? 0.0,
+            'thumbnail': m.thumbnail ?? '',
+            'height': m.height ?? 0.0,
+            'diameter': m.diameter ?? 0.0,
+            'synced': m.synced,
+          };
+        }).toList();
+
+        // Prepend local unsynced items, avoiding duplicates by uuid
+        final seen = <String>{};
+        final combined = <Map<String, dynamic>>[];
+
+        for (final l in mappedLocal) {
+          final lu = (l['uuid'] ?? '').toString();
+          if (lu.isNotEmpty && !seen.contains(lu)) {
+            combined.add(l);
+            seen.add(lu);
+          }
         }
-      });
+
+        for (final r in merged) {
+          final ru = (r['uuid'] ?? r['id'] ?? '').toString();
+          if (ru.isNotEmpty && !seen.contains(ru)) {
+            combined.add(Map<String, dynamic>.from(r));
+            seen.add(ru);
+          }
+        }
+
+        // Ensure unsynced (local) rows appear at the top. Also try to sort by
+        // numeric sequence parsed from the tag (desc) so latest tags show first.
+        combined.sort((a, b) {
+          final aSyn = (a['synced'] == 0 || a['synced']?.toString() == '0') ? 0 : 1;
+          final bSyn = (b['synced'] == 0 || b['synced']?.toString() == '0') ? 0 : 1;
+          if (aSyn != bSyn) return aSyn - bSyn; // unsynced (0) first
+
+          // both same sync status: try to compare sequence number parsed from 'tree_tag'
+          int parseSeq(Map<String, dynamic> m) {
+            final tag = (m['tree_tag'] ?? '').toString();
+            if (!tag.contains('-')) return 0;
+            final parts = tag.split('-');
+            final seq = parts.last.replaceAll(RegExp(r'[^0-9]'), '');
+            return int.tryParse(seq) ?? 0;
+          }
+
+          final aSeq = parseSeq(a);
+          final bSeq = parseSeq(b);
+          // larger sequence first
+          return bSeq.compareTo(aSeq);
+        });
+
+        setState(() {
+          _lastPage = lastPage;
+          if (isLoadMore) {
+            _filteredTrees.addAll(combined);
+          } else {
+            _filteredTrees = combined;
+            _allTrees = combined;
+          }
+        });
+      } catch (e) {
+        // If anything goes wrong merging local unsynced, fall back to remote-only list
+        setState(() {
+          _lastPage = lastPage;
+          if (isLoadMore) {
+            _filteredTrees.addAll(cleanedTrees);
+          } else {
+            _filteredTrees = cleanedTrees;
+            _allTrees = cleanedTrees;
+          }
+        });
+      }
 
       _currentPage = page;
     } catch (e) {
@@ -442,6 +518,14 @@ class _TreePageState extends State<TreePage> {
 
               if (result == true) {
                 fetchTrees();
+              } else if (result is Map && result['createdUuid'] != null) {
+                // Refresh list and open the details page for the newly created tree
+                await fetchTrees();
+                final created = result['createdUuid'].toString();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: created)),
+                );
               }
             },
             child: Container(
@@ -488,11 +572,12 @@ class _TreePageState extends State<TreePage> {
     //         ? AppColors.successActive
     //         : AppColors.dangerActive;
 
+    final bool isUnsynced = (tree['synced'] == 0 || tree['synced']?.toString() == '0');
     return Card(
-      color: AppColors.white,
+      color: isUnsynced ? AppColors.warningLight : AppColors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppColors.gray400),
+        side: BorderSide(color: isUnsynced ? AppColors.warningActive : AppColors.gray400),
       ),
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:math';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/agrochemical_api.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
@@ -29,6 +30,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
   String? selectedAgrochemicalUuid;
   DateTime? appliedAt;
   final descriptionController = TextEditingController();
+  final agrochemicalController = TextEditingController();
 
   bool isLoading = false;
   List<Map<String, dynamic>> _agrochemicalOptions = [];
@@ -43,7 +45,15 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
       selectedAgrochemicalUuid = record['agrochemical_uuid'];
       appliedAt = DateTime.tryParse(record['applied_at'] ?? '');
       descriptionController.text = record['description'] ?? '';
+      agrochemicalController.text = record['agrochemical_name'] ?? '';
     }
+  }
+
+  @override
+  void dispose() {
+    descriptionController.dispose();
+    agrochemicalController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchAgrochemicalOptions() async {
@@ -263,31 +273,32 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
             children: [
               const SizedBox(height: 16),
 
-              DropdownButtonFormField<String>(
-                value: selectedAgrochemicalUuid,
-                items:
-                    _isDropdownLoading
-                        ? [] // While loading, show nothing
-                        : _agrochemicalOptions.map<DropdownMenuItem<String>>((
-                          item,
-                        ) {
-                          return DropdownMenuItem<String>(
-                            value: item['uuid'], // use uuid from API
-                            child: Text(item['name'] ?? 'Unknown'),
-                          );
-                        }).toList(),
-                onChanged:
-                    (val) => setState(() => selectedAgrochemicalUuid = val),
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Select Agrochemical',
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-                validator:
-                    (value) =>
-                        value == null ? 'Please select an agrochemical' : null,
-              ),
+              // Replace with Material 3 DropdownMenu to match Create Tree styling
+              LayoutBuilder(builder: (context, constraints) {
+                final menuWidth = constraints.maxWidth;
+                if (_isDropdownLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                return SizedBox(
+                  width: double.infinity,
+                  child: DropdownMenu<String>(
+                    width: max(menuWidth, 360),
+                    controller: agrochemicalController,
+                    requestFocusOnTap: true,
+                    initialSelection: selectedAgrochemicalUuid,
+                    label: const Text('Select Agrochemical'),
+                    dropdownMenuEntries: _agrochemicalOptions
+                        .map<DropdownMenuEntry<String>>((item) => DropdownMenuEntry(
+                              value: (item['uuid'] ?? item['id'] ?? '').toString(),
+                              label: item['name']?.toString() ?? 'Unknown',
+                            ))
+                        .toList(),
+                    onSelected: (String? v) {
+                      setState(() => selectedAgrochemicalUuid = v);
+                    },
+                  ),
+                );
+              }),
 
               const SizedBox(height: 16),
 
