@@ -181,20 +181,38 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
 
       if (!mounted) return;
 
-      // Update UI model cleanly
-      setState(() {
-        tree ??= {};
-
-        if (latestHeight != null && latestHeight > 0) {
-          tree!['height'] = latestHeight;
+      // Determine the last-updated timestamp of the tree record (if available).
+      DateTime treeUpdated = DateTime.fromMillisecondsSinceEpoch(0);
+      try {
+        final raw = tree?['updated_at'] ?? tree?['updatedAt'] ?? tree?['created_at'] ?? tree?['createdAt'];
+        if (raw != null && raw.toString().isNotEmpty) {
+          treeUpdated = DateTime.tryParse(raw.toString()) ?? treeUpdated;
         }
+      } catch (_) {}
 
-        if (latestDiameter != null && latestDiameter > 0) {
-          // Keep both keys so UI that reads either 'width' or 'diameter' will show the value
-          tree!['diameter'] = latestDiameter;
-          tree!['width'] = latestDiameter;
-        }
-      });
+      final latestCreated = parseDate(latest);
+
+      // Only apply growth values if the growth record is newer than the
+      // tree's last-updated timestamp. This prevents older cached growth
+      // rows from overwriting a freshly updated tree record in the UI.
+      if (latestCreated.isAfter(treeUpdated)) {
+        setState(() {
+          tree ??= {};
+
+          if (latestHeight != null && latestHeight > 0) {
+            tree!['height'] = latestHeight;
+          }
+
+          if (latestDiameter != null && latestDiameter > 0) {
+            // Keep both keys so UI that reads either 'width' or 'diameter' will show the value
+            tree!['diameter'] = latestDiameter;
+            tree!['width'] = latestDiameter;
+          }
+        });
+      } else {
+        // Growth record is older than the tree record; do not override.
+        print('ℹ️ Latest growth ($latestCreated) is older than tree updated at $treeUpdated — skipping merge');
+      }
     } catch (e) {
       print('❌ Failed to merge cached growth: $e');
     }
@@ -416,20 +434,24 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (context) => MapIndividualTreePage(
-                                  treeLatitude: latitude,
-                                  treeLongitude: longitude,
-                                  treeTag: treeTag,
-                                  treeUuid: uuid,
-                                ),
-                          ),
-                        );
-                      },
+                      onTap: () async {
+                          final updated = await Navigator.push<bool?>(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (context) => MapIndividualTreePage(
+                                    treeLatitude: latitude,
+                                    treeLongitude: longitude,
+                                    treeTag: treeTag,
+                                    treeUuid: uuid,
+                                  ),
+                            ),
+                          );
+                          if (updated == true) {
+                            // Refresh details after possible location update
+                            _loadTreeDetails();
+                          }
+                        },
                       child: const Icon(
                         Icons.location_on,
                         color: AppColors.pakistanGreen,

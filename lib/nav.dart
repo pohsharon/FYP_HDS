@@ -19,7 +19,7 @@ class _NavState extends State<Nav> {
     FruitPage()
   ];
 
-  final Color activeColor = AppColors.hunterGreen;
+  final Color activeColor = AppColors.mossGreen;
   final Color inactiveColor = AppColors.black;
 
   void _onItemTapped(int index) {

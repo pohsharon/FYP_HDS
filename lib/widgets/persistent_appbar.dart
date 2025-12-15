@@ -19,6 +19,11 @@ class PersistentAppBar extends StatelessWidget implements PreferredSizeWidget {
       icon: const Icon(Icons.sync),
       tooltip: 'Sync',
       onPressed: () async {
+        // Use the root overlay's context for showing Flushbar so the
+        // context remains valid even if this widget gets disposed while
+        // awaiting (for example AppInitializer.initializeApp()).
+        final overlayContext = Navigator.of(context, rootNavigator: true).overlay?.context ?? context;
+
         try {
           await Flushbar(
             message: 'Syncing...',
@@ -27,7 +32,7 @@ class PersistentAppBar extends StatelessWidget implements PreferredSizeWidget {
             duration: const Duration(seconds: 2),
             borderRadius: BorderRadius.circular(8),
             margin: const EdgeInsets.all(12),
-          ).show(context);
+          ).show(overlayContext);
 
           await AppInitializer.initializeApp();
 
@@ -38,7 +43,7 @@ class PersistentAppBar extends StatelessWidget implements PreferredSizeWidget {
             duration: const Duration(seconds: 2),
             borderRadius: BorderRadius.circular(8),
             margin: const EdgeInsets.all(12),
-          ).show(context);
+          ).show(overlayContext);
         } catch (e) {
           await Flushbar(
             message: 'Sync failed: $e',
@@ -47,7 +52,7 @@ class PersistentAppBar extends StatelessWidget implements PreferredSizeWidget {
             duration: const Duration(seconds: 3),
             borderRadius: BorderRadius.circular(8),
             margin: const EdgeInsets.all(12),
-          ).show(context);
+          ).show(overlayContext);
         }
       },
     );

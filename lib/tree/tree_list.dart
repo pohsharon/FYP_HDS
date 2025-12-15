@@ -554,8 +554,8 @@ class _TreePageState extends State<TreePage> {
                 ],
               ),
             ),
-            // View Button
-            OutlinedButton(
+            // View Button (green background, white text)
+            ElevatedButton(
               onPressed: () async {
                 final shouldRefresh = await Navigator.push(
                   context,
@@ -569,9 +569,9 @@ class _TreePageState extends State<TreePage> {
                   fetchTrees();
                 }
               },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.hunterGreen,
-                side: const BorderSide(color: AppColors.hunterGreen),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.hunterGreen,
+                foregroundColor: Colors.white,
                 minimumSize: const Size(60, 30),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 shape: RoundedRectangleBorder(

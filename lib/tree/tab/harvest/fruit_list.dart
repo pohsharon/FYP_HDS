@@ -376,11 +376,11 @@ class _FruitPageState extends State<FruitListPage> {
         ),
         subtitle: Text("$weight kg | Grade $grade"),
         onTap: () => _showFruitDetailsDialog(context, fruit),
-        trailing: OutlinedButton(
+        trailing: ElevatedButton(
           onPressed: () => _showFruitDetailsDialog(context, fruit),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.hunterGreen,
-            side: const BorderSide(color: AppColors.hunterGreen),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.hunterGreen,
+            foregroundColor: Colors.white,
             minimumSize: const Size(60, 30),
             padding: const EdgeInsets.symmetric(horizontal: 12),
             shape: RoundedRectangleBorder(

@@ -129,8 +129,6 @@ class TreeApi {
         throw Exception(message);
       }
     } catch (e) {
-      print("⚠️ Error fetching species online: $e");
-
       // Try loading from cache as fallback
       final cachedSpecies = prefs.getString('cached_species');
       if (cachedSpecies != null) {
@@ -292,6 +290,8 @@ class TreeApi {
     required double height,
     required double diameter,
     required String floweringPeriod,
+    double? latitude,
+    double? longitude,
     File? imageFile,
   }) async {
     final uri = Uri.parse("${Config.apiBaseUrl}/trees/$id");
@@ -303,6 +303,10 @@ class TreeApi {
     request.fields['height'] = height.toString();
     request.fields['diameter'] = diameter.toString();
     request.fields['flowering_period'] = floweringPeriod;
+  // Preserve latitude/longitude when provided (some backends treat
+  // missing coords as zero/null). Only send if non-null.
+  if (latitude != null) request.fields['latitude'] = latitude.toString();
+  if (longitude != null) request.fields['longitude'] = longitude.toString();
 
     // If user uploaded new image → send file
     if (imageFile != null) {
@@ -350,6 +354,8 @@ class TreeApi {
     required double height,
     required double diameter,
     required String floweringPeriod,
+    double? latitude,
+    double? longitude,
     File? imageFile,
   }) async {
     final uri = Uri.parse("${Config.apiBaseUrl}/trees/uuid/$uuid");
@@ -361,6 +367,9 @@ class TreeApi {
     request.fields['height'] = height.toString();
     request.fields['diameter'] = diameter.toString();
     request.fields['flowering_period'] = floweringPeriod;
+
+  if (latitude != null) request.fields['latitude'] = latitude.toString();
+  if (longitude != null) request.fields['longitude'] = longitude.toString();
 
     if (imageFile != null) {
       request.files.add(

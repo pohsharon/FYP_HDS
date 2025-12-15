@@ -25,14 +25,10 @@ class DecimalTextInputFormatter extends TextInputFormatter {
     String text = newValue.text;
     if (text == '') return newValue;
 
-    // Allow only digits and one decimal point
-    if (text == '.') {
-      // transform leading dot to 0.
-      text = '0.';
-      return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
-    }
-
-    final regExp = RegExp(r'^\d*\.?\d*\$');
+    // Allow only digits and at most one decimal point. We intentionally do
+    // not rewrite a leading '.' to '0.' so users can type ".5" without a
+    // forced leading zero.
+  final regExp = RegExp(r'^\d*\.?\d*$');
     if (!regExp.hasMatch(text)) {
       return oldValue;
     }
@@ -80,8 +76,27 @@ class _CreateTreePageState extends State<CreateTreePage> {
       if (widget.tree != null) {
         final tree = widget.tree!;
         plantingDateController.text = tree['planted_at'] ?? '';
-        heightController.text = tree['height']?.toString() ?? '';
-        widthController.text = tree['width']?.toString() ?? '';
+
+        // Don't prefill with a leading 0 — treat null/0 as empty so the
+        // user sees a blank input instead of '0' or '0.0'.
+        final h = tree['height'];
+        if (h == null) {
+          heightController.text = '';
+        } else if (h is num && h == 0) {
+          heightController.text = '';
+        } else {
+          heightController.text = h.toString();
+        }
+
+        final w = tree['width'];
+        if (w == null) {
+          widthController.text = '';
+        } else if (w is num && w == 0) {
+          widthController.text = '';
+        } else {
+          widthController.text = w.toString();
+        }
+
         floweringPeriodController.text =
             tree['flowering_period']?.toString() ?? '';
         selectedSpeciesId = tree['species']?['id']?.toString();
@@ -172,22 +187,58 @@ class _CreateTreePageState extends State<CreateTreePage> {
             imageFile: _selectedImage,
           );
         } else {
-          await TreeApi.updateTree(
+          final resp = await TreeApi.updateTree(
             id: widget.tree!['id'].toString(),
             speciesId: selectedSpeciesId!,
             plantedAt: plantingDateController.text,
             height: double.parse(heightController.text),
             diameter: double.parse(widthController.text),
+            latitude: (widget.tree != null && widget.tree!['latitude'] != null)
+                ? double.tryParse(widget.tree!['latitude'].toString())
+                : null,
+            longitude: (widget.tree != null && widget.tree!['longitude'] != null)
+                ? double.tryParse(widget.tree!['longitude'].toString())
+                : null,
             floweringPeriod: floweringPeriodController.text,
             imageFile: _selectedImage,
           );
+
+          // Update local cache so the local SQLite `trees` row reflects the
+          // server-side change immediately. Use uuid when available, else id.
+            try {
+              final uuid = widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString();
+              if (uuid != null) {
+                final changes = <String, dynamic>{
+                  'species_id': selectedSpeciesId!,
+                  'planted_at': plantingDateController.text,
+                  'height': double.tryParse(heightController.text),
+                  'diameter': double.tryParse(widthController.text),
+                  'flowering_period': int.tryParse(floweringPeriodController.text),
+                };
+
+                // If server returned an updated timestamp, persist it locally so
+                // future merges can compare timestamps correctly.
+                try {
+                  final serverUpdated = resp['updated_at'] ?? resp['updatedAt'];
+                  if (serverUpdated != null) {
+                    changes['updated_at'] = serverUpdated.toString();
+                  }
+                } catch (_) {}
+
+                await TreeDB().updateTreeByUuid(uuid, changes, markPendingUpdate: false);
+              }
+            } catch (e) {
+            // If local update fails, continue — it's non-fatal and will be
+            // reconciled during the next sync.
+            print('⚠️ Failed to update local tree row after online update: $e');
+          }
         }
 
         await Flushbar(
           message:
               widget.tree == null
-                  ? 'Tree created successfully (online)'
-                  : 'Tree updated successfully (online)',
+                  ? 'Tree created successfully'
+                  : 'Tree updated successfully',
           icon: const Icon(Icons.check_circle, color: Colors.white),
           backgroundColor: Colors.green.shade700,
           duration: const Duration(seconds: 2),
@@ -215,6 +266,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
             'flowering_period': int.tryParse(floweringPeriodController.text),
             // Do not clear thumbnail here; imageFile is stored separately in TreeModel.imageFile
           };
+          // Mark local row as updated now so UI merge logic can compare timestamps
+          changes['updated_at'] = DateTime.now().toIso8601String();
 
           final updatedRows = await TreeDB().updateTreeByUuid(
             uuidExisting,

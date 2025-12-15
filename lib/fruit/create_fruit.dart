@@ -43,7 +43,34 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
   @override
   void initState() {
     super.initState();
-    _fetchTrees();
+
+    // If this page was opened to edit an existing fruit, prefill basic fields
+    if (widget.fruit != null) {
+      final f = widget.fruit!;
+      weightController.text = f['weight']?.toString() ?? '';
+      gradeController.text = f['grade']?.toString() ?? '';
+      harvestedAtController.text = f['harvested_at']?.toString() ?? '';
+      // Accept several representations for spoiled flag
+      final spoiled = f['is_spoiled'];
+      isSpoiled = (spoiled == true || spoiled == 1 || spoiled?.toString() == 'true');
+
+      // Try to pick up tree uuid from nested shape used in lists or API
+      selectedTreeUuid = f['tree']?['uuid'] ?? f['tree_uuid'] ?? f['treeId']?.toString();
+
+      // Tentatively set harvest uuid (will be preserved if possible after events load)
+      selectedHarvestUuid = f['uuid'] ?? f['harvest_uuid'];
+    }
+
+    // Load trees (and events for selected tree). After loading we re-apply
+    // the selectedHarvestUuid from the incoming fruit so we don't accidentally
+    // overwrite it based on event heuristics.
+    _fetchTrees().then((_) {
+      if (widget.fruit != null && mounted) {
+        setState(() {
+          selectedHarvestUuid = widget.fruit!['uuid'] ?? widget.fruit!['harvest_uuid'];
+        });
+      }
+    });
   }
 
   Future<void> _fetchTrees() async {
@@ -434,7 +461,7 @@ Future<void> _saveFruit() async {
                 final label = matchedEventLabel ?? 'No event matched yet';
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Text('Events cached: $count · Matched: $label', style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                  child: Text('Events matched: $label', style: const TextStyle(fontSize: 13, color: Colors.black54)),
                 );
               }),
               const SizedBox(height: 16),

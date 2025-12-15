@@ -39,7 +39,7 @@ class AuthService {
   static Future<Map<String, dynamic>> checkPhone(String phone) async {
   try {
     phone = phone.trim();
-    if (!phone.startsWith('0')) phone = '0$phone';
+    if (!phone.startsWith('0')) phone = '60$phone';
 
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');

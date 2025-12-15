@@ -88,17 +88,12 @@ class TreeGrowthApi {
         if (data is Map<String, dynamic> && data.containsKey("data")) {
           return List<Map<String, dynamic>>.from(data["data"]);
         } else {
-          // Unexpected format -> return empty list so callers can fallback to local cache
-          print('⚠️ TreeGrowthApi.fetchGrowthLogsByUuid: unexpected response format: $data');
           return <Map<String, dynamic>>[];
         }
       } else {
-        print('⚠️ TreeGrowthApi.fetchGrowthLogsByUuid: server returned ${response.statusCode}: $data');
         return <Map<String, dynamic>>[];
       }
     } catch (e) {
-      // Network or parsing error: log and return empty list so caller can use local cache
-      print('⚠️ TreeGrowthApi.fetchGrowthLogsByUuid error: $e');
       return <Map<String, dynamic>>[];
     }
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/authentication/otp_verification.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
+import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/services/api/auth_service.dart';
 
 class ForgotPasswordPage extends StatelessWidget {
@@ -11,14 +12,20 @@ class ForgotPasswordPage extends StatelessWidget {
     final TextEditingController phoneController = TextEditingController();
     final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
-    Future isPhoneRegistered(String phone) async {
+    Future<bool> isPhoneRegistered(String phone) async {
       final result = await AuthService.checkPhone(phone);
-      if (!(result['exists'] as bool)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Phone not registered')),
-        );
-        return;
+      final exists = (result['exists'] is bool) ? result['exists'] as bool : false;
+      if (!exists) {
+        await Flushbar(
+          message: result['message']?.toString() ?? 'Phone not registered',
+          duration: const Duration(seconds: 3),
+          backgroundColor: Colors.orange.shade700,
+          icon: const Icon(Icons.info, color: Colors.white),
+          borderRadius: BorderRadius.circular(8),
+          margin: const EdgeInsets.all(12),
+        ).show(context);
       }
+      return exists;
     }
 
     String? validatePhone(String value) {
@@ -100,11 +107,6 @@ class ForgotPasswordPage extends StatelessWidget {
                       final phone = phoneController.text.trim();
                       final registered = await isPhoneRegistered(phone);
                       if (!registered) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Phone number not registered.'),
-                          ),
-                        );
                         return;
                       }
                       Navigator.push(

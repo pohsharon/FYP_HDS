@@ -4,6 +4,7 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart'; // ✅ make sure this import exists
 
 class MapIndividualTreePage extends StatefulWidget {
@@ -79,12 +80,20 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
 
   Future<void> _saveTreeLocation() async {
     if (_currentLocation == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Current location not detected yet.")),
-      );
+      final overlayContext = Navigator.of(context, rootNavigator: true).overlay?.context ?? context;
+      Flushbar(
+        message: "Current location not detected yet.",
+        duration: const Duration(seconds: 3),
+        backgroundColor: Colors.orange.shade700,
+        icon: const Icon(Icons.info, color: Colors.white),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+      ).show(overlayContext);
       return;
     }
 
+    // prevent concurrent saves but keep the button visually active
+    if (_isSaving) return;
     setState(() => _isSaving = true);
 
     try {
@@ -96,19 +105,28 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Tree location saved successfully!")),
-      );
-
+      // Hide the local UI indicator and return success to caller. The
+      // caller (TreeDetailsPage) will refresh and can show a confirmation
+      // message if desired. Avoid showing a Flushbar here before pop to
+      // prevent pushing a new route while the navigator is in a pop/push
+      // transition (which can trigger an assertion).
       setState(() {
-        _locationNotSaved = false; // ✅ hide button and message
+        _locationNotSaved = false; // hide button and message
       });
+
+      Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to save location: $e")),
-      );
+      final overlayContext = Navigator.of(context, rootNavigator: true).overlay?.context ?? context;
+      Flushbar(
+        message: "Failed to save location: $e",
+        duration: const Duration(seconds: 3),
+        backgroundColor: Colors.red.shade700,
+        icon: const Icon(Icons.error, color: Colors.white),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+      ).show(overlayContext);
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -211,21 +229,14 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
               bottom: 80,
               left: 20,
               right: 20,
-              child: ElevatedButton.icon(
-                onPressed: _isSaving ? null : _saveTreeLocation,
-                icon: _isSaving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.save),
-                label: Text(
+              child: ElevatedButton(
+                onPressed: () {
+                  if (_isSaving) return;
+                  _saveTreeLocation();
+                },
+                child: Text(
                   _isSaving ? "Saving..." : "Save Tree Location",
-                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                  style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.pakistanGreen,

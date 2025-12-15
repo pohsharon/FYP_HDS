@@ -166,7 +166,6 @@ class _FruitPageState extends State<FruitPage> {
   void _showSpeciesFilterDialog(BuildContext context) {
     String? tempSelectedSpecies = _selectedSpecies;
 
-    // initialize controller text for visual consistency
     _speciesFilterController.text = tempSelectedSpecies ?? '';
 
     showDialog(
@@ -570,23 +569,16 @@ class _FruitPageState extends State<FruitPage> {
                       "$weight kg | Grade $grade",
                       style: const TextStyle(color: Colors.grey, fontSize: 11),
                     ),
-                    // Text(
-                    //   treeTag,
-                    //   style: const TextStyle(
-                    //     color: Colors.grey,
-                    //     fontSize: 11,
-                    //   ),
-                    // ),
                   ],
                 ),
               ),
-              OutlinedButton(
+              ElevatedButton(
                 onPressed: () {
                   _showFruitDetailsDialog(context, fruit);
                 },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.hunterGreen,
-                  side: const BorderSide(color: AppColors.hunterGreen),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color.fromARGB(255, 171, 149, 69),
+                  foregroundColor: Colors.white,
                   minimumSize: const Size(60, 30),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   shape: RoundedRectangleBorder(
@@ -629,18 +621,88 @@ class _FruitPageState extends State<FruitPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
+                // Top row: close on the left, edit on the right
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: () async {
+                        // Close details dialog then open edit page
+                        Navigator.of(context).pop();
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CreateFruitPage(fruit: fruit),
+                          ),
+                        );
+                        if (result == true) {
+                          // refresh the list after editing
+                          fetchFruits();
+                        }
+                      },
+                    ),
+                  ],
                 ),
-                QrImageView(
-                  data: uuid,
-                  version: QrVersions.auto,
-                  size: 150,
-                  gapless: true,
+                // Tappable QR: open a white dialog like TreeDetails for preview
+                GestureDetector(
+                  onTap: () {
+                    if (uuid.isEmpty) return;
+                    showDialog(
+                      context: context,
+                      builder: (_) => Dialog(
+                        backgroundColor: Colors.transparent,
+                        insetPadding: const EdgeInsets.symmetric(
+                          horizontal: 30,
+                          vertical: 100,
+                        ),
+                        child: Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              QrImageView(
+                                data: uuid,
+                                version: QrVersions.auto,
+                                size: 300,
+                                gapless: true,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                uuid,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  child: QrImageView(
+                    data: uuid,
+                    version: QrVersions.auto,
+                    size: 150,
+                    gapless: true,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
