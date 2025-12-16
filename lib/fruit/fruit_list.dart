@@ -145,9 +145,13 @@ class _FruitPageState extends State<FruitPage> {
         });
       } catch (e2) {
         setState(() {});
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Error loading fruits: $e")));
+        await Flushbar(
+          message: "Error loading fruits: $e",
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+        ).show(context);
       }
     }
   }

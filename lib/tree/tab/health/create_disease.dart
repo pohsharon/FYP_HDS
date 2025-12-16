@@ -41,9 +41,13 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
 
   Future<void> _saveDisease() async {
     if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please complete the form')));
+      await Flushbar(
+        message: 'Please complete the form',
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 2),
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+      ).show(context);
       return;
     }
 
@@ -83,9 +87,13 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      await Flushbar(
+        message: 'Error: $e',
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+      ).show(context);
     } finally {
       setState(() => isLoading = false);
     }
@@ -93,9 +101,13 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
 
   Future<void> _deleteDisease() async {
     if (widget.disease == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No disease to delete')));
+      await Flushbar(
+        message: 'No disease to delete',
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 2),
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+      ).show(context);
       return;
     }
 
@@ -127,15 +139,24 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
     if (confirm == true) {
       try {
         await DiseaseApi.deleteDisease(widget.disease!['id'].toString());
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Disease deleted successfully')),
-        );
+        await Flushbar(
+          message: 'Disease deleted successfully',
+          icon: const Icon(Icons.check_circle, color: Colors.white),
+          backgroundColor: Colors.green.shade700,
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+        ).show(context);
         Navigator.pop(context); // close page
         Navigator.pop(context, true); // refresh parent
       } catch (e) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting disease: $e')));
+        await Flushbar(
+          message: 'Error deleting disease: $e',
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+        ).show(context);
       }
     }
   }

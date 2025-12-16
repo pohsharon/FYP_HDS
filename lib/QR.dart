@@ -5,6 +5,7 @@ import 'package:qr_code_scanner/qr_code_scanner.dart' as qr;
 import 'package:torch_light/torch_light.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:qr_code_tools/qr_code_tools.dart'; 
+import 'package:another_flushbar/flushbar.dart';
 
 class QRScannerPage extends StatefulWidget {
   const QRScannerPage({super.key});
@@ -54,9 +55,13 @@ class _QRScannerPageState extends State<QRScannerPage> {
         isTorchOn = !isTorchOn;
       });
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Flashlight error: $e')));
+      await Flushbar(
+        message: 'Flashlight error: $e',
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+      ).show(context);
     }
   }
 
@@ -80,15 +85,23 @@ Future<void> _pickImageFromGallery() async {
         ),
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('❌ Could not decode any QR from the image.')),
-      );
+      await Flushbar(
+        message: '❌ Could not decode any QR from the image.',
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 3),
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+      ).show(context);
     }
   } catch (e) {
     debugPrint('Error decoding QR: $e');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('❌ Error decoding QR: $e')),
-    );
+    await Flushbar(
+      message: '❌ Error decoding QR: $e',
+      backgroundColor: Colors.red.shade700,
+      duration: const Duration(seconds: 3),
+      margin: const EdgeInsets.all(12),
+      borderRadius: BorderRadius.circular(8),
+    ).show(context);
   }
 }
 

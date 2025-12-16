@@ -4,6 +4,7 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_growth_api.dart';
 import 'package:fyp_hbs/models/tree_growth_model.dart';
 import 'package:fyp_hbs/services/local database/growth_db.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class GrowthLogTabPage extends StatefulWidget {
   final String treeUuid;
@@ -267,23 +268,23 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                                           if (mounted) setState(() {});
                                         } catch (localErr) {
                                           print('Failed to save growth locally: $localErr');
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Failed to save growth log: $localErr'),
-                                            ),
-                                          );
+                                          await Flushbar(
+                                            message: 'Failed to save growth log: $localErr',
+                                            backgroundColor: Colors.red.shade700,
+                                            duration: const Duration(seconds: 3),
+                                            margin: const EdgeInsets.all(12),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ).show(context);
                                         }
                                       }
                                     } else {
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            "Please enter height and diameter",
-                                          ),
-                                        ),
-                                      );
+                                      await Flushbar(
+                                        message: 'Please enter height and diameter',
+                                        backgroundColor: Colors.orange.shade700,
+                                        duration: const Duration(seconds: 2),
+                                        margin: const EdgeInsets.all(12),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ).show(context);
                                     }
                                   },
                                   child: const Text("Save"),

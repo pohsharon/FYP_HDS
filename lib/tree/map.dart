@@ -3,9 +3,12 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
+import 'package:fyp_hbs/services/local database/tree_db.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:fyp_hbs/utils/tile_cache.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -54,10 +57,31 @@ class _MapPageState extends State<MapPage> {
         });
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Failed to load tree markers: $e")),
-        );
+      // Remote fetch failed; fall back to local DB cached tree locations.
+      try {
+        final local = await TreeDB().fetchAllTrees();
+        final markers = local.map<Map<String, dynamic>>((t) {
+          return {
+            'uuid': t.uuid,
+            'tree_tag': t.treeTag ?? 'Offline Tree',
+            'latitude': t.latitude ?? 0.0,
+            'longitude': t.longitude ?? 0.0,
+          };
+        }).toList();
+
+        if (mounted) {
+          setState(() => treesWithLocation = markers);
+        }
+      } catch (localErr) {
+        if (mounted) {
+          await Flushbar(
+            message: "Failed to load tree markers: $e",
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 3),
+            margin: const EdgeInsets.all(12),
+            borderRadius: BorderRadius.circular(8),
+          ).show(context);
+        }
       }
     }
   }
@@ -127,11 +151,24 @@ class _MapPageState extends State<MapPage> {
               .map((tree) => tree as Map<String, dynamic>)
               .toList();
     } catch (e) {
-      if (!mounted) return false;
-      ScaffoldMessenger.of(
-        parentContext,
-      ).showSnackBar(SnackBar(content: Text("Failed to load tree list: $e")));
-      return false;
+      // If remote fails, try local DB so user can still select a cached tree.
+      try {
+        final local = await TreeDB().fetchAllTrees();
+        treeList = local.map((t) => {
+          'uuid': t.uuid,
+          'tree_tag': t.treeTag ?? 'Offline Tree',
+        }).toList();
+      } catch (localErr) {
+        if (!mounted) return false;
+        await Flushbar(
+          message: "Failed to load tree list: $e",
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+        ).show(parentContext);
+        return false;
+      }
     }
 
     return showDialog<bool>(
@@ -178,28 +215,25 @@ class _MapPageState extends State<MapPage> {
                                 );
 
                                 if (mounted) {
-                                  ScaffoldMessenger.of(
-                                    parentContext,
-                                  ).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        "Tree location saved successfully!",
-                                      ),
-                                    ),
-                                  );
+                                  await Flushbar(
+                                    message: 'Tree location saved successfully!',
+                                    icon: const Icon(Icons.check_circle, color: Colors.white),
+                                    backgroundColor: Colors.green.shade700,
+                                    duration: const Duration(seconds: 2),
+                                    margin: const EdgeInsets.all(12),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ).show(parentContext);
                                   Navigator.pop(dialogContext, true);
                                 }
                               } catch (e) {
                                 if (mounted) {
-                                  ScaffoldMessenger.of(
-                                    parentContext,
-                                  ).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        "Failed to save location: $e",
-                                      ),
-                                    ),
-                                  );
+                                  await Flushbar(
+                                    message: 'Failed to save location: $e',
+                                    backgroundColor: Colors.red.shade700,
+                                    duration: const Duration(seconds: 3),
+                                    margin: const EdgeInsets.all(12),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ).show(parentContext);
                                   Navigator.pop(dialogContext, false);
                                 }
                               }
@@ -240,6 +274,9 @@ class _MapPageState extends State<MapPage> {
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.fyp_hbs',
+                // Use our local file-backed tile provider that falls back to
+                // network when the tile is not cached.
+                tileProvider: LocalOrNetworkTileProvider(),
               ),
               if (_currentLocation != null)
                 MarkerLayer(

@@ -8,6 +8,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Geolocator.checkPermission();
 
+  // (We use a simple file-backed tile cache implemented in the app.)
+
   // Initialize offline/online setup and preload local cache
   await AppInitializer.initializeApp();
   AppInitializer.initConnectivityListener();

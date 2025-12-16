@@ -14,6 +14,7 @@ import 'package:fyp_hbs/models/tree_growth_model.dart';
 import 'package:fyp_hbs/services/local%20database/tree_db.dart';
 import 'package:fyp_hbs/services/local%20database/species_db.dart';
 import 'package:fyp_hbs/services/local%20database/growth_db.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 
 class TreeDetailsPage extends StatefulWidget {
@@ -123,9 +124,13 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
 
         if (mounted) {
           setState(() => isLoading = false);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Error loading tree: $e2')));
+          Flushbar(
+            message: 'Error loading tree: $e2',
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 3),
+            margin: const EdgeInsets.all(12),
+            borderRadius: BorderRadius.circular(8),
+          ).show(context);
         }
       }
     }
