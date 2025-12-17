@@ -33,19 +33,22 @@ class _TreePageState extends State<TreePage> {
   final ScrollController _scrollController = ScrollController();
   // Controllers for matching create_tree's DropdownMenu style
   final TextEditingController _speciesFilterController = TextEditingController();
-  final TextEditingController _sortFilterController = TextEditingController();
 
   int _currentPage = 1;
   int _lastPage = 1;
   bool _isLoadingMore = false;
   // Persistent filter state so dialog opens with current values
-  String _currentSortOption = 'date_desc';
   String _currentFloweringMin = '';
   String _currentFloweringMax = '';
   String _currentHeightMin = '';
   String _currentHeightMax = '';
   String _currentDiameterMin = '';
   String _currentDiameterMax = '';
+  // Planting date filter state
+  String _currentPlantingFrom = '';
+  String _currentPlantingTo = '';
+  final TextEditingController _plantingFromController = TextEditingController();
+  final TextEditingController _plantingToController = TextEditingController();
 
   @override
   void initState() {
@@ -87,8 +90,9 @@ class _TreePageState extends State<TreePage> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _speciesFilterController.dispose();
-    _sortFilterController.dispose();
+  _speciesFilterController.dispose();
+    _plantingFromController.dispose();
+    _plantingToController.dispose();
     super.dispose();
   }
 
@@ -270,7 +274,9 @@ class _TreePageState extends State<TreePage> {
   void _showSpeciesFilterDialog(BuildContext context) {
   // 1. Initial values from existing state
   String? tempSelectedSpecies = _selectedSpecies;
-  String tempSortOption = _currentSortOption;
+  // Planting date temporary values
+  final plantingFrom = TextEditingController(text: _currentPlantingFrom);
+  final plantingTo = TextEditingController(text: _currentPlantingTo);
 
   // 2. Pre-fill controllers with current filter values if they exist
   final floweringMin = TextEditingController(text: _currentFloweringMin);
@@ -308,34 +314,62 @@ class _TreePageState extends State<TreePage> {
                         final menuWidth = constraints.maxWidth;
                         return SizedBox(
                           width: double.infinity,
-                          child: DropdownMenu<String>(
-                            width: menuWidth,
-                             // cap popup height so long lists scroll
-                             menuHeight: 300,
-                            controller: _speciesFilterController,
-                            requestFocusOnTap: true,
-                            initialSelection: tempSelectedSpecies,
-                            dropdownMenuEntries: _speciesList
-                                .map<DropdownMenuEntry<String>>(
+                          child: DefaultTextStyle.merge(
+                            style: const TextStyle(fontSize: 13),
+                            child: DropdownMenu<String>(
+                              width: menuWidth,
+                              // cap popup height so long lists scroll
+                              menuHeight: 300,
+                              controller: _speciesFilterController,
+                              requestFocusOnTap: true,
+                              initialSelection: tempSelectedSpecies ?? '',
+                              dropdownMenuEntries: [
+                                const DropdownMenuEntry(value: '', label: 'All species'),
+                                ..._speciesList.map<DropdownMenuEntry<String>>(
                                   (species) => DropdownMenuEntry(
                                     value: species,
                                     label: species,
                                   ),
                                 )
-                                .toList(),
-                            onSelected: (String? v) {
-                              setStateDialog(() => tempSelectedSpecies = v);
-                            },
+                              ],
+                              onSelected: (String? v) {
+                                setStateDialog(() => tempSelectedSpecies = v);
+                              },
+                            ),
                           ),
                         );
                       },
                     ),
 
                     const SizedBox(height: 20),
-                    _buildSectionHeader("Sort by"),
-                    _buildSortDropdown(tempSortOption, (v) {
-                      setStateDialog(() => tempSortOption = v!);
-                    }),
+                    _buildSectionHeader("Planting Date (From / To)"),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: plantingFrom,
+                            readOnly: true,
+                            decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'From'),
+                            onTap: () async {
+                              final picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime.now());
+                              if (picked != null) setStateDialog(() => plantingFrom.text = DateFormat('yyyy-MM-dd').format(picked));
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: plantingTo,
+                            readOnly: true,
+                            decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'To'),
+                            onTap: () async {
+                              final picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime.now());
+                              if (picked != null) setStateDialog(() => plantingTo.text = DateFormat('yyyy-MM-dd').format(picked));
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
 
                     const SizedBox(height: 20),
                     _buildSectionHeader("Range Filters (Min / Max)"),
@@ -370,7 +404,8 @@ class _TreePageState extends State<TreePage> {
               Navigator.of(context).pop();
               _applyFilters(
                 species: tempSelectedSpecies,
-                sortOption: tempSortOption,
+                plantingFrom: plantingFrom.text,
+                plantingTo: plantingTo.text,
                 floweringMin: floweringMin.text,
                 floweringMax: floweringMax.text,
                 heightMin: heightMin.text,
@@ -427,6 +462,7 @@ Widget _buildRangeRow(String label, TextEditingController min, TextEditingContro
 // Helper: Refined TextFields
 Widget _buildCompactField(TextEditingController controller, String hint, String unit) {
   return TextField(
+    style: const TextStyle(fontSize: 13),
     controller: controller,
     keyboardType: const TextInputType.numberWithOptions(decimal: true),
     decoration: InputDecoration(
@@ -439,39 +475,13 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
   );
 }
 
-// Helper: Sort Dropdown (popup width matches containing box)
-Widget _buildSortDropdown(String value, ValueChanged<String?> onChanged) {
-  return LayoutBuilder(builder: (context, constraints) {
-    final menuWidth = constraints.maxWidth;
-    return SizedBox(
-      width: double.infinity,
-      child: DropdownMenu<String>(
-  width: menuWidth,
-         // cap popup height so long lists scroll
-         menuHeight: 300,
-        controller: _sortFilterController,
-        requestFocusOnTap: true,
-        initialSelection: value,
-        dropdownMenuEntries: const [
-          DropdownMenuEntry(value: 'date_desc', label: 'Date: Newest first'),
-          DropdownMenuEntry(value: 'date_asc', label: 'Date: Oldest first'),
-          DropdownMenuEntry(value: 'flowering_desc', label: 'Flowering: High → Low'),
-          DropdownMenuEntry(value: 'flowering_asc', label: 'Flowering: Low → High'),
-          DropdownMenuEntry(value: 'height_desc', label: 'Height: High to Low'),
-          DropdownMenuEntry(value: 'height_asc', label: 'Height: Low to High'),
-          DropdownMenuEntry(value: 'diameter_desc', label: 'Diameter: High to Low'),
-          DropdownMenuEntry(value: 'diameter_asc', label: 'Diameter: Low to High'),
-        ],
-        onSelected: onChanged,
-      ),
-    );
-  });
-}
+// Sort helper removed — replaced by planting date range fields in the dialog.
 
   // Apply composite filters and sorting to _allTrees then set _filteredTrees
   void _applyFilters({
     String? species,
-    required String sortOption,
+    String? plantingFrom,
+    String? plantingTo,
     String? floweringMin,
     String? floweringMax,
     String? heightMin,
@@ -536,68 +546,29 @@ Widget _buildSortDropdown(String value, ValueChanged<String?> onChanged) {
       }).toList();
     }
 
-    working.sort((a, b) {
-      try {
-        switch (sortOption) {
-          case 'date_asc':
-            DateTime da() {
-              final s = a['planted_at']?.toString() ?? '';
-              return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
-            }
+    // Apply planting date range if provided
+    DateTime? parseDate(String? s) {
+      if (s == null || s.trim().isEmpty) return null;
+      return DateTime.tryParse(s);
+    }
 
-            DateTime db() {
-              final s = b['planted_at']?.toString() ?? '';
-              return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
-            }
-
-            return da().compareTo(db());
-          case 'date_desc':
-            DateTime da2() {
-              final s = a['planted_at']?.toString() ?? '';
-              return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
-            }
-
-            DateTime db2() {
-              final s = b['planted_at']?.toString() ?? '';
-              return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
-            }
-
-            return db2().compareTo(da2());
-          case 'flowering_asc':
-            final av = double.tryParse((a['flowering_period'] ?? a['flowering'] ?? a['flowering_period_number'] ?? 0).toString()) ?? 0.0;
-            final bv = double.tryParse((b['flowering_period'] ?? b['flowering'] ?? b['flowering_period_number'] ?? 0).toString()) ?? 0.0;
-            return av.compareTo(bv);
-          case 'flowering_desc':
-            final av2 = double.tryParse((a['flowering_period'] ?? a['flowering'] ?? a['flowering_period_number'] ?? 0).toString()) ?? 0.0;
-            final bv2 = double.tryParse((b['flowering_period'] ?? b['flowering'] ?? b['flowering_period_number'] ?? 0).toString()) ?? 0.0;
-            return bv2.compareTo(av2);
-          case 'height_asc':
-            final ah = double.tryParse((a['height'] ?? 0).toString()) ?? 0.0;
-            final bh = double.tryParse((b['height'] ?? 0).toString()) ?? 0.0;
-            return ah.compareTo(bh);
-          case 'height_desc':
-            final ah2 = double.tryParse((a['height'] ?? 0).toString()) ?? 0.0;
-            final bh2 = double.tryParse((b['height'] ?? 0).toString()) ?? 0.0;
-            return bh2.compareTo(ah2);
-          case 'diameter_asc':
-            final ad = double.tryParse((a['diameter'] ?? 0).toString()) ?? 0.0;
-            final bd = double.tryParse((b['diameter'] ?? 0).toString()) ?? 0.0;
-            return ad.compareTo(bd);
-          case 'diameter_desc':
-            final ad2 = double.tryParse((a['diameter'] ?? 0).toString()) ?? 0.0;
-            final bd2 = double.tryParse((b['diameter'] ?? 0).toString()) ?? 0.0;
-            return bd2.compareTo(ad2);
-          default:
-            return 0;
-        }
-      } catch (_) {
-        return 0;
-      }
-    });
+    final pFrom = parseDate(plantingFrom);
+    final pTo = parseDate(plantingTo);
+    if (pFrom != null || pTo != null) {
+      working = working.where((tree) {
+        final s = tree['planted_at']?.toString() ?? '';
+        final dt = DateTime.tryParse(s);
+        if (dt == null) return false;
+        if (pFrom != null && dt.isBefore(pFrom)) return false;
+        if (pTo != null && dt.isAfter(pTo)) return false;
+        return true;
+      }).toList();
+    }
 
     setState(() {
-      _selectedSpecies = species;
-      _currentSortOption = sortOption;
+      _selectedSpecies = (species == null || species.isEmpty) ? null : species;
+      _currentPlantingFrom = plantingFrom ?? '';
+      _currentPlantingTo = plantingTo ?? '';
       _currentFloweringMin = floweringMin ?? '';
       _currentFloweringMax = floweringMax ?? '';
       _currentHeightMin = heightMin ?? '';
@@ -613,7 +584,6 @@ Widget _buildSortDropdown(String value, ValueChanged<String?> onChanged) {
   void _clearSpeciesFilter() {
     setState(() {
       _selectedSpecies = null;
-      _currentSortOption = 'date_desc';
       _currentFloweringMin = '';
       _currentFloweringMax = '';
       _currentHeightMin = '';

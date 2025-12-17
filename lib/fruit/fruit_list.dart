@@ -10,6 +10,7 @@ import 'package:fyp_hbs/services/local database/tree_db.dart';
 import 'package:fyp_hbs/services/local database/species_db.dart';
 import 'package:fyp_hbs/widgets/persistent_appbar.dart';
 import 'dart:math';
+import 'package:intl/intl.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/authentication/reset_password.dart';
@@ -28,6 +29,13 @@ class _FruitPageState extends State<FruitPage> {
   List<String> _speciesList = [];
   String? _selectedSpecies;
   final TextEditingController _speciesFilterController = TextEditingController();
+  // Persistent fruit filter state
+  String? _currentGrade;
+  final TextEditingController _gradeController = TextEditingController();
+  final TextEditingController _harvestFromController = TextEditingController();
+  final TextEditingController _harvestToController = TextEditingController();
+  final TextEditingController _weightMinController = TextEditingController();
+  final TextEditingController _weightMaxController = TextEditingController();
 
   @override
   void initState() {
@@ -38,6 +46,11 @@ class _FruitPageState extends State<FruitPage> {
   @override
   void dispose() {
     _speciesFilterController.dispose();
+    _gradeController.dispose();
+    _harvestFromController.dispose();
+    _harvestToController.dispose();
+    _weightMinController.dispose();
+    _weightMaxController.dispose();
     super.dispose();
   }
 
@@ -168,152 +181,282 @@ class _FruitPageState extends State<FruitPage> {
   }
 
   void _showSpeciesFilterDialog(BuildContext context) {
-    String? tempSelectedSpecies = _selectedSpecies;
+  String? tempSelectedSpecies = _selectedSpecies;
+  String? tempGrade = _currentGrade;
 
-    _speciesFilterController.text = tempSelectedSpecies ?? '';
+  _speciesFilterController.text = tempSelectedSpecies ?? '';
+  _gradeController.text = tempGrade ?? '';
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        final dialogWidth = min(MediaQuery.of(context).size.width * 0.9, 520.0);
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        // Match the rounded corners and background color
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.background,
+        title: const Text(
+          "Filter Fruits",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return SizedBox(
+              // Consistent width across dialogs
+              width: MediaQuery.of(context).size.width * 0.9,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. Species Header and Dropdown
+                    _buildSectionHeader("Species"),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SizedBox(
+                          width: constraints.maxWidth,
+                          child: DropdownMenu<String>(
+                            width: constraints.maxWidth,
+                            menuHeight: 260,
+                            controller: _speciesFilterController,
+                            requestFocusOnTap: true,
+                            // show explicit "All species" when no selection exists
+                            initialSelection: tempSelectedSpecies ?? '',
+                            dropdownMenuEntries: [
+                              const DropdownMenuEntry(value: '', label: 'All species'),
+                              ..._speciesList.map((s) => DropdownMenuEntry(value: s, label: s))
+                            ],
+                            onSelected: (v) => setStateDialog(() => tempSelectedSpecies = v),
+                          ),
+                        );
+                      },
+                    ),
 
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: dialogWidth),
-              child: StatefulBuilder(
-                builder: (context, setStateDialog) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(top:10, bottom: 8.0),
-                        child: Text(
-                          'Filter by Species',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    const SizedBox(height: 20),
+
+                    // 2. Harvest Date Range
+                    _buildSectionHeader("Harvest Date (From / To)"),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildDateTextField(context, _harvestFromController, "From", setStateDialog),
                         ),
-                      ),
-                      SizedBox(
-                        width: dialogWidth,
-                        child: Builder(builder: (context) {
-                          // local open state for the pseudo-dropdown
-                          bool isOpen = false;
-                          return StatefulBuilder(
-                            builder: (context, setStateDialogInner) {
-                              final displayText = tempSelectedSpecies ?? 'Select a species';
-                              return Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  GestureDetector(
-                                    onTap: () => setStateDialogInner(() => isOpen = !isOpen),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.grey.shade400),
-                                        color: Colors.white,
-                                      ),
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Expanded(
-                                            child: Text(displayText, style: const TextStyle(color: Colors.black87)),
-                                          ),
-                                          Icon(isOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down, color: Colors.black54),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  if (isOpen)
-                                    const SizedBox(height: 8),
-                                  if (isOpen)
-                                    Material(
-                                      elevation: 4,
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: ConstrainedBox(
-                                        constraints: BoxConstraints(maxHeight: 260, minWidth: dialogWidth, maxWidth: dialogWidth),
-                                        child: ListView.separated(
-                                          shrinkWrap: true,
-                                          itemCount: _speciesList.length,
-                                          separatorBuilder: (_, __) => const Divider(height: 1),
-                                          itemBuilder: (context, idx) {
-                                            final species = _speciesList[idx];
-                                            return InkWell(
-                                              onTap: () {
-                                                setStateDialogInner(() {
-                                                  tempSelectedSpecies = species;
-                                                  _speciesFilterController.text = species;
-                                                  isOpen = false;
-                                                });
-                                              },
-                                              child: Padding(
-                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                                                child: Text(species),
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              );
-                            },
-                          );
-                        }),
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              _clearSpeciesFilter();
-                            },
-                            child: const Text('Clear Filter'),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: () {
-                              Navigator.of(context).pop();
-                              if (tempSelectedSpecies != null) {
-                                _filterBySpecies(tempSelectedSpecies!);
-                              }
-                            },
-                            child: const Text('Apply'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
-                },
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildDateTextField(context, _harvestToController, "To", setStateDialog),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // 3. Grade Header and Dropdown
+                    _buildSectionHeader("Grade"),
+                    LayoutBuilder(builder: (context, constraints) {
+                      return SizedBox(
+                        width: constraints.maxWidth,
+                        child: DropdownMenu<String>(
+                          width: constraints.maxWidth,
+                          menuHeight: 200,
+                          controller: _gradeController,
+                          // show explicit "All grade" when no selection exists
+                          initialSelection: tempGrade ?? '',
+                          dropdownMenuEntries: [
+                            const DropdownMenuEntry(value: '', label: 'All grade'),
+                            ...['A', 'B', 'C', 'D'].map((g) => DropdownMenuEntry(value: g, label: g))
+                          ],
+                          onSelected: (v) => setStateDialog(() => tempGrade = v),
+                        ),
+                      );
+                    }),
+
+                    const SizedBox(height: 20),
+
+                    // 4. Weight Range using the compact style
+                    _buildSectionHeader("Weight (Min / Max kg)"),
+                    Row(
+                      children: [
+                        Expanded(child: _buildCompactField(_weightMinController, 'Min', 'kg')),
+                        const SizedBox(width: 8),
+                        Expanded(child: _buildCompactField(_weightMaxController, 'Max', 'kg')),
+                      ],
+                    ),
+                  ],
+                ),
               ),
+            );
+          },
+        ),
+        // Match the button padding and styles
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _clearSpeciesFilter();
+            },
+            child: Text("Reset", style: TextStyle(color: Colors.grey.shade600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.of(context).pop();
+              _applyFruitFilters(
+                species: tempSelectedSpecies,
+                grade: tempGrade,
+                harvestFrom: _harvestFromController.text,
+                harvestTo: _harvestToController.text,
+                weightMin: _weightMinController.text,
+                weightMax: _weightMaxController.text,
+              );
+            },
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text("Apply Filters"),
             ),
           ),
-        );
-      },
-    );
-  }
+        ],
+      );
+    },
+  );
+}
 
-  void _filterBySpecies(String species) {
+// Helper to keep Date TextFields matching the _buildCompactField style
+Widget _buildDateTextField(BuildContext context, TextEditingController controller, String hint, StateSetter setStateDialog) {
+  return TextField(
+    controller: controller,
+    readOnly: true,
+    decoration: InputDecoration(
+      hintText: hint,
+      prefixIcon: const Icon(Icons.calendar_today, size: 16),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      isDense: true,
+    ),
+    onTap: () async {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now(),
+        firstDate: DateTime(2000),
+        lastDate: DateTime.now(),
+      );
+      if (picked != null) {
+        setStateDialog(() => controller.text = DateFormat('yyyy-MM-dd').format(picked));
+      }
+    },
+  );
+}
+
+  // Apply composite fruit filters and update _filteredFruits
+  void _applyFruitFilters({
+    String? species,
+    String? grade,
+    String? harvestFrom,
+    String? harvestTo,
+    String? weightMin,
+    String? weightMax,
+  }) {
+    List<Map<String, dynamic>> working = List<Map<String, dynamic>>.from(_allFruits);
+
+    if (species != null && species.isNotEmpty) {
+      working = working.where((f) => (f['tree']?['species']?['name']?.toString() ?? '') == species).toList();
+    }
+
+    if (grade != null && grade.isNotEmpty) {
+      working = working.where((f) => (f['grade']?.toString() ?? '') == grade).toList();
+    }
+
+    DateTime? parseDate(String? s) {
+      if (s == null || s.trim().isEmpty) return null;
+      return DateTime.tryParse(s);
+    }
+
+    final from = parseDate(harvestFrom);
+    final to = parseDate(harvestTo);
+    if (from != null || to != null) {
+      working = working.where((f) {
+        final s = f['harvested_at']?.toString() ?? '';
+        final dt = DateTime.tryParse(s);
+        if (dt == null) return false;
+        if (from != null && dt.isBefore(from)) return false;
+        if (to != null && dt.isAfter(to)) return false;
+        return true;
+      }).toList();
+    }
+
+    double? parseDouble(String? s) {
+      if (s == null || s.trim().isEmpty) return null;
+      return double.tryParse(s.trim());
+    }
+
+    final wMin = parseDouble(weightMin);
+    final wMax = parseDouble(weightMax);
+    if (wMin != null || wMax != null) {
+      working = working.where((f) {
+        final v = f['weight'];
+        if (v == null) return false;
+        final dv = (v is num) ? v.toDouble() : double.tryParse(v.toString()) ?? double.nan;
+        if (dv.isNaN) return false;
+        if (wMin != null && dv < wMin) return false;
+        if (wMax != null && dv > wMax) return false;
+        return true;
+      }).toList();
+    }
+
     setState(() {
-      _selectedSpecies = species;
-      _filteredFruits =
-          _allFruits.where((fruit) {
-            return fruit['tree']?['species']?['name'] == species;
-          }).toList();
+      _selectedSpecies = (species == null || species.isEmpty) ? null : species;
+      _currentGrade = (grade == null || grade.isEmpty) ? null : grade;
+      _harvestFromController.text = harvestFrom ?? '';
+      _harvestToController.text = harvestTo ?? '';
+      _weightMinController.text = weightMin ?? '';
+      _weightMaxController.text = weightMax ?? '';
+      _filteredFruits = working;
     });
   }
 
   void _clearSpeciesFilter() {
     setState(() {
       _selectedSpecies = null;
+      _currentGrade = null;
+      _harvestFromController.text = '';
+      _harvestToController.text = '';
+      _weightMinController.text = '';
+      _weightMaxController.text = '';
       _filteredFruits = _allFruits;
     });
+  }
+
+  // Small helpers for the dialog UI
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey.shade600,
+          letterSpacing: 1.1,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactField(TextEditingController controller, String hint, String unit) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        hintText: hint,
+        suffixText: unit,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        isDense: true,
+      ),
+    );
   }
 
   @override
