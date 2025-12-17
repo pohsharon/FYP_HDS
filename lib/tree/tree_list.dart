@@ -31,15 +31,28 @@ class _TreePageState extends State<TreePage> {
   final List<String> _speciesList = [];
   String? _selectedSpecies;
   final ScrollController _scrollController = ScrollController();
+  // Controllers for matching create_tree's DropdownMenu style
+  final TextEditingController _speciesFilterController = TextEditingController();
+  final TextEditingController _sortFilterController = TextEditingController();
 
   int _currentPage = 1;
   int _lastPage = 1;
   bool _isLoadingMore = false;
+  // Persistent filter state so dialog opens with current values
+  String _currentSortOption = 'date_desc';
+  String _currentFloweringMin = '';
+  String _currentFloweringMax = '';
+  String _currentHeightMin = '';
+  String _currentHeightMax = '';
+  String _currentDiameterMin = '';
+  String _currentDiameterMax = '';
 
   @override
   void initState() {
     super.initState();
     fetchTrees(page: 1);
+    // Populate species dropdown from local DB so the 'All species' list is available offline
+    _loadLocalSpecies();
 
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
@@ -50,6 +63,33 @@ class _TreePageState extends State<TreePage> {
         _loadMoreTrees();
       }
     });
+  }
+
+  Future<void> _loadLocalSpecies() async {
+    try {
+      final rows = await SpeciesDB().getAllSpecies();
+      final names = <String>[];
+      for (final s in rows) {
+        final n = s['name']?.toString() ?? '';
+        if (n.isNotEmpty) names.add(n);
+      }
+
+      setState(() {
+        _speciesList.clear();
+        _speciesList.addAll(names);
+      });
+    } catch (e) {
+      // Non-fatal: log and continue (dialog will show empty if no species available)
+      print('Failed to load local species: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _speciesFilterController.dispose();
+    _sortFilterController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadMoreTrees() async {
@@ -228,75 +268,358 @@ class _TreePageState extends State<TreePage> {
   }
 
   void _showSpeciesFilterDialog(BuildContext context) {
-    String? tempSelectedSpecies = _selectedSpecies;
+  // 1. Initial values from existing state
+  String? tempSelectedSpecies = _selectedSpecies;
+  String tempSortOption = _currentSortOption;
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Filter by Species"),
-          content: StatefulBuilder(
-            builder: (context, setStateDialog) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButton<String>(
-                    isExpanded: true,
-                    hint: const Text("Select a species"),
-                    value: tempSelectedSpecies,
-                    onChanged: (value) {
-                      setStateDialog(() {
-                        tempSelectedSpecies = value;
-                      });
-                    },
-                    items:
-                        _speciesList.map((species) {
-                          return DropdownMenuItem<String>(
-                            value: species,
-                            child: Text(species),
-                          );
-                        }).toList(),
-                  ),
-                ],
+  // 2. Pre-fill controllers with current filter values if they exist
+  final floweringMin = TextEditingController(text: _currentFloweringMin);
+  final floweringMax = TextEditingController(text: _currentFloweringMax);
+  final heightMin = TextEditingController(text: _currentHeightMin);
+  final heightMax = TextEditingController(text: _currentHeightMax);
+  final diameterMin = TextEditingController(text: _currentDiameterMin);
+  final diameterMax = TextEditingController(text: _currentDiameterMax);
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: AppColors.background,
+        title: Row(
+          children: [
+            const SizedBox(width: 10),
+            const Text("Filter & Sort", style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return SizedBox(
+              width: MediaQuery.of(context).size.width * 0.9,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader("Species"),
+                    // Match the create_tree DropdownMenu styling and popup width
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final menuWidth = constraints.maxWidth;
+                        return SizedBox(
+                          width: double.infinity,
+                          child: DropdownMenu<String>(
+                            width: menuWidth,
+                             // cap popup height so long lists scroll
+                             menuHeight: 300,
+                            controller: _speciesFilterController,
+                            requestFocusOnTap: true,
+                            initialSelection: tempSelectedSpecies,
+                            dropdownMenuEntries: _speciesList
+                                .map<DropdownMenuEntry<String>>(
+                                  (species) => DropdownMenuEntry(
+                                    value: species,
+                                    label: species,
+                                  ),
+                                )
+                                .toList(),
+                            onSelected: (String? v) {
+                              setStateDialog(() => tempSelectedSpecies = v);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 20),
+                    _buildSectionHeader("Sort by"),
+                    _buildSortDropdown(tempSortOption, (v) {
+                      setStateDialog(() => tempSortOption = v!);
+                    }),
+
+                    const SizedBox(height: 20),
+                    _buildSectionHeader("Range Filters (Min / Max)"),
+                    
+                    _buildRangeRow("Flowering", floweringMin, floweringMax, "mo"),
+                    const SizedBox(height: 12),
+                    _buildRangeRow("Height", heightMin, heightMax, "cm"),
+                    const SizedBox(height: 12),
+                    _buildRangeRow("Diameter", diameterMin, diameterMax, "cm"),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _clearSpeciesFilter();
+            },
+            child: Text("Reset", style: TextStyle(color: Colors.grey.shade600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              Navigator.of(context).pop();
+              _applyFilters(
+                species: tempSelectedSpecies,
+                sortOption: tempSortOption,
+                floweringMin: floweringMin.text,
+                floweringMax: floweringMax.text,
+                heightMin: heightMin.text,
+                heightMax: heightMax.text,
+                diameterMin: diameterMin.text,
+                diameterMax: diameterMax.text,
               );
             },
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text("Apply Filters"),
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _clearSpeciesFilter();
-              },
-              child: const Text("Clear Filter"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                if (tempSelectedSpecies != null) {
-                  _filterBySpecies(tempSelectedSpecies!);
-                }
-              },
-              child: const Text("Apply"),
-            ),
-          ],
-        );
-      },
-    );
-  }
+        ],
+      );
+    },
+  );
+}
 
-  void _filterBySpecies(String species) {
+// Helper: Section Headers
+Widget _buildSectionHeader(String title) {
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 8.0),
+    child: Text(
+      title.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+        color: Colors.grey.shade600,
+        letterSpacing: 1.1,
+      ),
+    ),
+  );
+}
+
+// Helper: Numeric Range Rows
+Widget _buildRangeRow(String label, TextEditingController min, TextEditingController max, String unit) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+      const SizedBox(height: 4),
+      Row(
+        children: [
+          Expanded(child: _buildCompactField(min, "Min", unit)),
+          const SizedBox(width: 10),
+          Expanded(child: _buildCompactField(max, "Max", unit)),
+        ],
+      ),
+    ],
+  );
+}
+
+// Helper: Refined TextFields
+Widget _buildCompactField(TextEditingController controller, String hint, String unit) {
+  return TextField(
+    controller: controller,
+    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    decoration: InputDecoration(
+      hintText: hint,
+      suffixText: unit,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+      isDense: true,
+    ),
+  );
+}
+
+// Helper: Sort Dropdown (popup width matches containing box)
+Widget _buildSortDropdown(String value, ValueChanged<String?> onChanged) {
+  return LayoutBuilder(builder: (context, constraints) {
+    final menuWidth = constraints.maxWidth;
+    return SizedBox(
+      width: double.infinity,
+      child: DropdownMenu<String>(
+  width: menuWidth,
+         // cap popup height so long lists scroll
+         menuHeight: 300,
+        controller: _sortFilterController,
+        requestFocusOnTap: true,
+        initialSelection: value,
+        dropdownMenuEntries: const [
+          DropdownMenuEntry(value: 'date_desc', label: 'Date: Newest first'),
+          DropdownMenuEntry(value: 'date_asc', label: 'Date: Oldest first'),
+          DropdownMenuEntry(value: 'flowering_desc', label: 'Flowering: High → Low'),
+          DropdownMenuEntry(value: 'flowering_asc', label: 'Flowering: Low → High'),
+          DropdownMenuEntry(value: 'height_desc', label: 'Height: High to Low'),
+          DropdownMenuEntry(value: 'height_asc', label: 'Height: Low to High'),
+          DropdownMenuEntry(value: 'diameter_desc', label: 'Diameter: High to Low'),
+          DropdownMenuEntry(value: 'diameter_asc', label: 'Diameter: Low to High'),
+        ],
+        onSelected: onChanged,
+      ),
+    );
+  });
+}
+
+  // Apply composite filters and sorting to _allTrees then set _filteredTrees
+  void _applyFilters({
+    String? species,
+    required String sortOption,
+    String? floweringMin,
+    String? floweringMax,
+    String? heightMin,
+    String? heightMax,
+    String? diameterMin,
+    String? diameterMax,
+  }) {
+    // Start from the full list
+    List<dynamic> working = List<dynamic>.from(_allTrees);
+
+    // Species filter
+    if (species != null && species.isNotEmpty) {
+      working = working.where((tree) {
+        final name = tree['species']?['name']?.toString() ?? '';
+        return name == species;
+      }).toList();
+    }
+
+    double? parseDouble(String? s) {
+      if (s == null || s.trim().isEmpty) return null;
+      return double.tryParse(s.trim());
+    }
+
+    final fMin = parseDouble(floweringMin);
+    final fMax = parseDouble(floweringMax);
+    final hMin = parseDouble(heightMin);
+    final hMax = parseDouble(heightMax);
+    final dMin = parseDouble(diameterMin);
+    final dMax = parseDouble(diameterMax);
+
+    // Numeric filtering helpers
+    bool inRange(dynamic value, double? min, double? max) {
+      if (value == null) return false;
+      final v = (value is num) ? value.toDouble() : double.tryParse(value.toString()) ?? double.nan;
+      if (v.isNaN) return false;
+      if (min != null && v < min) return false;
+      if (max != null && v > max) return false;
+      return true;
+    }
+
+    // Apply flowering filter if any
+    if (fMin != null || fMax != null) {
+      working = working.where((tree) {
+        final val = tree['flowering_period'] ?? tree['flowering'] ?? tree['flowering_period_number'];
+        return inRange(val, fMin, fMax);
+      }).toList();
+    }
+
+    // Height filter
+    if (hMin != null || hMax != null) {
+      working = working.where((tree) {
+        final val = tree['height'];
+        return inRange(val, hMin, hMax);
+      }).toList();
+    }
+
+    // Diameter filter
+    if (dMin != null || dMax != null) {
+      working = working.where((tree) {
+        final val = tree['diameter'];
+        return inRange(val, dMin, dMax);
+      }).toList();
+    }
+
+    working.sort((a, b) {
+      try {
+        switch (sortOption) {
+          case 'date_asc':
+            DateTime da() {
+              final s = a['planted_at']?.toString() ?? '';
+              return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
+            }
+
+            DateTime db() {
+              final s = b['planted_at']?.toString() ?? '';
+              return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
+            }
+
+            return da().compareTo(db());
+          case 'date_desc':
+            DateTime da2() {
+              final s = a['planted_at']?.toString() ?? '';
+              return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
+            }
+
+            DateTime db2() {
+              final s = b['planted_at']?.toString() ?? '';
+              return DateTime.tryParse(s) ?? DateTime.fromMillisecondsSinceEpoch(0);
+            }
+
+            return db2().compareTo(da2());
+          case 'flowering_asc':
+            final av = double.tryParse((a['flowering_period'] ?? a['flowering'] ?? a['flowering_period_number'] ?? 0).toString()) ?? 0.0;
+            final bv = double.tryParse((b['flowering_period'] ?? b['flowering'] ?? b['flowering_period_number'] ?? 0).toString()) ?? 0.0;
+            return av.compareTo(bv);
+          case 'flowering_desc':
+            final av2 = double.tryParse((a['flowering_period'] ?? a['flowering'] ?? a['flowering_period_number'] ?? 0).toString()) ?? 0.0;
+            final bv2 = double.tryParse((b['flowering_period'] ?? b['flowering'] ?? b['flowering_period_number'] ?? 0).toString()) ?? 0.0;
+            return bv2.compareTo(av2);
+          case 'height_asc':
+            final ah = double.tryParse((a['height'] ?? 0).toString()) ?? 0.0;
+            final bh = double.tryParse((b['height'] ?? 0).toString()) ?? 0.0;
+            return ah.compareTo(bh);
+          case 'height_desc':
+            final ah2 = double.tryParse((a['height'] ?? 0).toString()) ?? 0.0;
+            final bh2 = double.tryParse((b['height'] ?? 0).toString()) ?? 0.0;
+            return bh2.compareTo(ah2);
+          case 'diameter_asc':
+            final ad = double.tryParse((a['diameter'] ?? 0).toString()) ?? 0.0;
+            final bd = double.tryParse((b['diameter'] ?? 0).toString()) ?? 0.0;
+            return ad.compareTo(bd);
+          case 'diameter_desc':
+            final ad2 = double.tryParse((a['diameter'] ?? 0).toString()) ?? 0.0;
+            final bd2 = double.tryParse((b['diameter'] ?? 0).toString()) ?? 0.0;
+            return bd2.compareTo(ad2);
+          default:
+            return 0;
+        }
+      } catch (_) {
+        return 0;
+      }
+    });
+
     setState(() {
       _selectedSpecies = species;
-      _filteredTrees =
-          _allTrees.where((tree) {
-            return tree['species']['name'] == species;
-          }).toList();
+      _currentSortOption = sortOption;
+      _currentFloweringMin = floweringMin ?? '';
+      _currentFloweringMax = floweringMax ?? '';
+      _currentHeightMin = heightMin ?? '';
+      _currentHeightMax = heightMax ?? '';
+      _currentDiameterMin = diameterMin ?? '';
+      _currentDiameterMax = diameterMax ?? '';
+      _filteredTrees = working;
     });
   }
+
+  // Note: species-specific quick filter removed in favour of composite filters
 
   void _clearSpeciesFilter() {
     setState(() {
       _selectedSpecies = null;
+      _currentSortOption = 'date_desc';
+      _currentFloweringMin = '';
+      _currentFloweringMax = '';
+      _currentHeightMin = '';
+      _currentHeightMax = '';
+      _currentDiameterMin = '';
+      _currentDiameterMax = '';
       _filteredTrees = _allTrees;
     });
   }
