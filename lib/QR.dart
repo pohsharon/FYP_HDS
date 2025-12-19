@@ -86,7 +86,7 @@ Future<void> _pickImageFromGallery() async {
       );
     } else {
       await Flushbar(
-        message: '❌ Could not decode any QR from the image.',
+        message: 'No QR code found in image.',
         backgroundColor: Colors.orange.shade700,
         duration: const Duration(seconds: 3),
         margin: const EdgeInsets.all(12),

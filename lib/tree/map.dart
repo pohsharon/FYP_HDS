@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:latlong2/latlong.dart';
@@ -21,6 +22,7 @@ class _MapPageState extends State<MapPage> {
   final MapController _mapController = MapController();
   LatLng? _currentLocation;
   List<Map<String, dynamic>> treesWithLocation = [];
+  final TextEditingController treeController = TextEditingController();
 
   final LatLngBounds farmBounds = LatLngBounds(
     const LatLng(3.110831, 101.626978),
@@ -32,6 +34,12 @@ class _MapPageState extends State<MapPage> {
     super.initState();
     _getCurrentLocation();
     _fetchTreeMarkers();
+  }
+
+  @override
+  void dispose() {
+    treeController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchTreeMarkers() async {
@@ -60,14 +68,15 @@ class _MapPageState extends State<MapPage> {
       // Remote fetch failed; fall back to local DB cached tree locations.
       try {
         final local = await TreeDB().fetchAllTrees();
-        final markers = local.map<Map<String, dynamic>>((t) {
-          return {
-            'uuid': t.uuid,
-            'tree_tag': t.treeTag ?? 'Offline Tree',
-            'latitude': t.latitude ?? 0.0,
-            'longitude': t.longitude ?? 0.0,
-          };
-        }).toList();
+        final markers =
+            local.map<Map<String, dynamic>>((t) {
+              return {
+                'uuid': t.uuid,
+                'tree_tag': t.treeTag ?? 'Offline Tree',
+                'latitude': t.latitude ?? 0.0,
+                'longitude': t.longitude ?? 0.0,
+              };
+            }).toList();
 
         if (mounted) {
           setState(() => treesWithLocation = markers);
@@ -154,10 +163,15 @@ class _MapPageState extends State<MapPage> {
       // If remote fails, try local DB so user can still select a cached tree.
       try {
         final local = await TreeDB().fetchAllTrees();
-        treeList = local.map((t) => {
-          'uuid': t.uuid,
-          'tree_tag': t.treeTag ?? 'Offline Tree',
-        }).toList();
+        treeList =
+            local
+                .map(
+                  (t) => {
+                    'uuid': t.uuid,
+                    'tree_tag': t.treeTag ?? 'Offline Tree',
+                  },
+                )
+                .toList();
       } catch (localErr) {
         if (!mounted) return false;
         await Flushbar(
@@ -172,81 +186,103 @@ class _MapPageState extends State<MapPage> {
     }
 
     return showDialog<bool>(
-      context: parentContext,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Select Tree'),
-          backgroundColor: AppColors.white,
-          content: StatefulBuilder(
-            builder: (context, setState) {
-              return Column(
+  context: parentContext,
+  builder: (dialogContext) {
+    // Get screen width to calculate dialog width
+    final screenWidth = MediaQuery.of(dialogContext).size.width;
+    final dialogWidth = min(screenWidth * 0.7, 400.0);
+    
+    return AlertDialog(
+      title: const Text('Select Tree'),
+      backgroundColor: AppColors.white,
+      content: StatefulBuilder(
+        builder: (context, setState) {
+          return SizedBox(
+            width: dialogWidth,
+            child: SingleChildScrollView(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  DropdownButtonFormField<String>(
-                    hint: const Text("Select Tree Tag"),
-                    value: selectedTreeId,
-                    items:
-                        treeList.map((tree) {
-                          return DropdownMenuItem(
+                  DropdownMenu<String>(
+                    width: dialogWidth,
+                    menuHeight: 300,
+                    controller: treeController,
+                    requestFocusOnTap: true,
+                    initialSelection: selectedTreeId,
+                    label: const Text('Select Tree Tag'),
+                    dropdownMenuEntries: treeList
+                        .map<DropdownMenuEntry<String>>(
+                          (tree) => DropdownMenuEntry(
                             value: tree['uuid'].toString(),
-                            child: Text(tree['tree_tag'] ?? 'Unnamed'),
-                          );
-                        }).toList(),
-                    onChanged: (value) {
+                            label: tree['tree_tag'] ?? 'Unnamed',
+                          ),
+                        )
+                        .toList(),
+                    onSelected: (value) {
+                      if (value == null) return;
                       setState(() => selectedTreeId = value);
+                      try {
+                        final found = treeList.firstWhere(
+                            (t) => t['uuid'].toString() == value);
+                        treeController.text =
+                            found['tree_tag']?.toString() ?? '';
+                      } catch (_) {
+                        treeController.text = '';
+                      }
                     },
                   ),
                   const SizedBox(height: 20),
                   ElevatedButton(
-                    onPressed:
-                        selectedTreeId == null
-                            ? null
-                            : () async {
-                              try {
-                                final position =
-                                    await Geolocator.getCurrentPosition(
-                                      desiredAccuracy: LocationAccuracy.high,
-                                    );
+                    onPressed: selectedTreeId == null
+                        ? null
+                        : () async {
+                            try {
+                              final position = await Geolocator.getCurrentPosition(
+                                desiredAccuracy: LocationAccuracy.high,
+                              );
 
-                                await TreeApi.addTreeLocation(
-                                  treeUuid: selectedTreeId!,
-                                  latitude: position.latitude,
-                                  longitude: position.longitude,
-                                );
+                              await TreeApi.addTreeLocation(
+                                treeUuid: selectedTreeId!,
+                                latitude: position.latitude,
+                                longitude: position.longitude,
+                              );
 
-                                if (mounted) {
-                                  await Flushbar(
-                                    message: 'Tree location saved successfully!',
-                                    icon: const Icon(Icons.check_circle, color: Colors.white),
-                                    backgroundColor: Colors.green.shade700,
-                                    duration: const Duration(seconds: 2),
-                                    margin: const EdgeInsets.all(12),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ).show(parentContext);
-                                  Navigator.pop(dialogContext, true);
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  await Flushbar(
-                                    message: 'Failed to save location: $e',
-                                    backgroundColor: Colors.red.shade700,
-                                    duration: const Duration(seconds: 3),
-                                    margin: const EdgeInsets.all(12),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ).show(parentContext);
-                                  Navigator.pop(dialogContext, false);
-                                }
+                              if (mounted) {
+                                await Flushbar(
+                                  message: 'Tree location saved successfully!',
+                                  icon: const Icon(Icons.check_circle,
+                                      color: Colors.white),
+                                  backgroundColor: Colors.green.shade700,
+                                  duration: const Duration(seconds: 2),
+                                  margin: const EdgeInsets.all(12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ).show(parentContext);
+                                Navigator.pop(dialogContext, true);
                               }
-                            },
+                            } catch (e) {
+                              if (mounted) {
+                                await Flushbar(
+                                  message: 'Failed to save location: $e',
+                                  backgroundColor: Colors.red.shade700,
+                                  duration: const Duration(seconds: 3),
+                                  margin: const EdgeInsets.all(12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ).show(parentContext);
+                                Navigator.pop(dialogContext, false);
+                              }
+                            }
+                          },
                     child: const Text("Save"),
                   ),
                 ],
-              );
-            },
-          ),
-        );
-      },
+              ),
+            ),
+          );
+        },
+      ),
     );
+  },
+);
   }
 
   @override
@@ -294,65 +330,56 @@ class _MapPageState extends State<MapPage> {
                         ),
                       ),
                     // 🌳 Tree Markers
-                    ...treesWithLocation
-                        .map((tree) {
-                          final lat = double.tryParse(
-                            tree['latitude'].toString(),
-                          );
-                          final lng = double.tryParse(
-                            tree['longitude'].toString(),
-                          );
-                          if (lat == null || lng == null) return null;
+                    ...treesWithLocation.map((tree) {
+                      final lat = double.tryParse(tree['latitude'].toString());
+                      final lng = double.tryParse(tree['longitude'].toString());
+                      if (lat == null || lng == null) return null;
 
-                          return Marker(
-                            point: LatLng(lat, lng),
-                            width: 80,
-                            height: 80,
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder:
-                                        (context) => TreeDetailsPage(
-                                          treeID:
-                                              tree['uuid']
-                                        ),
-                                  ),
-                                );
-                              },
-                              child: FittedBox(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                        vertical: 2,
-                                      ),
-                                      color: Colors.white,
-                                      child: Text(
-                                        tree['tree_tag'] ?? 'Unknown',
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.black,
-                                        ),
-                                      ),
-                                    ),
-                                    const Icon(
-                                      Icons.location_on,
-                                      color: Colors.red,
-                                      size: 24,
-                                    ),
-                                  ],
-                                ),
+                      return Marker(
+                        point: LatLng(lat, lng),
+                        width: 80,
+                        height: 80,
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder:
+                                    (context) =>
+                                        TreeDetailsPage(treeID: tree['uuid']),
                               ),
+                            );
+                          },
+                          child: FittedBox(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  color: Colors.white,
+                                  child: Text(
+                                    tree['tree_tag'] ?? 'Unknown',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.location_on,
+                                  color: Colors.red,
+                                  size: 24,
+                                ),
+                              ],
                             ),
-                          );
-                        })
-                        .whereType<Marker>()
-                        ,
+                          ),
+                        ),
+                      );
+                    }).whereType<Marker>(),
                   ],
                 ),
             ],
