@@ -130,4 +130,43 @@ class DiseaseApi {
   }
 }
 
+  static Future<List<Map<String, dynamic>>> fetchTreesByDisease(String diseaseId) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.get(
+        Uri.parse("${Config.apiBaseUrl}/diseases/$diseaseId/trees"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      final decoded = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        // Extract the "data" field if present, otherwise treat as direct list
+        if (decoded is Map && decoded.containsKey('data')) {
+          final List<dynamic> dataList = decoded['data'];
+          return dataList
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+        } else if (decoded is List) {
+          return decoded
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList();
+        } else {
+          throw Exception('Unexpected response format');
+        }
+      } else {
+        final message = (decoded is Map)
+            ? decoded["message"] ?? "Failed to fetch trees for disease"
+            : "Failed to fetch trees for disease";
+        throw Exception(message);
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
 }

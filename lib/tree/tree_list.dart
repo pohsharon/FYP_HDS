@@ -15,6 +15,8 @@ import 'package:fyp_hbs/tree/map.dart';
 import 'package:fyp_hbs/authentication/login.dart';
 import 'package:fyp_hbs/authentication/reset_password.dart';
 import 'package:fyp_hbs/widgets/persistent_appbar.dart';
+import 'package:fyp_hbs/services/api/disease_api.dart';
+import 'dart:math' show max;
 
 class TreePage extends StatefulWidget {
   const TreePage({super.key});
@@ -29,25 +31,23 @@ class _TreePageState extends State<TreePage> {
   List<dynamic> _allTrees = [];
   List<dynamic> _filteredTrees = [];
   final List<String> _speciesList = [];
+  List<Map<String, dynamic>> _diseaseList = [];
   String? _selectedSpecies;
   final ScrollController _scrollController = ScrollController();
   // Controllers for matching create_tree's DropdownMenu style
   final TextEditingController _speciesFilterController =
+      TextEditingController();
+  final TextEditingController _diseaseFilterController =
       TextEditingController();
 
   int _currentPage = 1;
   int _lastPage = 1;
   bool _isLoadingMore = false;
   // Persistent filter state so dialog opens with current values
-  String _currentFloweringMin = '';
-  String _currentFloweringMax = '';
-  String _currentHeightMin = '';
-  String _currentHeightMax = '';
-  String _currentDiameterMin = '';
-  String _currentDiameterMax = '';
   // Planting date filter state
   String _currentPlantingFrom = '';
   String _currentPlantingTo = '';
+  String? _selectedDiseaseId;
   final TextEditingController _plantingFromController = TextEditingController();
   final TextEditingController _plantingToController = TextEditingController();
 
@@ -57,6 +57,7 @@ class _TreePageState extends State<TreePage> {
     fetchTrees(page: 1);
     // Populate species dropdown from local DB so the 'All species' list is available offline
     _loadLocalSpecies();
+    _loadDiseases();
 
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
@@ -88,10 +89,22 @@ class _TreePageState extends State<TreePage> {
     }
   }
 
+  Future<void> _loadDiseases() async {
+    try {
+      final diseases = await DiseaseApi.fetchDiseases();
+      setState(() {
+        _diseaseList = diseases;
+      });
+    } catch (e) {
+      print('Failed to load diseases: $e');
+    }
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
     _speciesFilterController.dispose();
+    _diseaseFilterController.dispose();
     _plantingFromController.dispose();
     _plantingToController.dispose();
     super.dispose();
@@ -346,20 +359,18 @@ class _TreePageState extends State<TreePage> {
     }
   }
 
-  void _showSpeciesFilterDialog(BuildContext context) {
+  void _showSpeciesFilterDialog(BuildContext context) async {
+    // Load diseases if not already loaded
+    if (_diseaseList.isEmpty) {
+      await _loadDiseases();
+    }
+    
     // 1. Initial values from existing state
     String? tempSelectedSpecies = _selectedSpecies;
+    String? tempSelectedDiseaseId = _selectedDiseaseId;
     // Planting date temporary values
     final plantingFrom = TextEditingController(text: _currentPlantingFrom);
     final plantingTo = TextEditingController(text: _currentPlantingTo);
-
-    // 2. Pre-fill controllers with current filter values if they exist
-    final floweringMin = TextEditingController(text: _currentFloweringMin);
-    final floweringMax = TextEditingController(text: _currentFloweringMax);
-    final heightMin = TextEditingController(text: _currentHeightMin);
-    final heightMax = TextEditingController(text: _currentHeightMax);
-    final diameterMin = TextEditingController(text: _currentDiameterMin);
-    final diameterMax = TextEditingController(text: _currentDiameterMax);
 
     showDialog(
       context: context,
@@ -426,6 +437,45 @@ class _TreePageState extends State<TreePage> {
                       ),
 
                       const SizedBox(height: 20),
+                      _buildSectionHeader("Disease"),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final menuWidth = constraints.maxWidth;
+                          return SizedBox(
+                            width: double.infinity,
+                            child: DefaultTextStyle.merge(
+                              style: const TextStyle(fontSize: 13),
+                              child: DropdownMenu<String>(
+                                width: menuWidth,
+                                // cap popup height so long lists scroll
+                                menuHeight: 300,
+                                controller: _diseaseFilterController,
+                                requestFocusOnTap: true,
+                                initialSelection: tempSelectedDiseaseId,
+                                dropdownMenuEntries: [
+                                  const DropdownMenuEntry(
+                                    value: '',
+                                    label: 'All diseases',
+                                  ),
+                                  ..._diseaseList.map<DropdownMenuEntry<String>>(
+                                    (disease) => DropdownMenuEntry(
+                                      value: disease['id'].toString(),
+                                      label: disease['diseaseName'] ?? disease['disease_name'] ?? '',
+                                    ),
+                                  ),
+                                ],
+                                onSelected: (String? v) {
+                                  setStateDialog(
+                                    () => tempSelectedDiseaseId = (v == null || v.isEmpty) ? null : v,
+                                  );
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 20),
                       _buildSectionHeader("Planting Date (From / To)"),
                       Row(
                         children: [
@@ -482,25 +532,6 @@ class _TreePageState extends State<TreePage> {
                           ),
                         ],
                       ),
-
-                      const SizedBox(height: 20),
-                      _buildSectionHeader("Range Filters (Min / Max)"),
-
-                      _buildRangeRow(
-                        "Flowering",
-                        floweringMin,
-                        floweringMax,
-                        "mo",
-                      ),
-                      const SizedBox(height: 12),
-                      _buildRangeRow("Height", heightMin, heightMax, "cm"),
-                      const SizedBox(height: 12),
-                      _buildRangeRow(
-                        "Diameter",
-                        diameterMin,
-                        diameterMax,
-                        "cm",
-                      ),
                     ],
                   ),
                 ),
@@ -524,7 +555,7 @@ class _TreePageState extends State<TreePage> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: AppColors.mossGreen,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -536,16 +567,11 @@ class _TreePageState extends State<TreePage> {
                   species: tempSelectedSpecies,
                   plantingFrom: plantingFrom.text,
                   plantingTo: plantingTo.text,
-                  floweringMin: floweringMin.text,
-                  floweringMax: floweringMax.text,
-                  heightMin: heightMin.text,
-                  heightMax: heightMax.text,
-                  diameterMin: diameterMin.text,
-                  diameterMax: diameterMax.text,
+                  diseaseId: tempSelectedDiseaseId,
                 );
               },
               child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Text("Apply Filters"),
               ),
             ),
@@ -624,15 +650,36 @@ class _TreePageState extends State<TreePage> {
     String? species,
     String? plantingFrom,
     String? plantingTo,
-    String? floweringMin,
-    String? floweringMax,
-    String? heightMin,
-    String? heightMax,
-    String? diameterMin,
-    String? diameterMax,
-  }) {
+    String? diseaseId,
+  }) async {
     // Start from the full list
     List<dynamic> working = List<dynamic>.from(_allTrees);
+
+    // Disease filter: fetch trees with specific disease and intersect
+    if (diseaseId != null && diseaseId.isNotEmpty) {
+      try {
+        final treesWithDisease = await DiseaseApi.fetchTreesByDisease(diseaseId);
+        final diseaseTreeIds = <String>{};
+        for (final t in treesWithDisease) {
+          // The API returns nested structure: {tree: {...}, disease: {...}, health_records: [...]}
+          final treeData = t['tree'];
+          if (treeData != null) {
+            final uuid = (treeData['uuid'] ?? '').toString();
+            final id = (treeData['id'] ?? '').toString();
+            final finalId = uuid.isNotEmpty ? uuid : id;
+            if (finalId.isNotEmpty) {
+              diseaseTreeIds.add(finalId);
+            }
+          }
+        }
+        working = working.where((tree) {
+          final treeId = (tree['uuid'] ?? tree['id'] ?? '').toString();
+          return diseaseTreeIds.contains(treeId);
+        }).toList();
+      } catch (e) {
+        print('Error fetching trees by disease: $e');
+      }
+    }
 
     // Species filter
     if (species != null && species.isNotEmpty) {
@@ -643,60 +690,7 @@ class _TreePageState extends State<TreePage> {
           }).toList();
     }
 
-    double? parseDouble(String? s) {
-      if (s == null || s.trim().isEmpty) return null;
-      return double.tryParse(s.trim());
-    }
 
-    final fMin = parseDouble(floweringMin);
-    final fMax = parseDouble(floweringMax);
-    final hMin = parseDouble(heightMin);
-    final hMax = parseDouble(heightMax);
-    final dMin = parseDouble(diameterMin);
-    final dMax = parseDouble(diameterMax);
-
-    // Numeric filtering helpers
-    bool inRange(dynamic value, double? min, double? max) {
-      if (value == null) return false;
-      final v =
-          (value is num)
-              ? value.toDouble()
-              : double.tryParse(value.toString()) ?? double.nan;
-      if (v.isNaN) return false;
-      if (min != null && v < min) return false;
-      if (max != null && v > max) return false;
-      return true;
-    }
-
-    // Apply flowering filter if any
-    if (fMin != null || fMax != null) {
-      working =
-          working.where((tree) {
-            final val =
-                tree['flowering_period'] ??
-                tree['flowering'] ??
-                tree['flowering_period_number'];
-            return inRange(val, fMin, fMax);
-          }).toList();
-    }
-
-    // Height filter
-    if (hMin != null || hMax != null) {
-      working =
-          working.where((tree) {
-            final val = tree['height'];
-            return inRange(val, hMin, hMax);
-          }).toList();
-    }
-
-    // Diameter filter
-    if (dMin != null || dMax != null) {
-      working =
-          working.where((tree) {
-            final val = tree['diameter'];
-            return inRange(val, dMin, dMax);
-          }).toList();
-    }
 
     // Apply planting date range if provided
     DateTime? parseDate(String? s) {
@@ -721,14 +715,9 @@ class _TreePageState extends State<TreePage> {
     if (mounted) {
       setState(() {
         _selectedSpecies = (species == null || species.isEmpty) ? null : species;
+        _selectedDiseaseId = (diseaseId == null || diseaseId.isEmpty) ? null : diseaseId;
         _currentPlantingFrom = plantingFrom ?? '';
         _currentPlantingTo = plantingTo ?? '';
-        _currentFloweringMin = floweringMin ?? '';
-        _currentFloweringMax = floweringMax ?? '';
-        _currentHeightMin = heightMin ?? '';
-        _currentHeightMax = heightMax ?? '';
-        _currentDiameterMin = diameterMin ?? '';
-        _currentDiameterMax = diameterMax ?? '';
         _filteredTrees = working;
       });
     }
@@ -740,12 +729,10 @@ class _TreePageState extends State<TreePage> {
     if (mounted) {
       setState(() {
         _selectedSpecies = null;
-        _currentFloweringMin = '';
-        _currentFloweringMax = '';
-        _currentHeightMin = '';
-        _currentHeightMax = '';
-        _currentDiameterMin = '';
-        _currentDiameterMax = '';
+        _selectedDiseaseId = null;
+        _currentPlantingFrom = '';
+        _currentPlantingTo = '';
+        _diseaseFilterController.clear();
         _filteredTrees = _allTrees;
       });
     }
@@ -1111,8 +1098,9 @@ class _TreePageState extends State<TreePage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.hunterGreen,
                 foregroundColor: Colors.white,
-                minimumSize: const Size(60, 30),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: const Size(60, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                elevation: 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
