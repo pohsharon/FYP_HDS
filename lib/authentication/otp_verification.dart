@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/authentication/reset_password.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:pin_code_fields/pin_code_fields.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class OTPVerificationPage extends StatelessWidget {
   const OTPVerificationPage({super.key});
@@ -82,6 +83,19 @@ class OTPVerificationPage extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {
+                    // Validate OTP
+                    if (otpController.text.isEmpty || otpController.text.length < 4) {
+                      Flushbar(
+                        message: 'Please enter OTP',
+                        icon: const Icon(Icons.error, color: Colors.white),
+                        backgroundColor: Colors.red.shade700,
+                        duration: const Duration(seconds: 3),
+                        borderRadius: BorderRadius.circular(8),
+                        margin: const EdgeInsets.all(12),
+                      ).show(context);
+                      return;
+                    }
+
                     Navigator.push(
                       context,
                       MaterialPageRoute(

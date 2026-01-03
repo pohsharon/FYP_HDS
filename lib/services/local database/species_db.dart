@@ -7,6 +7,7 @@ class SpeciesDB{
     for (var s in speciesList) {
       final entry = <String, dynamic>{
         'id': s['id'],
+        'code': s['code'] ?? s['species_code'] ?? '',
         'name': s['name'] ?? s['title'] ?? s['label'] ?? s['value'] ?? '',
       };
 

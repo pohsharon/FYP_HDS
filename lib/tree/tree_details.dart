@@ -19,8 +19,13 @@ import 'package:another_flushbar/flushbar.dart';
 
 class TreeDetailsPage extends StatefulWidget {
   final String treeID;
+  final bool refreshOnPop;
 
-  const TreeDetailsPage({super.key, required this.treeID});
+  const TreeDetailsPage({
+    super.key,
+    required this.treeID,
+    this.refreshOnPop = false,
+  });
 
   @override
   State<TreeDetailsPage> createState() => _TreeDetailsPageState();
@@ -29,11 +34,32 @@ class TreeDetailsPage extends StatefulWidget {
 class _TreeDetailsPageState extends State<TreeDetailsPage> {
   bool isLoading = true;
   Map<String, dynamic>? tree;
+  bool _shouldRefresh = false;
 
   @override
   void initState() {
     super.initState();
+    _shouldRefresh = widget.refreshOnPop;
     _loadTreeDetails();
+  }
+
+  void _markShouldRefresh() {
+    if (!_shouldRefresh && mounted) {
+      setState(() => _shouldRefresh = true);
+    }
+  }
+
+  Future<bool> _handleWillPop() async {
+    Navigator.pop(
+      context,
+      _shouldRefresh
+          ? {
+              'refreshList': true,
+              'updatedId': tree?['uuid'] ?? widget.treeID,
+            }
+          : null,
+    );
+    return false;
   }
 
   Future<void> _loadTreeDetails() async {
@@ -283,9 +309,11 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     final double longitude =
         double.tryParse(tree!['longitude'].toString()) ?? 0;
 
-    return DefaultTabController(
-      length: 4,
-      child: Scaffold(
+    return WillPopScope(
+      onWillPop: _handleWillPop,
+      child: DefaultTabController(
+        length: 4,
+        child: Scaffold(
         appBar: AppBar(
           title: const Text(
             "Tree Details",
@@ -302,14 +330,25 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                 );
 
                 if (updated == true) {
-                  _loadTreeDetails();
+                  // Tree was deleted; pop back to tree list with refresh signal
+                  Navigator.pop(context, {'refreshList': true});
+                  return;
+                }
+
+                if (updated is Map) {
+                  if (updated['refreshList'] == true) {
+                    _markShouldRefresh();
+                  }
+
+                  // Reload latest details so the page reflects the edits
+                  await _loadTreeDetails();
                 }
               },
             ),
           ],
         ),
-        backgroundColor: AppColors.background,
-        body: SingleChildScrollView(
+          backgroundColor: AppColors.background,
+          body: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -514,6 +553,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),

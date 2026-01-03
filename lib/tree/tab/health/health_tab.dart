@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'create_health_info.dart';
@@ -6,6 +7,7 @@ import 'disease_list.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../../services/local database/health_db.dart';
 import '../../../services/local database/disease_db.dart';
+import '../../../config.dart';
 
 class HealthTabPage extends StatefulWidget {
   final String treeTag;
@@ -22,7 +24,6 @@ class HealthTabPage extends StatefulWidget {
 
 class _HealthTabPageState extends State<HealthTabPage> {
   String searchQuery = '';
-  // Cache of disease id -> disease_name for offline lookups
   final Map<String, String> _diseaseCache = {};
 
   @override
@@ -69,19 +70,17 @@ class _HealthTabPageState extends State<HealthTabPage> {
                 return const Center(child: Text("No health records found."));
               }
 
-              final filteredRecords =
-                  snapshot.data!.where((record) {
-                    final name = extractDiseaseName(record);
-                    return name.toLowerCase().contains(
-                      searchQuery.toLowerCase(),
-                    );
-                  }).toList();
+              final filteredRecords = snapshot.data!.where((record) {
+                final name = extractDiseaseName(record);
+                return name.toLowerCase().contains(
+                  searchQuery.toLowerCase(),
+                );
+              }).toList();
 
               return Column(
-                children:
-                    filteredRecords
-                        .map((record) => _buildRecordCard(record))
-                        .toList(),
+                children: filteredRecords
+                    .map((record) => _buildRecordCard(record))
+                    .toList(),
               );
             },
           ),
@@ -90,13 +89,11 @@ class _HealthTabPageState extends State<HealthTabPage> {
     );
   }
 
-  // Try fetching remote records when online; fallback to local DB when offline or on API failure
   Future<List<Map<String, dynamic>>> _fetchRecords() async {
     final conn = await Connectivity().checkConnectivity();
     final healthDB = HealthDB();
 
     if (conn == ConnectivityResult.none) {
-      // offline -> return local cached records
       final local = await healthDB.fetchByTreeUuid(widget.treeUuid);
       return local.map((h) => h.toMap()).toList();
     }
@@ -104,13 +101,11 @@ class _HealthTabPageState extends State<HealthTabPage> {
     try {
       final remote = await HealthApi.fetchTreeHealthRecords(widget.treeUuid);
       if (remote.isEmpty) {
-        // no remote rows -> fall back to local cached
         final local = await healthDB.fetchByTreeUuid(widget.treeUuid);
         return local.map((h) => h.toMap()).toList();
       }
       return remote.map((m) => Map<String, dynamic>.from(m)).toList();
     } catch (e) {
-      // API failure -> fallback to local
       final local = await healthDB.fetchByTreeUuid(widget.treeUuid);
       return local.map((h) => h.toMap()).toList();
     }
@@ -119,7 +114,6 @@ class _HealthTabPageState extends State<HealthTabPage> {
   Widget _buildSearchAndAddButton() {
     return Row(
       children: [
-        // List icon button
         IconButton(
           icon: const Icon(
             Icons.list_alt_rounded,
@@ -130,16 +124,12 @@ class _HealthTabPageState extends State<HealthTabPage> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder:
-                    (_) =>
-                        const DiseaseListPage(), // <-- navigate to your DiseaseListPage
+                builder: (_) => const DiseaseListPage(),
               ),
             );
           },
         ),
         const SizedBox(width: 8),
-
-        // Search bar
         Expanded(
           child: TextField(
             onChanged: (value) => setState(() => searchQuery = value),
@@ -171,24 +161,20 @@ class _HealthTabPageState extends State<HealthTabPage> {
             ),
           ),
         ),
-
         const SizedBox(width: 8),
-
-        // Add button
         ElevatedButton.icon(
           onPressed: () async {
             final result = await Navigator.push(
               context,
               MaterialPageRoute(
-                builder:
-                    (_) => CreateHealthInfoPage(
-                      treeTag: widget.treeTag,
-                      treeUuid: widget.treeUuid,
-                      existingRecord: null,
-                    ),
+                builder: (_) => CreateHealthInfoPage(
+                  treeTag: widget.treeTag,
+                  treeUuid: widget.treeUuid,
+                  existingRecord: null,
+                ),
               ),
             );
-            if (result == true) setState(() {}); // refresh
+            if (result == true) setState(() {});
           },
           icon: const Icon(Icons.add, color: Colors.white),
           label: const Text('Add', style: TextStyle(color: Colors.white)),
@@ -205,13 +191,12 @@ class _HealthTabPageState extends State<HealthTabPage> {
 
   String extractDiseaseName(Map<String, dynamic> record) {
     try {
-      // Remote nested format
       if (record['disease'] is Map) {
         final d = record['disease'];
         return (d['diseaseName'] ?? d['name'] ?? '').toString();
       }
     } catch (_) {}
-    // Local cached format: prefer explicit disease_name, otherwise try diseaseId lookup
+    
     final explicit = (record['disease_name'] ?? record['diseaseName'])?.toString() ?? '';
     if (explicit.isNotEmpty) return explicit;
 
@@ -225,12 +210,10 @@ class _HealthTabPageState extends State<HealthTabPage> {
   }
 
   Widget _buildRecordCard(Map<String, dynamic> record) {
-    // Format date if needed
     String recordedAt = record['recorded_at'] ?? "";
     String status = record['status'] ?? "";
     final diseaseName = extractDiseaseName(record);
 
-    // Status color logic
     Color statusColor;
     switch (status) {
       case "Recovered":
@@ -246,17 +229,19 @@ class _HealthTabPageState extends State<HealthTabPage> {
         statusColor = AppColors.gray600;
     }
 
+    final thumbnail = (record['thumbnail'] ?? '').toString();
+    final hasThumbnail = thumbnail.isNotEmpty;
+
     return GestureDetector(
       onTap: () async {
         final result = await Navigator.push(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => CreateHealthInfoPage(
-                  treeTag: widget.treeTag,
-                  treeUuid: widget.treeUuid,
-                  existingRecord: record,
-                ),
+            builder: (_) => CreateHealthInfoPage(
+              treeTag: widget.treeTag,
+              treeUuid: widget.treeUuid,
+              existingRecord: record,
+            ),
           ),
         );
         if (result == true) setState(() {});
@@ -265,76 +250,209 @@ class _HealthTabPageState extends State<HealthTabPage> {
         color: AppColors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         margin: const EdgeInsets.only(bottom: 12),
+        elevation: 2,
+        shadowColor: Colors.black.withOpacity(0.08),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Disease name
-                  Text(
-                    diseaseName.isEmpty ? 'Unknown disease' : diseaseName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Disease name
+                        Text(
+                          diseaseName.isEmpty ? 'Unknown disease' : diseaseName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                            color: AppColors.hunterGreen,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        
+                        // Date and Status row
+                        Row(
+                          children: [
+                            if (recordedAt.isNotEmpty) ...[
+                              Icon(
+                                Icons.calendar_today,
+                                size: 14,
+                                color: AppColors.gray600,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                recordedAt,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.gray700,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                            ],
+                            // Status chip
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: statusColor.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: statusColor.withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                status,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: statusColor,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-
-                  const SizedBox(width: 8),
-                  // Date chip (right after disease name)
-                  if (recordedAt.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.gray200,
+                  
+                  // Image thumbnail button
+                  if (hasThumbnail) ...[
+                    const SizedBox(width: 12),
+                    Material(
+                      color: AppColors.hunterGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
                         borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        recordedAt,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.infoActive,
-                          fontWeight: FontWeight.bold,
+                        onTap: () => _showThumbnail(record),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: AppColors.hunterGreen,
+                            size: 24,
+                          ),
                         ),
                       ),
                     ),
-                  const Spacer(),
-                  // Status chip (on the far right)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: statusColor,
-                      ),
-                    ),
-                  ),
+                  ],
                 ],
               ),
-              const SizedBox(height: 6),
-              if ((record['treatment'] ?? "").isNotEmpty)
-                Text(
-                  record['treatment'],
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.gray700,
+              
+              // Treatment text
+              if ((record['treatment'] ?? "").isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.gray200.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.medical_services_outlined,
+                        size: 16,
+                        color: AppColors.gray600,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          record['treatment'],
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.gray700,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showThumbnail(Map<String, dynamic> record) {
+    final thumb = (record['thumbnail'] ?? '').toString();
+    if (thumb.isEmpty) return;
+
+    final isHttp = thumb.startsWith('http');
+    final isFile = thumb.startsWith('/') || thumb.startsWith('file:');
+    final url = isHttp ? thumb : '${Config.supabaseBaseUrl}$thumb';
+
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: isFile
+                  ? Image.file(File(thumb), fit: BoxFit.contain)
+                  : Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: Colors.white,
+                          padding: const EdgeInsets.all(40),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          ),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.white,
+                        padding: const EdgeInsets.all(40),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                            SizedBox(height: 16),
+                            Text('Image unavailable', style: TextStyle(color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 20),
+                ),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:intl/intl.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/health_api.dart';
 import 'package:fyp_hbs/services/api/disease_api.dart';
@@ -10,6 +12,7 @@ import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/models/health_model.dart';
 import 'package:fyp_hbs/services/local database/health_db.dart';
 import 'package:fyp_hbs/tree/tab/health/create_disease.dart';
+import '../../../config.dart';
 
 class CreateHealthInfoPage extends StatefulWidget {
   final String treeTag;
@@ -38,6 +41,9 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
   int? selectedDiseaseId;
   String? selectedStatus;
   bool isLoading = false;
+  File? _selectedImage;
+  String? _existingThumbnail;
+  Future<List<Map<String, dynamic>>>? _diseaseFuture;
 
   @override
   void dispose() {
@@ -51,6 +57,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
   @override
   void initState() {
     super.initState();
+    _diseaseFuture = _loadDiseases();
 
     if (widget.existingRecord != null) {
       final record = widget.existingRecord!;
@@ -60,6 +67,31 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
       selectedStatus = record['status'];
       diseaseController.text = selectedDiseaseId?.toString() ?? '';
       statusController.text = selectedStatus ?? '';
+      _existingThumbnail = record['thumbnail']?.toString();
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final online = await ConnectivityHelper.hasInternetConnection();
+    if (!online) {
+      await Flushbar(
+        message: 'No internet — cannot pick image while offline',
+        icon: const Icon(Icons.cloud_off, color: Colors.white),
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(12),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
+      return;
+    }
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 40);
+    if (picked != null) {
+      setState(() {
+        _selectedImage = File(picked.path);
+      });
     }
   }
 
@@ -92,6 +124,8 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
         // ignore
       }
 
+      final thumbnailPath = _selectedImage?.path ?? _existingThumbnail;
+
       final healthModel = HealthModel(
         tree_uuid: widget.treeUuid,
         diseaseId: selectedDiseaseId?.toString(),
@@ -99,6 +133,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
         status: selectedStatus,
         recorded_at: dateController.text,
         treatment: treatmentController.text,
+        thumbnail: thumbnailPath,
         synced: 0,
         pendingUpdate: 0,
         pendingDelete: 0,
@@ -118,6 +153,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
               date: dateController.text,
               status: selectedStatus!,
               treatment: treatmentController.text,
+              imageFile: _selectedImage,
             );
           } else {
             // Attempt remote create
@@ -127,6 +163,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
               date: dateController.text,
               status: selectedStatus!,
               treatment: treatmentController.text,
+              imageFile: _selectedImage,
             );
           }
         } catch (e) {
@@ -205,11 +242,81 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text(
-          'Add Health Info',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        title: Text(
+          widget.existingRecord == null ? 'Add Health Info' : 'Edit Health Info',
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         backgroundColor: AppColors.pakistanGreen,
+        actions: widget.existingRecord != null
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.white),
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text('Delete health record?'),
+                              content: const Text('This will remove the record permanently.'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirm != true) return;
+
+                          final online = await ConnectivityHelper.hasInternetConnection();
+                          if (!online) {
+                            await Flushbar(
+                              message: 'Cannot delete while offline',
+                              backgroundColor: Colors.orange.shade700,
+                              duration: const Duration(seconds: 2),
+                              margin: const EdgeInsets.all(12),
+                              borderRadius: BorderRadius.circular(8),
+                            ).show(context);
+                            return;
+                          }
+
+                          try {
+                            setState(() => isLoading = true);
+                            await HealthApi.deleteHealthRecord(
+                              id: widget.existingRecord!['id'].toString(),
+                            );
+                            if (!mounted) return;
+                            await Flushbar(
+                              message: 'Health record deleted',
+                              icon: const Icon(Icons.check_circle, color: Colors.white),
+                              backgroundColor: Colors.green.shade700,
+                              duration: const Duration(seconds: 2),
+                              borderRadius: BorderRadius.circular(12),
+                              margin: const EdgeInsets.all(12),
+                              flushbarPosition: FlushbarPosition.TOP,
+                            ).show(context);
+                            Navigator.pop(context, true);
+                          } catch (e) {
+                            await Flushbar(
+                              message: 'Delete failed: $e',
+                              backgroundColor: Colors.red.shade700,
+                              duration: const Duration(seconds: 3),
+                              margin: const EdgeInsets.all(12),
+                              borderRadius: BorderRadius.circular(8),
+                            ).show(context);
+                          } finally {
+                            if (mounted) setState(() => isLoading = false);
+                          }
+                        },
+                ),
+              ]
+            : null,
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
@@ -217,6 +324,9 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
           key: _formKey,
           child: ListView(
             children: [
+              _buildImagePreview(),
+              const SizedBox(height: 16),
+
               TextFormField(
                 initialValue: widget.treeTag,
                 decoration: const InputDecoration(
@@ -262,7 +372,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
 
 
               FutureBuilder<List<Map<String, dynamic>>>(
-                future: _loadDiseases(),
+                future: _diseaseFuture ??= _loadDiseases(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -421,5 +531,81 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
       print('⚠️ Failed to load diseases from local DB: $e');
       return <Map<String, dynamic>>[];
     }
+  }
+
+  Widget _buildImagePreview() {
+    return GestureDetector(
+      onTap: isLoading ? null : _pickImage,
+      child: SizedBox(
+        height: 180,
+        width: double.infinity,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child:
+                  _selectedImage != null
+                      ? Image.file(
+                        _selectedImage!,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      )
+                      : (_existingThumbnail != null && _existingThumbnail!.isNotEmpty)
+                      ? Image.network(
+                        _existingThumbnail!.startsWith('http')
+                            ? _existingThumbnail!
+                            : '${Config.supabaseBaseUrl}${_existingThumbnail!}',
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            color: Colors.grey[200],
+                            height: 180,
+                            width: double.infinity,
+                            child: const Center(
+                              child: Text('Image unavailable'),
+                            ),
+                          );
+                        },
+                      )
+                      : Container(
+                        height: 180,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey),
+                        ),
+                        child: const Center(child: Text('Tap to select image')),
+                      ),
+            ),
+
+            if (_selectedImage != null || (_existingThumbnail != null && _existingThumbnail!.isNotEmpty))
+              Positioned(
+                top: 8,
+                right: 8,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedImage = null;
+                      _existingThumbnail = null;
+                    });
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(6),
+                    child: const Icon(Icons.close, color: Colors.white, size: 18),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

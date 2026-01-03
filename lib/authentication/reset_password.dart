@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/nav.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   final bool fromSettings;
@@ -73,6 +74,19 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: () {
+                      final valid = _formKey.currentState?.validate() ?? false;
+                      if (!valid) {
+                        Flushbar(
+                          message: 'Please fill in all required fields correctly.',
+                          icon: const Icon(Icons.error, color: Colors.white),
+                          backgroundColor: Colors.red.shade700,
+                          duration: const Duration(seconds: 3),
+                          borderRadius: BorderRadius.circular(8),
+                          margin: const EdgeInsets.all(12),
+                        ).show(context);
+                        return;
+                      }
+
                       Navigator.push(
                         context,
                         MaterialPageRoute(

@@ -166,4 +166,26 @@ class HealthApi {
       throw Exception('Failed to update health record: ${response.body}');
     }
   }
+
+  static Future<void> deleteHealthRecord({required String id}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    final response = await http.delete(
+      Uri.parse("${Config.apiBaseUrl}/health-records/$id"),
+      headers: {
+        "Accept": "application/json",
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      try {
+        final decoded = jsonDecode(response.body);
+        throw Exception(decoded['message'] ?? 'Failed to delete health record');
+      } catch (_) {
+        throw Exception('Failed to delete health record: ${response.body}');
+      }
+    }
+  }
 }

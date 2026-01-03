@@ -11,6 +11,7 @@ import 'package:another_flushbar/flushbar.dart';
 import 'package:uuid/uuid.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/services/local%20database/tree_db.dart';
 
 // Formatter that allows decimals and limits fractional digits
@@ -118,21 +119,25 @@ class _CreateTreePageState extends State<CreateTreePage> {
   Future<void> _fetchSpecies() async {
     try {
       final fetchedSpecies = await TreeApi.fetchSpecies();
-      setState(() {
-        speciesList = fetchedSpecies;
-        if (speciesList.isNotEmpty) {
-          selectedSpeciesId = speciesList.first['id'].toString();
-        }
-      });
+      if (mounted) {
+        setState(() {
+          speciesList = fetchedSpecies;
+          if (speciesList.isNotEmpty) {
+            selectedSpeciesId = speciesList.first['id'].toString();
+          }
+        });
+      }
     } catch (e) {
-      Flushbar(
-        message: 'Error fetching species: $e',
-        icon: const Icon(Icons.error, color: Colors.white),
-        backgroundColor: Colors.red.shade700,
-        duration: const Duration(seconds: 3),
-        borderRadius: BorderRadius.circular(8),
-        margin: const EdgeInsets.all(12),
-      ).show(context);
+      if (mounted) {
+        Flushbar(
+          message: 'Error fetching species: $e',
+          icon: const Icon(Icons.error, color: Colors.white),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+          borderRadius: BorderRadius.circular(8),
+          margin: const EdgeInsets.all(12),
+        ).show(context);
+      }
     }
   }
 
@@ -169,6 +174,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
       return;
     }
 
+    dynamic createResp;
     try {
       setState(() => isLoading = true);
 
@@ -178,7 +184,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
       if (online) {
         // 🌐 ONLINE: Send to API as usual
         if (widget.tree == null) {
-          await TreeApi.createTree(
+          createResp = await TreeApi.createTree(
             speciesId: selectedSpeciesId!,
             plantedAt: plantingDateController.text,
             height: double.parse(heightController.text),
@@ -246,6 +252,31 @@ class _CreateTreePageState extends State<CreateTreePage> {
           margin: const EdgeInsets.all(12),
           flushbarPosition: FlushbarPosition.TOP,
         ).show(context);
+
+        if (!mounted) return;
+
+        if (widget.tree == null) {
+          final createdId = _extractCreatedId(createResp);
+          if (createdId != null && createdId.isNotEmpty) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TreeDetailsPage(
+                  treeID: createdId,
+                  refreshOnPop: true,
+                ),
+              ),
+            );
+          } else {
+            Navigator.pop(context, {'refreshList': true});
+          }
+          return;
+        } else {
+          final idString =
+              widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString();
+          Navigator.pop(context, {'updatedId': idString, 'refreshList': true});
+          return;
+        }
       } else {
         // 📴 OFFLINE: Save to Local DB instead. If we are editing an existing tree,
         // update the existing row and mark it as pending update. Otherwise insert a new offline row.
@@ -287,21 +318,27 @@ class _CreateTreePageState extends State<CreateTreePage> {
             margin: const EdgeInsets.all(12),
             flushbarPosition: FlushbarPosition.TOP,
           ).show(context);
+
+          if (!mounted) return;
+          Navigator.pop(
+            context,
+            {'updatedId': uuidExisting, 'refreshList': true},
+          );
+          return;
         } else {
           // Creating a new offline tree
           final uuid = const Uuid().v4();
           // Derive a tree tag with the same style as online tags: <prefix>-<sequence>
-          // e.g. D197-054 where 'D197' is derived from species id and sequence is 3 digits.
+          // e.g. D197-054 where 'D197' is the species code and sequence is 3 digits.
           String prefix = 'OFF';
           try {
-            // Use species id as part of prefix (if numeric-like)
-            final sid = selectedSpeciesId?.toString() ?? '';
-            final digits = sid.replaceAll(RegExp(r'[^0-9]'), '');
-            if (digits.isNotEmpty) {
-              prefix = 'D$digits';
+            // Prefer using species code (e.g., D197 for Musang King)
+            final found = speciesList.firstWhere((s) => s['id'].toString() == selectedSpeciesId);
+            final code = (found['code']?.toString() ?? '').trim();
+            if (code.isNotEmpty) {
+              prefix = code;
             } else {
               // fallback: use species name initials
-              final found = speciesList.firstWhere((s) => s['id'].toString() == selectedSpeciesId);
               final name = (found['name']?.toString() ?? 'OFF');
               prefix = name.split(' ').map((p) => p.isNotEmpty ? p[0] : '').join().toUpperCase();
             }
@@ -388,15 +425,20 @@ class _CreateTreePageState extends State<CreateTreePage> {
             flushbarPosition: FlushbarPosition.TOP,
           ).show(context);
 
-          // Return the created uuid to the caller so the UI can open details
+          // Navigate directly to tree details for the newly created offline tree
           if (!mounted) return;
-          Navigator.pop(context, {'createdUuid': uuid});
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TreeDetailsPage(
+                treeID: uuid,
+                refreshOnPop: true,
+              ),
+            ),
+          );
           return;
         }
       }
-
-      if (!mounted) return;
-      Navigator.pop(context, true);
     } catch (e) {
       Flushbar(
         message: 'Error: $e',
@@ -407,8 +449,27 @@ class _CreateTreePageState extends State<CreateTreePage> {
         margin: const EdgeInsets.all(12),
       ).show(context);
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
+  }
+
+  // Safely pull a tree id from diverse API response shapes.
+  String? _extractCreatedId(dynamic resp) {
+    if (resp == null) return null;
+    try {
+      if (resp is Map) {
+        if (resp['id'] != null) return resp['id'].toString();
+        if (resp['data'] is Map && resp['data']['id'] != null) {
+          return resp['data']['id'].toString();
+        }
+        if (resp['tree'] is Map && resp['tree']['id'] != null) {
+          return resp['tree']['id'].toString();
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 
   @override
@@ -457,28 +518,28 @@ class _CreateTreePageState extends State<CreateTreePage> {
                             await ConnectivityHelper.hasInternetConnection();
                         if (!online) {
                           await TreeDB().markAsPendingDelete(widget.tree!['uuid']);
+                          if (!mounted) return;
                           await Flushbar(
                             message:
                                 'Tree will be deleted when you are back online',
                           ).show(context);
+                          // Single pop: return true to signal deletion/refresh
                           Navigator.pop(context, true);
                         } else {
                           await TreeApi.deleteTree(widget.tree!['id'].toString());
+                          if (!mounted) return;
+                          await Flushbar(
+                            message: 'Tree deleted successfully',
+                            icon: const Icon(Icons.check_circle, color: Colors.white),
+                            backgroundColor: Colors.green.shade700,
+                            duration: const Duration(seconds: 2),
+                            borderRadius: BorderRadius.circular(12),
+                            margin: const EdgeInsets.all(12),
+                            flushbarPosition: FlushbarPosition.TOP,
+                          ).show(context);
+                          // Single pop: return true to signal deletion/refresh
+                          Navigator.pop(context, true);
                         }
-
-                        await Flushbar(
-                          message: 'Tree deleted successfully',
-                          icon: const Icon(Icons.check_circle, color: Colors.white),
-                          backgroundColor: Colors.green.shade700,
-                          duration: const Duration(seconds: 2),
-                          borderRadius: BorderRadius.circular(12),
-                          margin: const EdgeInsets.all(12),
-                          flushbarPosition: FlushbarPosition.TOP,
-                        ).show(context);
-
-                        if (!mounted) return;
-                        Navigator.pop(context);
-                        Navigator.pop(context, true);
                       } catch (e) {
                         await Flushbar(
                           message: 'Error deleting tree: $e',

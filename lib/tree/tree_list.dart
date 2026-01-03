@@ -32,7 +32,8 @@ class _TreePageState extends State<TreePage> {
   String? _selectedSpecies;
   final ScrollController _scrollController = ScrollController();
   // Controllers for matching create_tree's DropdownMenu style
-  final TextEditingController _speciesFilterController = TextEditingController();
+  final TextEditingController _speciesFilterController =
+      TextEditingController();
 
   int _currentPage = 1;
   int _lastPage = 1;
@@ -90,7 +91,7 @@ class _TreePageState extends State<TreePage> {
   @override
   void dispose() {
     _scrollController.dispose();
-  _speciesFilterController.dispose();
+    _speciesFilterController.dispose();
     _plantingFromController.dispose();
     _plantingToController.dispose();
     super.dispose();
@@ -103,13 +104,16 @@ class _TreePageState extends State<TreePage> {
   }
 
   void filterTrees(String query) {
-    final filtered = _allTrees.where((tree) {
-      final treeId = tree['tree_tag']?.toString().toLowerCase() ?? '';
-      return treeId.contains(query.toLowerCase());
-    }).toList();
-    setState(() {
-      _filteredTrees = filtered;
-    });
+    final filtered =
+        _allTrees.where((tree) {
+          final treeId = tree['tree_tag']?.toString().toLowerCase() ?? '';
+          return treeId.contains(query.toLowerCase());
+        }).toList();
+    if (mounted) {
+      setState(() {
+        _filteredTrees = filtered;
+      });
+    }
   }
 
   Future<void> fetchTrees({int page = 1, bool isLoadMore = false}) async {
@@ -134,23 +138,28 @@ class _TreePageState extends State<TreePage> {
       List<dynamic> merged = List<Map<String, dynamic>>.from(cleanedTrees);
       try {
         final localUnsynced = await TreeDB().fetchUnsyncedTrees();
-        final mappedLocal = localUnsynced.map((TreeModel m) {
-          return {
-            'id': m.id ?? m.uuid,
-            'uuid': m.uuid,
-            'tree_tag': m.treeTag ?? 'Offline Tree',
-            'species': {'id': m.speciesId, 'name': m.speciesId ?? 'Unknown'},
-            'planted_at': m.plantedAt != null
-                ? DateFormat('yyyy-MM-dd').format(m.plantedAt!)
-                : '',
-            'latitude': m.latitude ?? 0.0,
-            'longitude': m.longitude ?? 0.0,
-            'thumbnail': m.thumbnail ?? '',
-            'height': m.height ?? 0.0,
-            'diameter': m.diameter ?? 0.0,
-            'synced': m.synced,
-          };
-        }).toList();
+        final mappedLocal =
+            localUnsynced.map((TreeModel m) {
+              return {
+                'id': m.id ?? m.uuid,
+                'uuid': m.uuid,
+                'tree_tag': m.treeTag ?? 'Offline Tree',
+                'species': {
+                  'id': m.speciesId,
+                  'name': m.speciesId ?? 'Unknown',
+                },
+                'planted_at':
+                    m.plantedAt != null
+                        ? DateFormat('yyyy-MM-dd').format(m.plantedAt!)
+                        : '',
+                'latitude': m.latitude ?? 0.0,
+                'longitude': m.longitude ?? 0.0,
+                'thumbnail': m.thumbnail ?? '',
+                'height': m.height ?? 0.0,
+                'diameter': m.diameter ?? 0.0,
+                'synced': m.synced,
+              };
+            }).toList();
 
         // Prepend local unsynced items, avoiding duplicates by uuid
         final seen = <String>{};
@@ -175,8 +184,10 @@ class _TreePageState extends State<TreePage> {
         // Ensure unsynced (local) rows appear at the top. Also try to sort by
         // numeric sequence parsed from the tag (desc) so latest tags show first.
         combined.sort((a, b) {
-          final aSyn = (a['synced'] == 0 || a['synced']?.toString() == '0') ? 0 : 1;
-          final bSyn = (b['synced'] == 0 || b['synced']?.toString() == '0') ? 0 : 1;
+          final aSyn =
+              (a['synced'] == 0 || a['synced']?.toString() == '0') ? 0 : 1;
+          final bSyn =
+              (b['synced'] == 0 || b['synced']?.toString() == '0') ? 0 : 1;
           if (aSyn != bSyn) return aSyn - bSyn; // unsynced (0) first
 
           // both same sync status: try to compare sequence number parsed from 'tree_tag'
@@ -194,17 +205,48 @@ class _TreePageState extends State<TreePage> {
           return bSeq.compareTo(aSeq);
         });
 
+        if (!mounted) return;
         setState(() {
           _lastPage = lastPage;
-          if (isLoadMore) {
-            _filteredTrees.addAll(combined);
-          } else {
-            _filteredTrees = combined;
-            _allTrees = combined;
+
+          // Always re-merge & re-sort so offline trees stay on top
+          final mergedAll = [..._filteredTrees, ...combined];
+
+          // Deduplicate by uuid
+          final seen = <String>{};
+          final unique = <Map<String, dynamic>>[];
+
+          for (final t in mergedAll) {
+            final u = (t['uuid'] ?? t['id'] ?? '').toString();
+            if (u.isNotEmpty && !seen.contains(u)) {
+              unique.add(t);
+              seen.add(u);
+            }
           }
+
+          // 🔑 Enforce offline-first ordering
+          unique.sort((a, b) {
+            final aSyn =
+                (a['synced'] == 0 || a['synced']?.toString() == '0') ? 0 : 1;
+            final bSyn =
+                (b['synced'] == 0 || b['synced']?.toString() == '0') ? 0 : 1;
+            if (aSyn != bSyn) return aSyn - bSyn;
+
+            int parseSeq(Map<String, dynamic> m) {
+              final tag = (m['tree_tag'] ?? '').toString();
+              final seq = RegExp(r'\d+$').firstMatch(tag)?.group(0);
+              return int.tryParse(seq ?? '') ?? 0;
+            }
+
+            return parseSeq(b).compareTo(parseSeq(a));
+          });
+
+          _filteredTrees = unique;
+          _allTrees = unique;
         });
       } catch (e) {
         // If anything goes wrong merging local unsynced, fall back to remote-only list
+        if (!mounted) return;
         setState(() {
           _lastPage = lastPage;
           if (isLoadMore) {
@@ -231,28 +273,33 @@ class _TreePageState extends State<TreePage> {
           if (key != null) speciesLookup[key] = name;
         }
 
-        final cleanedLocal = local.map((TreeModel m) {
-          final sid = m.speciesId?.toString();
-          final speciesName = (sid != null && speciesLookup.containsKey(sid))
-              ? speciesLookup[sid]
-              : (m.speciesId ?? 'Unknown');
+        final cleanedLocal =
+            local.map((TreeModel m) {
+              final sid = m.speciesId?.toString();
+              final speciesName =
+                  (sid != null && speciesLookup.containsKey(sid))
+                      ? speciesLookup[sid]
+                      : (m.speciesId ?? 'Unknown');
 
-          return {
-            'id': m.id ?? m.uuid,
-            'uuid': m.uuid,
-            'tree_tag': m.treeTag ?? 'Offline Tree',
-            'species': {'id': m.speciesId, 'name': speciesName},
-            'planted_at': m.plantedAt != null
-                ? DateFormat('yyyy-MM-dd').format(m.plantedAt!)
-                : '',
-            'latitude': m.latitude ?? 0.0,
-            'longitude': m.longitude ?? 0.0,
-            'thumbnail': m.thumbnail ?? '',
-            'height': m.height ?? 0.0,
-            'diameter': m.diameter ?? 0.0,
-            'synced': m.synced,
-          };
-        }).toList();
+              return {
+                'id': m.id ?? m.uuid,
+                'uuid': m.uuid,
+                'tree_tag': m.treeTag ?? 'Offline Tree',
+                'species': {'id': m.speciesId, 'name': speciesName},
+                'planted_at':
+                    m.plantedAt != null
+                        ? DateFormat('yyyy-MM-dd').format(m.plantedAt!)
+                        : '',
+                'latitude': m.latitude ?? 0.0,
+                'longitude': m.longitude ?? 0.0,
+                'thumbnail': m.thumbnail ?? '',
+                'height': m.height ?? 0.0,
+                'diameter': m.diameter ?? 0.0,
+                'synced': m.synced,
+              };
+            }).toList();
+
+        if (!mounted) return;
 
         setState(() {
           _lastPage = 1;
@@ -263,219 +310,314 @@ class _TreePageState extends State<TreePage> {
             _allTrees = cleanedLocal;
           }
         });
-
-        _currentPage = 1;
       } catch (e2) {
         print('Failed to load trees from local DB: $e2');
       }
     }
   }
 
-  void _showSpeciesFilterDialog(BuildContext context) {
-  // 1. Initial values from existing state
-  String? tempSelectedSpecies = _selectedSpecies;
-  // Planting date temporary values
-  final plantingFrom = TextEditingController(text: _currentPlantingFrom);
-  final plantingTo = TextEditingController(text: _currentPlantingTo);
+  Future<void> _handleNavigationResult(dynamic result) async {
+    if (result == null) return;
 
-  // 2. Pre-fill controllers with current filter values if they exist
-  final floweringMin = TextEditingController(text: _currentFloweringMin);
-  final floweringMax = TextEditingController(text: _currentFloweringMax);
-  final heightMin = TextEditingController(text: _currentHeightMin);
-  final heightMax = TextEditingController(text: _currentHeightMax);
-  final diameterMin = TextEditingController(text: _currentDiameterMin);
-  final diameterMax = TextEditingController(text: _currentDiameterMax);
+    final bool shouldRefresh =
+        result == true || (result is Map && result['refreshList'] == true);
 
-  showDialog(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        backgroundColor: AppColors.background,
-        title: Row(
-          children: [
-            const SizedBox(width: 10),
-            const Text("Filter & Sort", style: TextStyle(fontWeight: FontWeight.bold)),
-          ],
+    // Back-compat: handle older flow that returns a created uuid map
+    final String? createdUuid =
+        result is Map && result['createdUuid'] != null
+            ? result['createdUuid'].toString()
+            : null;
+
+    if (shouldRefresh) {
+      await fetchTrees();
+    }
+
+    if (createdUuid != null && mounted) {
+      await fetchTrees();
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TreeDetailsPage(
+            treeID: createdUuid,
+            refreshOnPop: true,
+          ),
         ),
-        content: StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return SizedBox(
-              width: MediaQuery.of(context).size.width * 0.9,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSectionHeader("Species"),
-                    // Match the create_tree DropdownMenu styling and popup width
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final menuWidth = constraints.maxWidth;
-                        return SizedBox(
-                          width: double.infinity,
-                          child: DefaultTextStyle.merge(
-                            style: const TextStyle(fontSize: 13),
-                            child: DropdownMenu<String>(
-                              width: menuWidth,
-                              // cap popup height so long lists scroll
-                              menuHeight: 300,
-                              controller: _speciesFilterController,
-                              requestFocusOnTap: true,
-                              initialSelection: tempSelectedSpecies ?? '',
-                              dropdownMenuEntries: [
-                                const DropdownMenuEntry(value: '', label: 'All species'),
-                                ..._speciesList.map<DropdownMenuEntry<String>>(
-                                  (species) => DropdownMenuEntry(
-                                    value: species,
-                                    label: species,
+      );
+    }
+  }
+
+  void _showSpeciesFilterDialog(BuildContext context) {
+    // 1. Initial values from existing state
+    String? tempSelectedSpecies = _selectedSpecies;
+    // Planting date temporary values
+    final plantingFrom = TextEditingController(text: _currentPlantingFrom);
+    final plantingTo = TextEditingController(text: _currentPlantingTo);
+
+    // 2. Pre-fill controllers with current filter values if they exist
+    final floweringMin = TextEditingController(text: _currentFloweringMin);
+    final floweringMax = TextEditingController(text: _currentFloweringMax);
+    final heightMin = TextEditingController(text: _currentHeightMin);
+    final heightMax = TextEditingController(text: _currentHeightMax);
+    final diameterMin = TextEditingController(text: _currentDiameterMin);
+    final diameterMax = TextEditingController(text: _currentDiameterMax);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          backgroundColor: AppColors.background,
+          title: Row(
+            children: [
+              const SizedBox(width: 10),
+              const Text(
+                "Filter & Sort",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: StatefulBuilder(
+            builder: (context, setStateDialog) {
+              return SizedBox(
+                width: MediaQuery.of(context).size.width * 0.9,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader("Species"),
+                      // Match the create_tree DropdownMenu styling and popup width
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final menuWidth = constraints.maxWidth;
+                          return SizedBox(
+                            width: double.infinity,
+                            child: DefaultTextStyle.merge(
+                              style: const TextStyle(fontSize: 13),
+                              child: DropdownMenu<String>(
+                                width: menuWidth,
+                                // cap popup height so long lists scroll
+                                menuHeight: 300,
+                                controller: _speciesFilterController,
+                                requestFocusOnTap: true,
+                                initialSelection: tempSelectedSpecies ?? '',
+                                dropdownMenuEntries: [
+                                  const DropdownMenuEntry(
+                                    value: '',
+                                    label: 'All species',
                                   ),
-                                )
-                              ],
-                              onSelected: (String? v) {
-                                setStateDialog(() => tempSelectedSpecies = v);
+                                  ..._speciesList
+                                      .map<DropdownMenuEntry<String>>(
+                                        (species) => DropdownMenuEntry(
+                                          value: species,
+                                          label: species,
+                                        ),
+                                      ),
+                                ],
+                                onSelected: (String? v) {
+                                  setStateDialog(() => tempSelectedSpecies = v);
+                                },
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      const SizedBox(height: 20),
+                      _buildSectionHeader("Planting Date (From / To)"),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: plantingFrom,
+                              readOnly: true,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                hintText: 'From',
+                              ),
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: DateTime.now(),
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime.now(),
+                                );
+                                if (picked != null)
+                                  setStateDialog(
+                                    () =>
+                                        plantingFrom.text = DateFormat(
+                                          'yyyy-MM-dd',
+                                        ).format(picked),
+                                  );
                               },
                             ),
                           ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 20),
-                    _buildSectionHeader("Planting Date (From / To)"),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: plantingFrom,
-                            readOnly: true,
-                            decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'From'),
-                            onTap: () async {
-                              final picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime.now());
-                              if (picked != null) setStateDialog(() => plantingFrom.text = DateFormat('yyyy-MM-dd').format(picked));
-                            },
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: plantingTo,
+                              readOnly: true,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                hintText: 'To',
+                              ),
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: DateTime.now(),
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime.now(),
+                                );
+                                if (picked != null)
+                                  setStateDialog(
+                                    () =>
+                                        plantingTo.text = DateFormat(
+                                          'yyyy-MM-dd',
+                                        ).format(picked),
+                                  );
+                              },
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextField(
-                            controller: plantingTo,
-                            readOnly: true,
-                            decoration: const InputDecoration(border: OutlineInputBorder(), hintText: 'To'),
-                            onTap: () async {
-                              final picked = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime.now());
-                              if (picked != null) setStateDialog(() => plantingTo.text = DateFormat('yyyy-MM-dd').format(picked));
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
 
-                    const SizedBox(height: 20),
-                    _buildSectionHeader("Range Filters (Min / Max)"),
-                    
-                    _buildRangeRow("Flowering", floweringMin, floweringMax, "mo"),
-                    const SizedBox(height: 12),
-                    _buildRangeRow("Height", heightMin, heightMax, "cm"),
-                    const SizedBox(height: 12),
-                    _buildRangeRow("Diameter", diameterMin, diameterMax, "cm"),
-                  ],
+                      const SizedBox(height: 20),
+                      _buildSectionHeader("Range Filters (Min / Max)"),
+
+                      _buildRangeRow(
+                        "Flowering",
+                        floweringMin,
+                        floweringMax,
+                        "mo",
+                      ),
+                      const SizedBox(height: 12),
+                      _buildRangeRow("Height", heightMin, heightMax, "cm"),
+                      const SizedBox(height: 12),
+                      _buildRangeRow(
+                        "Diameter",
+                        diameterMin,
+                        diameterMax,
+                        "cm",
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
-        ),
-        actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _clearSpeciesFilter();
-            },
-            child: Text("Reset", style: TextStyle(color: Colors.grey.shade600)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () {
-              Navigator.of(context).pop();
-              _applyFilters(
-                species: tempSelectedSpecies,
-                plantingFrom: plantingFrom.text,
-                plantingTo: plantingTo.text,
-                floweringMin: floweringMin.text,
-                floweringMax: floweringMax.text,
-                heightMin: heightMin.text,
-                heightMax: heightMax.text,
-                diameterMin: diameterMin.text,
-                diameterMax: diameterMax.text,
               );
             },
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Text("Apply Filters"),
-            ),
           ),
-        ],
-      );
-    },
-  );
-}
+          actionsPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _clearSpeciesFilter();
+              },
+              child: Text(
+                "Reset",
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _applyFilters(
+                  species: tempSelectedSpecies,
+                  plantingFrom: plantingFrom.text,
+                  plantingTo: plantingTo.text,
+                  floweringMin: floweringMin.text,
+                  floweringMax: floweringMax.text,
+                  heightMin: heightMin.text,
+                  heightMax: heightMax.text,
+                  diameterMin: diameterMin.text,
+                  diameterMax: diameterMax.text,
+                );
+              },
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text("Apply Filters"),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-// Helper: Section Headers
-Widget _buildSectionHeader(String title) {
-  return Padding(
-    padding: const EdgeInsets.only(bottom: 8.0),
-    child: Text(
-      title.toUpperCase(),
-      style: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
-        color: Colors.grey.shade600,
-        letterSpacing: 1.1,
+  // Helper: Section Headers
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey.shade600,
+          letterSpacing: 1.1,
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
-// Helper: Numeric Range Rows
-Widget _buildRangeRow(String label, TextEditingController min, TextEditingController max, String unit) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-      const SizedBox(height: 4),
-      Row(
-        children: [
-          Expanded(child: _buildCompactField(min, "Min", unit)),
-          const SizedBox(width: 10),
-          Expanded(child: _buildCompactField(max, "Max", unit)),
-        ],
+  // Helper: Numeric Range Rows
+  Widget _buildRangeRow(
+    String label,
+    TextEditingController min,
+    TextEditingController max,
+    String unit,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(child: _buildCompactField(min, "Min", unit)),
+            const SizedBox(width: 10),
+            Expanded(child: _buildCompactField(max, "Max", unit)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // Helper: Refined TextFields
+  Widget _buildCompactField(
+    TextEditingController controller,
+    String hint,
+    String unit,
+  ) {
+    return TextField(
+      style: const TextStyle(fontSize: 13),
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        hintText: hint,
+        suffixText: unit,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        isDense: true,
       ),
-    ],
-  );
-}
+    );
+  }
 
-// Helper: Refined TextFields
-Widget _buildCompactField(TextEditingController controller, String hint, String unit) {
-  return TextField(
-    style: const TextStyle(fontSize: 13),
-    controller: controller,
-    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-    decoration: InputDecoration(
-      hintText: hint,
-      suffixText: unit,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-      isDense: true,
-    ),
-  );
-}
-
-// Sort helper removed — replaced by planting date range fields in the dialog.
+  // Sort helper removed — replaced by planting date range fields in the dialog.
 
   // Apply composite filters and sorting to _allTrees then set _filteredTrees
   void _applyFilters({
@@ -494,10 +636,11 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
 
     // Species filter
     if (species != null && species.isNotEmpty) {
-      working = working.where((tree) {
-        final name = tree['species']?['name']?.toString() ?? '';
-        return name == species;
-      }).toList();
+      working =
+          working.where((tree) {
+            final name = tree['species']?['name']?.toString() ?? '';
+            return name == species;
+          }).toList();
     }
 
     double? parseDouble(String? s) {
@@ -515,7 +658,10 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
     // Numeric filtering helpers
     bool inRange(dynamic value, double? min, double? max) {
       if (value == null) return false;
-      final v = (value is num) ? value.toDouble() : double.tryParse(value.toString()) ?? double.nan;
+      final v =
+          (value is num)
+              ? value.toDouble()
+              : double.tryParse(value.toString()) ?? double.nan;
       if (v.isNaN) return false;
       if (min != null && v < min) return false;
       if (max != null && v > max) return false;
@@ -524,26 +670,32 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
 
     // Apply flowering filter if any
     if (fMin != null || fMax != null) {
-      working = working.where((tree) {
-        final val = tree['flowering_period'] ?? tree['flowering'] ?? tree['flowering_period_number'];
-        return inRange(val, fMin, fMax);
-      }).toList();
+      working =
+          working.where((tree) {
+            final val =
+                tree['flowering_period'] ??
+                tree['flowering'] ??
+                tree['flowering_period_number'];
+            return inRange(val, fMin, fMax);
+          }).toList();
     }
 
     // Height filter
     if (hMin != null || hMax != null) {
-      working = working.where((tree) {
-        final val = tree['height'];
-        return inRange(val, hMin, hMax);
-      }).toList();
+      working =
+          working.where((tree) {
+            final val = tree['height'];
+            return inRange(val, hMin, hMax);
+          }).toList();
     }
 
     // Diameter filter
     if (dMin != null || dMax != null) {
-      working = working.where((tree) {
-        final val = tree['diameter'];
-        return inRange(val, dMin, dMax);
-      }).toList();
+      working =
+          working.where((tree) {
+            final val = tree['diameter'];
+            return inRange(val, dMin, dMax);
+          }).toList();
     }
 
     // Apply planting date range if provided
@@ -555,43 +707,48 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
     final pFrom = parseDate(plantingFrom);
     final pTo = parseDate(plantingTo);
     if (pFrom != null || pTo != null) {
-      working = working.where((tree) {
-        final s = tree['planted_at']?.toString() ?? '';
-        final dt = DateTime.tryParse(s);
-        if (dt == null) return false;
-        if (pFrom != null && dt.isBefore(pFrom)) return false;
-        if (pTo != null && dt.isAfter(pTo)) return false;
-        return true;
-      }).toList();
+      working =
+          working.where((tree) {
+            final s = tree['planted_at']?.toString() ?? '';
+            final dt = DateTime.tryParse(s);
+            if (dt == null) return false;
+            if (pFrom != null && dt.isBefore(pFrom)) return false;
+            if (pTo != null && dt.isAfter(pTo)) return false;
+            return true;
+          }).toList();
     }
 
-    setState(() {
-      _selectedSpecies = (species == null || species.isEmpty) ? null : species;
-      _currentPlantingFrom = plantingFrom ?? '';
-      _currentPlantingTo = plantingTo ?? '';
-      _currentFloweringMin = floweringMin ?? '';
-      _currentFloweringMax = floweringMax ?? '';
-      _currentHeightMin = heightMin ?? '';
-      _currentHeightMax = heightMax ?? '';
-      _currentDiameterMin = diameterMin ?? '';
-      _currentDiameterMax = diameterMax ?? '';
-      _filteredTrees = working;
-    });
+    if (mounted) {
+      setState(() {
+        _selectedSpecies = (species == null || species.isEmpty) ? null : species;
+        _currentPlantingFrom = plantingFrom ?? '';
+        _currentPlantingTo = plantingTo ?? '';
+        _currentFloweringMin = floweringMin ?? '';
+        _currentFloweringMax = floweringMax ?? '';
+        _currentHeightMin = heightMin ?? '';
+        _currentHeightMax = heightMax ?? '';
+        _currentDiameterMin = diameterMin ?? '';
+        _currentDiameterMax = diameterMax ?? '';
+        _filteredTrees = working;
+      });
+    }
   }
 
   // Note: species-specific quick filter removed in favour of composite filters
 
   void _clearSpeciesFilter() {
-    setState(() {
-      _selectedSpecies = null;
-      _currentFloweringMin = '';
-      _currentFloweringMax = '';
-      _currentHeightMin = '';
-      _currentHeightMax = '';
-      _currentDiameterMin = '';
-      _currentDiameterMax = '';
-      _filteredTrees = _allTrees;
-    });
+    if (mounted) {
+      setState(() {
+        _selectedSpecies = null;
+        _currentFloweringMin = '';
+        _currentFloweringMax = '';
+        _currentHeightMin = '';
+        _currentHeightMax = '';
+        _currentDiameterMin = '';
+        _currentDiameterMax = '';
+        _filteredTrees = _allTrees;
+      });
+    }
   }
 
   @override
@@ -624,7 +781,9 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const ResetPasswordPage(fromSettings: true),
+                            builder:
+                                (_) =>
+                                    const ResetPasswordPage(fromSettings: true),
                           ),
                         );
                       },
@@ -641,20 +800,25 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
                       onTap: () async {
                         final shouldLogout = await showDialog<bool>(
                           context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Confirm Logout'),
-                            content: const Text('Are you sure you want to logout?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(false),
-                                child: const Text('Cancel'),
+                          builder:
+                              (context) => AlertDialog(
+                                title: const Text('Confirm Logout'),
+                                content: const Text(
+                                  'Are you sure you want to logout?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(true),
+                                    child: const Text('Logout'),
+                                  ),
+                                ],
                               ),
-                              ElevatedButton(
-                                onPressed: () => Navigator.of(context).pop(true),
-                                child: const Text('Logout'),
-                              ),
-                            ],
-                          ),
                         );
 
                         if (shouldLogout == true) {
@@ -664,7 +828,10 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
                             if (ok) {
                               await Flushbar(
                                 message: 'Logged out',
-                                icon: const Icon(Icons.check_circle, color: Colors.white),
+                                icon: const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.white,
+                                ),
                                 backgroundColor: Colors.green.shade700,
                                 duration: const Duration(seconds: 2),
                                 borderRadius: BorderRadius.circular(8),
@@ -673,7 +840,10 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
                             } else {
                               await Flushbar(
                                 message: 'Logged out (server revoke pending)',
-                                icon: const Icon(Icons.info, color: Colors.white),
+                                icon: const Icon(
+                                  Icons.info,
+                                  color: Colors.white,
+                                ),
                                 backgroundColor: Colors.orange.shade700,
                                 duration: const Duration(seconds: 2),
                                 borderRadius: BorderRadius.circular(8),
@@ -688,7 +858,10 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
                           } catch (e) {
                             await Flushbar(
                               message: 'Logout failed: $e',
-                              icon: const Icon(Icons.error, color: Colors.white),
+                              icon: const Icon(
+                                Icons.error,
+                                color: Colors.white,
+                              ),
                               backgroundColor: Colors.red.shade700,
                               duration: const Duration(seconds: 3),
                               borderRadius: BorderRadius.circular(8),
@@ -715,9 +888,7 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
-                  fetchTrees();
-                  // Wait for fetchTrees to complete and set state
-                  await Future.delayed(const Duration(milliseconds: 500));
+                  await fetchTrees();
                 },
                 child:
                     _filteredTrees.isEmpty
@@ -808,18 +979,7 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
                 context,
                 MaterialPageRoute(builder: (_) => const CreateTreePage()),
               );
-
-              if (result == true) {
-                fetchTrees();
-              } else if (result is Map && result['createdUuid'] != null) {
-                // Refresh list and open the details page for the newly created tree
-                await fetchTrees();
-                final created = result['createdUuid'].toString();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: created)),
-                );
-              }
+              await _handleNavigationResult(result);
             },
             child: Container(
               decoration: const BoxDecoration(
@@ -865,12 +1025,15 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
     //         ? AppColors.successActive
     //         : AppColors.dangerActive;
 
-    final bool isUnsynced = (tree['synced'] == 0 || tree['synced']?.toString() == '0');
+    final bool isUnsynced =
+        (tree['synced'] == 0 || tree['synced']?.toString() == '0');
     return Card(
       color: isUnsynced ? AppColors.warningLight : AppColors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: isUnsynced ? AppColors.warningActive : AppColors.gray400),
+        side: BorderSide(
+          color: isUnsynced ? AppColors.warningActive : AppColors.gray400,
+        ),
       ),
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,
@@ -935,17 +1098,15 @@ Widget _buildCompactField(TextEditingController controller, String hint, String 
             // View Button (green background, white text)
             ElevatedButton(
               onPressed: () async {
-                final shouldRefresh = await Navigator.push(
+                final result = await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder:
-                        (_) => TreeDetailsPage(treeID: tree['id'].toString()),
+                        (_) => TreeDetailsPage(treeID: (tree['uuid'] ?? tree['id'] ?? '').toString()),
                   ),
                 );
 
-                if (shouldRefresh == true) {
-                  fetchTrees();
-                }
+                await _handleNavigationResult(result);
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.hunterGreen,

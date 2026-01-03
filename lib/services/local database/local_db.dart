@@ -67,6 +67,7 @@ class LocalDB {
     await db.execute('''
       CREATE TABLE species(
         id INTEGER PRIMARY KEY,
+        code TEXT,
         name TEXT
       )
     ''');

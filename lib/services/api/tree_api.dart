@@ -104,9 +104,17 @@ class TreeApi {
         }
 
         final speciesList = items.map<Map<String, dynamic>>((item) {
-          if (item is Map) return Map<String, dynamic>.from(item);
-          if (item is String) return {'id': null, 'name': item};
-          return {'id': null, 'name': item?.toString() ?? ''};
+          if (item is Map) {
+            final map = Map<String, dynamic>.from(item);
+            // Ensure code field is included if present
+            return {
+              'id': map['id'],
+              'code': map['code'] ?? map['species_code'] ?? '',
+              'name': map['name'] ?? map['title'] ?? map['label'] ?? map['value'] ?? '',
+            };
+          }
+          if (item is String) return {'id': null, 'code': '', 'name': item};
+          return {'id': null, 'code': '', 'name': item?.toString() ?? ''};
         }).toList();
 
         // 💾 Cache species locally for offline use (SharedPreferences)
