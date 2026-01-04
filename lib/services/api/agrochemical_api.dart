@@ -145,6 +145,44 @@ class AgrochemicalApi {
     }
   }
 
+  // Fetch trees associated with a specific agrochemical
+  static Future<List<Map<String, dynamic>>> fetchTreesByAgrochemical(
+    String agrochemicalUuid,
+  ) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.get(
+        Uri.parse("${Config.apiBaseUrl}/agrochemicals/$agrochemicalUuid/trees"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      final decoded = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        if (decoded is Map && decoded.containsKey('data')) {
+          final List<dynamic> dataList = decoded['data'];
+          return dataList.map((e) => Map<String, dynamic>.from(e)).toList();
+        }
+        if (decoded is List) {
+          return decoded.map((e) => Map<String, dynamic>.from(e)).toList();
+        }
+        throw Exception('Unexpected response format');
+      }
+
+      final message = (decoded is Map)
+          ? decoded['message'] ?? 'Failed to fetch trees for agrochemical'
+          : 'Failed to fetch trees for agrochemical';
+      throw Exception(message);
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
+
   // Fetch all agrochemical records (global endpoint) and return the list of rows
   static Future<List<Map<String, dynamic>>> fetchAllAgroRecords() async {
     try {

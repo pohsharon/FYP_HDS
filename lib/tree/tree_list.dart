@@ -16,6 +16,7 @@ import 'package:fyp_hbs/authentication/login.dart';
 import 'package:fyp_hbs/authentication/reset_password.dart';
 import 'package:fyp_hbs/widgets/persistent_appbar.dart';
 import 'package:fyp_hbs/services/api/disease_api.dart';
+import 'package:fyp_hbs/services/api/agrochemical_api.dart';
 import 'dart:math' show max;
 
 class TreePage extends StatefulWidget {
@@ -32,12 +33,16 @@ class _TreePageState extends State<TreePage> {
   List<dynamic> _filteredTrees = [];
   final List<String> _speciesList = [];
   List<Map<String, dynamic>> _diseaseList = [];
+    List<Map<String, dynamic>> _agrochemicalList = [];
   String? _selectedSpecies;
+    String? _selectedAgrochemicalId;
   final ScrollController _scrollController = ScrollController();
   // Controllers for matching create_tree's DropdownMenu style
   final TextEditingController _speciesFilterController =
       TextEditingController();
   final TextEditingController _diseaseFilterController =
+      TextEditingController();
+    final TextEditingController _agrochemicalFilterController =
       TextEditingController();
 
   int _currentPage = 1;
@@ -58,6 +63,7 @@ class _TreePageState extends State<TreePage> {
     // Populate species dropdown from local DB so the 'All species' list is available offline
     _loadLocalSpecies();
     _loadDiseases();
+    _loadAgrochemicals();
 
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
@@ -100,11 +106,23 @@ class _TreePageState extends State<TreePage> {
     }
   }
 
+  Future<void> _loadAgrochemicals() async {
+    try {
+      final agrochemicals = await AgrochemicalApi.getAgrochemical();
+      setState(() {
+        _agrochemicalList = agrochemicals;
+      });
+    } catch (e) {
+      print('Failed to load agrochemicals: $e');
+    }
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
     _speciesFilterController.dispose();
     _diseaseFilterController.dispose();
+    _agrochemicalFilterController.dispose();
     _plantingFromController.dispose();
     _plantingToController.dispose();
     super.dispose();
@@ -363,9 +381,13 @@ class _TreePageState extends State<TreePage> {
   if (_diseaseList.isEmpty) {
     await _loadDiseases();
   }
+  if (_agrochemicalList.isEmpty) {
+    await _loadAgrochemicals();
+  }
   
   String? tempSelectedSpecies = _selectedSpecies;
   String? tempSelectedDiseaseId = _selectedDiseaseId;
+  String? tempSelectedAgrochemicalId = _selectedAgrochemicalId;
   final plantingFrom = TextEditingController(text: _currentPlantingFrom);
   final plantingTo = TextEditingController(text: _currentPlantingTo);
 
@@ -501,6 +523,41 @@ class _TreePageState extends State<TreePage> {
                           ),
 
                           const SizedBox(height: 20),
+                          _buildEnhancedSectionHeader(
+                            "Agrochemical",
+                            Icons.science,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildEnhancedDropdown(
+                            context: context,
+                            controller: _agrochemicalFilterController,
+                            initialSelection: tempSelectedAgrochemicalId,
+                            entries: [
+                              const DropdownMenuEntry(
+                                value: '',
+                                label: 'All agrochemicals',
+                              ),
+                              ..._agrochemicalList
+                                  .map<DropdownMenuEntry<String>>(
+                                    (agro) {
+                                      final id = (agro['uuid'] ?? agro['id'] ?? '').toString();
+                                      final label = (agro['name'] ?? agro['agrochemical_name'] ?? agro['agrochemicalName'] ?? '').toString();
+                                      return DropdownMenuEntry(
+                                        value: id,
+                                        label: label.isNotEmpty ? label : id,
+                                      );
+                                    },
+                                  )
+                                  .toList(),
+                            ],
+                            onSelected: (String? v) {
+                              setStateDialog(
+                                () => tempSelectedAgrochemicalId = (v == null || v.isEmpty) ? null : v,
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 20),
                           _buildEnhancedSectionHeader("Planting Date Range", Icons.date_range),
                           const SizedBox(height: 8),
                           Row(
@@ -591,6 +648,7 @@ class _TreePageState extends State<TreePage> {
                             plantingFrom: plantingFrom.text,
                             plantingTo: plantingTo.text,
                             diseaseId: tempSelectedDiseaseId,
+                            agrochemicalId: tempSelectedAgrochemicalId,
                           );
                         },
                         icon: const Icon(Icons.check, size: 18),
@@ -787,9 +845,34 @@ Widget _buildEnhancedDateField({
     String? plantingFrom,
     String? plantingTo,
     String? diseaseId,
+    String? agrochemicalId,
   }) async {
     // Start from the full list
     List<dynamic> working = List<dynamic>.from(_allTrees);
+
+    // Agrochemical filter: fetch trees with specific agrochemical and intersect
+    if (agrochemicalId != null && agrochemicalId.isNotEmpty) {
+      try {
+        final treesWithAgro =
+            await AgrochemicalApi.fetchTreesByAgrochemical(agrochemicalId);
+        final agroTreeIds = <String>{};
+        for (final t in treesWithAgro) {
+          final treeData = t['tree'] ?? t;
+          final uuid = (treeData['uuid'] ?? '').toString();
+          final id = (treeData['id'] ?? '').toString();
+          final finalId = uuid.isNotEmpty ? uuid : id;
+          if (finalId.isNotEmpty) {
+            agroTreeIds.add(finalId);
+          }
+        }
+        working = working.where((tree) {
+          final treeId = (tree['uuid'] ?? tree['id'] ?? '').toString();
+          return agroTreeIds.contains(treeId);
+        }).toList();
+      } catch (e) {
+        print('Error fetching trees by agrochemical: $e');
+      }
+    }
 
     // Disease filter: fetch trees with specific disease and intersect
     if (diseaseId != null && diseaseId.isNotEmpty) {
@@ -852,6 +935,10 @@ Widget _buildEnhancedDateField({
       setState(() {
         _selectedSpecies = (species == null || species.isEmpty) ? null : species;
         _selectedDiseaseId = (diseaseId == null || diseaseId.isEmpty) ? null : diseaseId;
+        _selectedAgrochemicalId =
+            (agrochemicalId == null || agrochemicalId.isEmpty)
+                ? null
+                : agrochemicalId;
         _currentPlantingFrom = plantingFrom ?? '';
         _currentPlantingTo = plantingTo ?? '';
         _filteredTrees = working;
@@ -866,10 +953,12 @@ Widget _buildEnhancedDateField({
       setState(() {
         _selectedSpecies = null;
         _selectedDiseaseId = null;
+        _selectedAgrochemicalId = null;
         _currentPlantingFrom = '';
         _currentPlantingTo = '';
         _diseaseFilterController.clear();
         _speciesFilterController.clear();
+        _agrochemicalFilterController.clear();
         _filteredTrees = _allTrees;
       });
     }
@@ -880,6 +969,18 @@ Widget _buildEnhancedDateField({
     for (final d in _diseaseList) {
       if (d['id']?.toString() == id) {
         return (d['diseaseName'] ?? d['disease_name'])?.toString();
+      }
+    }
+    return null;
+  }
+
+  String? _agrochemicalNameById(String? id) {
+    if (id == null) return null;
+    for (final a in _agrochemicalList) {
+      final aId = (a['uuid'] ?? a['id'] ?? '').toString();
+      if (aId == id) {
+        return (a['name'] ?? a['agrochemical_name'] ?? a['agrochemicalName'])
+            ?.toString();
       }
     }
     return null;
@@ -960,6 +1061,7 @@ Widget _buildActiveFilters() {
             plantingFrom: _currentPlantingFrom,
             plantingTo: _currentPlantingTo,
             diseaseId: _selectedDiseaseId,
+            agrochemicalId: _selectedAgrochemicalId,
           );
         },
       ),
@@ -978,6 +1080,27 @@ Widget _buildActiveFilters() {
             plantingFrom: _currentPlantingFrom,
             plantingTo: _currentPlantingTo,
             diseaseId: null,
+            agrochemicalId: _selectedAgrochemicalId,
+          );
+        },
+      ),
+    );
+  }
+
+  if (_selectedAgrochemicalId != null && _selectedAgrochemicalId!.isNotEmpty) {
+    final agroName =
+        _agrochemicalNameById(_selectedAgrochemicalId) ?? _selectedAgrochemicalId;
+    chips.add(
+      _buildFilterChip(
+        'Agrochemical: $agroName',
+        () {
+          _agrochemicalFilterController.clear();
+          _applyFilters(
+            species: _selectedSpecies,
+            plantingFrom: _currentPlantingFrom,
+            plantingTo: _currentPlantingTo,
+            diseaseId: _selectedDiseaseId,
+            agrochemicalId: null,
           );
         },
       ),
@@ -1003,6 +1126,7 @@ Widget _buildActiveFilters() {
             plantingFrom: '',
             plantingTo: '',
             diseaseId: _selectedDiseaseId,
+            agrochemicalId: _selectedAgrochemicalId,
           );
         },
       ),

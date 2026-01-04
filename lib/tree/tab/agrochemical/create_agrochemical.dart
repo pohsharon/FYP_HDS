@@ -40,6 +40,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
   void initState() {
     super.initState();
     _fetchAgrochemicalOptions();
+    // Pre-fill form when editing
     if (widget.agrochemicalRecord != null) {
       final record = widget.agrochemicalRecord!;
       selectedAgrochemicalUuid = record['agrochemical_uuid'];
@@ -257,13 +258,67 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(
-          isEdit ? 'Edit Agrochemical Record' : 'Add Agrochemical Record',
+          isEdit ? 'Edit Agro Record' : 'Add Agrochemical Record',
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             color: Colors.white,
           ),
         ),
+        centerTitle: true,
         backgroundColor: AppColors.pakistanGreen,
+        actions: [
+          if (isEdit)
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.white),
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Delete Record'),
+                          content: const Text('Are you sure you want to delete this agrochemical record?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text(
+                                'Delete',
+                                style: TextStyle(color: Colors.red),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirm == true) {
+                        try {
+                          setState(() => isLoading = true);
+                          await AgrochemicalApi.deleteAgrochemicalRecord(
+                            widget.agrochemicalRecord!['uuid'],
+                          );
+                          if (!mounted) return;
+                          Navigator.pop(context, true);
+                        } catch (e) {
+                          await Flushbar(
+                            message: 'Error deleting record: $e',
+                            icon: const Icon(Icons.error, color: Colors.white),
+                            backgroundColor: Colors.red.shade700,
+                            duration: const Duration(seconds: 3),
+                            borderRadius: BorderRadius.circular(8),
+                            margin: const EdgeInsets.all(12),
+                            flushbarPosition: FlushbarPosition.TOP,
+                          ).show(context);
+                        } finally {
+                          if (mounted) setState(() => isLoading = false);
+                        }
+                      }
+                    },
+            ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
@@ -271,6 +326,20 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
           key: _formKey,
           child: ListView(
             children: [
+              const SizedBox(height: 16),
+
+              // Pre-filled tree tag for context
+              TextFormField(
+                initialValue: widget.treeTag,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Tree Tag',
+                  filled: true,
+                  fillColor: AppColors.gray200,
+                ),
+                readOnly: true,
+              ),
+
               const SizedBox(height: 16),
 
               // Replace with Material 3 DropdownMenu to match Create Tree styling
@@ -283,10 +352,11 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
                   width: double.infinity,
                   child: DropdownMenu<String>(
                     width: max(menuWidth, 360),
+                    menuHeight: 320,
                     controller: agrochemicalController,
                     requestFocusOnTap: true,
                     initialSelection: selectedAgrochemicalUuid,
-                    label: const Text('Select Agrochemical'),
+                    label: const Text('Agrochemical'),
                     dropdownMenuEntries: _agrochemicalOptions
                         .map<DropdownMenuEntry<String>>((item) => DropdownMenuEntry(
                               value: (item['uuid'] ?? item['id'] ?? '').toString(),

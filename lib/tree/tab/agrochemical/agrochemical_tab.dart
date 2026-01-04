@@ -6,10 +6,12 @@ import 'package:fyp_hbs/tree/tab/agrochemical/create_agrochemical.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/services/local database/agro_db.dart';
 import 'package:fyp_hbs/models/agrochemical_model.dart';
+import 'package:intl/intl.dart';
 
 class AgrochemicalTabPage extends StatefulWidget {
   final String treeUuid;
-  const AgrochemicalTabPage({super.key, required this.treeUuid});
+  final String treeTag;
+  const AgrochemicalTabPage({super.key, required this.treeUuid, required this.treeTag});
 
   @override
   State<AgrochemicalTabPage> createState() => _AgrochemicalTabPageState();
@@ -17,10 +19,8 @@ class AgrochemicalTabPage extends StatefulWidget {
 
 class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
   String searchQuery = '';
-  int? selectedIndex;
 
   Future<List<Map<String, dynamic>>> fetchAgrochemical() async {
-    // Prefer remote when online, but fall back to local DB when offline or when API fails
     try {
       final online = await ConnectivityHelper.hasInternetConnection();
       if (online) {
@@ -33,10 +33,8 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
       print('⚠️ Agrochemical fetch remote failed or no connectivity: $e');
     }
 
-    // Offline or remote failed: read from local DB
     try {
       final local = await AgroDB().fetchByTreeUuid(widget.treeUuid);
-      // Convert AgrochemicalModel -> Map<String,dynamic> shape expected by UI
       final mapped = local.map((AgrochemicalModel m) {
         return {
           'agrochemical': {
@@ -46,7 +44,6 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
           'applied_at': m.applied_at ?? '',
           'description': m.description ?? '',
           'tree_uuid': m.tree_uuid ?? widget.treeUuid,
-          // keep sync flags for UI/diagnostics
           'synced': m.synced,
           'pending_update': m.pendingUpdate,
           'pending_delete': m.pendingDelete,
@@ -57,6 +54,50 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
       print('⚠️ Failed to read local agrochemical DB: $e');
       return <Map<String, dynamic>>[];
     }
+  }
+
+  String _formatDate(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return 'No date';
+    try {
+      final date = DateTime.parse(dateStr);
+      return DateFormat('MMM dd, yyyy').format(date);
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
+  String _getTimeAgo(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      final now = DateTime.now();
+      final difference = now.difference(date);
+
+      if (difference.inDays > 365) {
+        return '${(difference.inDays / 365).floor()}y ago';
+      } else if (difference.inDays > 30) {
+        return '${(difference.inDays / 30).floor()}mo ago';
+      } else if (difference.inDays > 0) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h ago';
+      } else {
+        return 'Today';
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
+  Color _getAgrochemicalColor(int index) {
+    final colors = [
+      AppColors.hunterGreen,
+      AppColors.mossGreen,
+      Colors.teal,
+      Colors.green.shade700,
+      Colors.lightGreen.shade700,
+    ];
+    return colors[index % colors.length];
   }
 
   @override
@@ -78,10 +119,12 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                       fontSize: 14,
                     ),
                     prefixIcon: const Icon(Icons.search),
-                    suffixIcon: GestureDetector(
-                      onTap: () => setState(() => searchQuery = ''),
-                      child: const Icon(Icons.filter_alt_outlined),
-                    ),
+                    suffixIcon: searchQuery.isNotEmpty
+                        ? GestureDetector(
+                            onTap: () => setState(() => searchQuery = ''),
+                            child: const Icon(Icons.clear),
+                          )
+                        : const Icon(Icons.filter_alt_outlined),
                     filled: true,
                     fillColor: AppColors.white,
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -108,18 +151,25 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                   final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder:
-                          (_) => CreateAgrochemicalPage(
-                            treeUuid: widget.treeUuid,
-                            treeTag: '',
-                            agrochemicalRecord: null,
-                          ),
+                      builder: (_) => CreateAgrochemicalPage(
+                        treeUuid: widget.treeUuid,
+                        treeTag: widget.treeTag,
+                        agrochemicalRecord: null,
+                      ),
                     ),
                   );
-                  if (result == true) setState(() {}); // refresh after adding
+                  if (result == true) setState(() {});
                 },
-                icon: const Icon(Icons.add, color: Colors.white),
-                label: const Text('Add', style: TextStyle(color: Colors.white)),
+                icon: const Icon(Icons.add, color: Colors.white, size: 20),
+                label: const Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.hunterGreen,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  elevation: 2,
+                ),
               ),
             ],
           ),
@@ -134,92 +184,281 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, size: 64, color: AppColors.danger),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Error loading records',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.gray700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${snapshot.error}',
+                        style: TextStyle(fontSize: 12, color: AppColors.gray600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                );
               }
+              
               final items = snapshot.data ?? [];
-
-              // Filter based on nested agrochemical name
-              final filtered =
-                  items.where((item) {
-                    final name =
-                        item['agrochemical']?['name']
-                            ?.toString()
-                            .toLowerCase() ??
-                        '';
-                    return name.contains(searchQuery.toLowerCase());
-                  }).toList();
+              final filtered = items.where((item) {
+                final name = item['agrochemical']?['name']?.toString().toLowerCase() ?? '';
+                return name.contains(searchQuery.toLowerCase());
+              }).toList();
 
               if (filtered.isEmpty) {
-                return const Center(
-                  child: Text('No agrochemical records found.'),
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: AppColors.gray200,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.science_outlined,
+                          size: 64,
+                          color: AppColors.gray600,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        searchQuery.isEmpty 
+                            ? 'No agrochemical records yet' 
+                            : 'No results found',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.gray700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        searchQuery.isEmpty
+                            ? 'Tap the Add button to create your first record'
+                            : 'Try a different search term',
+                        style: TextStyle(fontSize: 14, color: AppColors.gray600),
+                      ),
+                    ],
+                  ),
                 );
               }
 
               return ListView.separated(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 8,
-                  horizontal: 16,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                 itemCount: filtered.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
                   final item = filtered[index];
                   final agro = item['agrochemical'] ?? {};
-                  final isSelected = selectedIndex == index;
+                  final cardColor = _getAgrochemicalColor(index);
+                  final thumbRaw = (agro['thumbnail'] ?? item['thumbnail'] ?? '').toString();
+                  final thumb = thumbRaw.isNotEmpty ? '${Config.supabaseBaseUrl}$thumbRaw' : '';
+                  final hasThumb = thumb.isNotEmpty;
+                  final appliedAt = item['applied_at']?.toString() ?? '';
+                  final description = item['description']?.toString() ?? '';
 
                   return GestureDetector(
                     onTap: () async {
-                      setState(() => selectedIndex = index);
-
                       final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder:
-                              (_) => CreateAgrochemicalPage(
-                                treeUuid: widget.treeUuid,
-                                treeTag: '', // Optional if needed
-                                agrochemicalRecord:
-                                    item, // ✅ pass the selected record
-                              ),
+                          builder: (_) => CreateAgrochemicalPage(
+                            treeUuid: widget.treeUuid,
+                            treeTag: widget.treeTag,
+                            agrochemicalRecord: item,
+                          ),
                         ),
                       );
 
                       if (result == true) {
-                        setState(() {}); // refresh list after update
+                        setState(() {});
                       }
                     },
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
+                    child: Card(
+                      elevation: 2,
+                      shadowColor: Colors.black.withOpacity(0.08),
+                      shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: isSelected ? Colors.blue : AppColors.gray300,
-                          width: isSelected ? 2 : 1,
+                        side: BorderSide(
+                          color: AppColors.gray200,
+                          width: 1,
                         ),
                       ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 8,
-                          horizontal: 12,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          color: AppColors.white,
                         ),
-                        
-                        title: Text(
-                          agro['name'] ?? 'Unknown Agrochemical',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Thumbnail or fallback icon
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: hasThumb ? Colors.transparent : cardColor,
+                                  gradient: hasThumb
+                                      ? null
+                                      : LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [cardColor, cardColor.withOpacity(0.7)],
+                                        ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: cardColor.withOpacity(0.2),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: hasThumb
+                                    ? ClipRRect(
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Image.network(
+                                          thumb,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => const Center(
+                                            child: Icon(Icons.science, color: Colors.white, size: 28),
+                                          ),
+                                        ),
+                                      )
+                                    : const Icon(Icons.science, color: Colors.white, size: 28),
+                              ),
+
+                              const SizedBox(width: 16),
+
+                              // Content
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Agrochemical Name
+                                    Text(
+                                      agro['name'] ?? 'Unknown Agrochemical',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 17,
+                                        color: AppColors.gray900,
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 8),
+
+                                    // Applied Date Row
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.calendar_today,
+                                          size: 14,
+                                          color: AppColors.gray600,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          _formatDate(appliedAt),
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: AppColors.gray700,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        if (appliedAt.isNotEmpty) ...[
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 3,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: cardColor.withOpacity(0.15),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: cardColor.withOpacity(0.3),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            child: Text(
+                                              _getTimeAgo(appliedAt),
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: cardColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+
+                                    // Description (if available)
+                                    if (description.isNotEmpty) ...[
+                                      const SizedBox(height: 8),
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.gray200.withOpacity(0.5),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Icon(
+                                              Icons.notes,
+                                              size: 14,
+                                              color: AppColors.gray600,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                description,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: AppColors.gray700,
+                                                  height: 1.3,
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+
+                              // Chevron Icon
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.gray200.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.chevron_right,
+                                  color: AppColors.gray600,
+                                  size: 20,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        subtitle: Text(
-                          "Applied at: ${item['applied_at'] ?? ''}",
-                          style: const TextStyle(
-                            color: AppColors.gray500,
-                            fontSize: 15,
-                          ),
-                        ),
-                        trailing: const Icon(
-                          Icons.chevron_right,
-                          color: AppColors.hunterGreen,
                         ),
                       ),
                     ),

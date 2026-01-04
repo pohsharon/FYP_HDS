@@ -546,7 +546,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                 child: TabBarView(
                   children: [
                     HealthTabPage(treeTag: treeTag, treeUuid: uuid),
-                    AgrochemicalTabPage(treeUuid: uuid),
+                    AgrochemicalTabPage(treeUuid: uuid, treeTag: treeTag),
                     GrowthLogTabPage(treeUuid: uuid),
                     HarvestTabPage(treeUuid: uuid),
                   ],
