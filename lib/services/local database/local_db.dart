@@ -4,7 +4,7 @@ import 'package:path/path.dart';
 class LocalDB {
   static final LocalDB instance = LocalDB._init();
   static Database? _db;
-  static const int _targetDbVersion = 4;
+  static const int _targetDbVersion = 5;
 
   LocalDB._init();
 
@@ -35,9 +35,9 @@ class LocalDB {
       onCreate: (db, version) async {
         await _createDB(db);
       },
-      // onUpgrade: (db, oldVersion, newVersion) async {
-      //   await _upgradeDB(db, oldVersion, newVersion);
-      // },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        await _upgradeDB(db, oldVersion, newVersion);
+      },
     );
 
     return _db!;
@@ -133,7 +133,7 @@ class LocalDB {
     // Agrochemical lookup table (optional metadata)
     await db.execute('''
     CREATE TABLE IF NOT EXISTS agrochemical (
-        id INTEGER PRIMARY KEY,
+        id TEXT PRIMARY KEY,
         agrochemical_name TEXT
       )
     ''');
@@ -164,15 +164,45 @@ class LocalDB {
     ''');
   }
 
-  // static Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
-  //   // Migration from version 1 -> 2: add thumbnail column to health_record
-  //   if (oldVersion < 2) {
-  //     try {
-  //       await db.execute('ALTER TABLE health_record ADD COLUMN thumbnail TEXT');
-  //       print('✅ upgradeDB: added thumbnail column to health_record');
-  //     } catch (e) {
-  //       print('⚠️ upgradeDB: could not add thumbnail column to health_record: $e');
-  //     }
-  //   }
-  // }
+  static Future _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    // Migration from version 1 -> 2: add thumbnail column to health_record
+    if (oldVersion < 2) {
+      try {
+        await db.execute('ALTER TABLE health_record ADD COLUMN thumbnail TEXT');
+        print('✅ upgradeDB: added thumbnail column to health_record');
+      } catch (e) {
+        print('⚠️ upgradeDB: could not add thumbnail column to health_record: $e');
+      }
+    }
+    
+    // Migration from version 4 -> 5: change agrochemical.id from INTEGER to TEXT
+    if (oldVersion < 5) {
+      try {
+        // SQLite doesn't support ALTER COLUMN, so we need to recreate the table
+        // 1. Create new table with TEXT id
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS agrochemical_new (
+            id TEXT PRIMARY KEY,
+            agrochemical_name TEXT
+          )
+        ''');
+        
+        // 2. Copy data (converting id to text)
+        await db.execute('''
+          INSERT INTO agrochemical_new (id, agrochemical_name)
+          SELECT CAST(id AS TEXT), agrochemical_name FROM agrochemical
+        ''');
+        
+        // 3. Drop old table
+        await db.execute('DROP TABLE IF EXISTS agrochemical');
+        
+        // 4. Rename new table to original name
+        await db.execute('ALTER TABLE agrochemical_new RENAME TO agrochemical');
+        
+        print('✅ upgradeDB: migrated agrochemical.id from INTEGER to TEXT');
+      } catch (e) {
+        print('⚠️ upgradeDB: could not migrate agrochemical table: $e');
+      }
+    }
+  }
 }

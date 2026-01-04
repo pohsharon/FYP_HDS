@@ -62,7 +62,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
     try {
       final online = await ConnectivityHelper.hasInternetConnection();
       if (online) {
-        final options = await AgrochemicalApi.getAgrochemical();
+        final options = await AgrochemicalApi.getAvailableAgrochemicals();
         // cache master list locally for offline fallback
         try {
           await AgroDB().saveAgrochemicalList(options);

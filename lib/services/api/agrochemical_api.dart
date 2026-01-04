@@ -208,4 +208,69 @@ class AgrochemicalApi {
       throw Exception("Error: ${e.toString()}");
     }
   }
+
+  // Fetch agrochemicals with available stock (quantity > 0)
+  static Future<List<Map<String, dynamic>>> getAvailableAgrochemicals() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.get(
+        Uri.parse("${Config.apiBaseUrl}/agrochemicals/available/stock"),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final decoded = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(decoded['data']);
+      } else {
+        throw Exception("Failed to fetch available agrochemicals");
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
+
+  // Create agrochemical stock movement (out)
+  static Future<Map<String, dynamic>> createStockMovement({
+    required String agrochemicalUuid,
+    required int quantity,
+    required String date,
+    String? description,
+  }) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.post(
+        Uri.parse("${Config.apiBaseUrl}/agrochemical-stock-movements"),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          "agrochemical_uuid": agrochemicalUuid,
+          "movement_type": "out",
+          "quantity": quantity,
+          "date": date,
+          if (description != null && description.isNotEmpty) "description": description,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return data;
+      } else {
+        throw Exception(data["message"] ?? "Failed to create stock movement");
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
 }

@@ -3,6 +3,7 @@ import 'package:fyp_hbs/config.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/agrochemical_api.dart';
 import 'package:fyp_hbs/tree/tab/agrochemical/create_agrochemical.dart';
+import 'package:fyp_hbs/tree/tab/agrochemical/agrochemical_list.dart'; // TODO: Create agrochemical_list.dart page
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/services/local database/agro_db.dart';
 import 'package:fyp_hbs/models/agrochemical_model.dart';
@@ -162,6 +163,22 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
+              IconButton(
+                icon: const Icon(
+                  Icons.list_alt_rounded,
+                  color: AppColors.hunterGreen,
+                ),
+                tooltip: 'View Agrochemical List',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AgrochemicalListPage(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: TextField(
                   onChanged: (value) => setState(() => searchQuery = value),
