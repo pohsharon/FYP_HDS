@@ -2,11 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/nav.dart';
 import 'package:another_flushbar/flushbar.dart';
+import 'package:fyp_hbs/services/api/auth_service.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   final bool fromSettings;
+  final String? phone;
 
-  const ResetPasswordPage({super.key, this.fromSettings = false});
+  const ResetPasswordPage({
+    super.key,
+    this.fromSettings = false,
+    this.phone,
+  });
 
   @override
   State<ResetPasswordPage> createState() => _ResetPasswordPageState();
@@ -73,7 +79,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
+                    onPressed: () async {
                       final valid = _formKey.currentState?.validate() ?? false;
                       if (!valid) {
                         Flushbar(
@@ -87,12 +93,53 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                         return;
                       }
 
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const Nav(),
-                        ),
+                      // Show loading
+                      Flushbar(
+                        message: 'Resetting password...',
+                        icon: const Icon(Icons.sync, color: Colors.white),
+                        backgroundColor: AppColors.hunterGreen,
+                        duration: const Duration(seconds: 2),
+                        borderRadius: BorderRadius.circular(8),
+                        margin: const EdgeInsets.all(12),
+                      ).show(context);
+
+                      // Call reset password API
+                      final result = await AuthService.resetPassword(
+                        widget.phone ?? '',
+                        newPasswordController.text,
+                        confirmPasswordController.text,
                       );
+
+                      if (result['success'] == true) {
+                        // Password reset successfully
+                        Flushbar(
+                          message: result['message'] ?? 'Password reset successfully',
+                          icon: const Icon(Icons.check_circle, color: Colors.white),
+                          backgroundColor: Colors.green.shade700,
+                          duration: const Duration(seconds: 2),
+                          borderRadius: BorderRadius.circular(8),
+                          margin: const EdgeInsets.all(12),
+                        ).show(context);
+
+                        // Navigate to login or main page
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const Nav(),
+                          ),
+                          (route) => false,
+                        );
+                      } else {
+                        // Show error
+                        Flushbar(
+                          message: result['message'] ?? 'Password reset failed',
+                          icon: const Icon(Icons.error, color: Colors.white),
+                          backgroundColor: Colors.red.shade700,
+                          duration: const Duration(seconds: 3),
+                          borderRadius: BorderRadius.circular(8),
+                          margin: const EdgeInsets.all(12),
+                        ).show(context);
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.hunterGreen,

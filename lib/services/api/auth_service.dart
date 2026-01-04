@@ -65,6 +65,86 @@ class AuthService {
   }
   }
 
+  static Future<Map<String, dynamic>> verifyOTP(String phone, String otp) async {
+    try {
+      phone = phone.trim();
+      if (!phone.startsWith('0')) phone = '60$phone';
+
+      final response = await http.post(
+        Uri.parse("${Config.apiBaseUrl}/verify-otp"),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: jsonEncode({
+          "phone": phone,
+          "otp": otp,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return data;
+      } else {
+        return {
+          "success": false,
+          "message": data["message"] ?? "OTP verification failed"
+        };
+      }
+    } catch (e) {
+      print('Error verifying OTP: $e');
+      return {
+        "success": false,
+        "message": "Network error. Please try again later."
+      };
+    }
+  }
+
+  static Future<Map<String, dynamic>> resetPassword(
+    String phone,
+    String newPassword,
+    String newPasswordConfirmation,
+  ) async {
+    try {
+      phone = phone.trim();
+      if (!phone.startsWith('0')) phone = '60$phone';
+
+      final response = await http.post(
+        Uri.parse("${Config.apiBaseUrl}/reset-password"),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: jsonEncode({
+          "phone": phone,
+          "new_password": newPassword,
+          "new_password_confirmation": newPasswordConfirmation,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          "success": true,
+          "message": data["message"] ?? "Password reset successfully"
+        };
+      } else {
+        return {
+          "success": false,
+          "message": data["message"] ?? "Password reset failed"
+        };
+      }
+    } catch (e) {
+      print('Error resetting password: $e');
+      return {
+        "success": false,
+        "message": "Network error. Please try again later."
+      };
+    }
+  }
+
   /// Attempt to logout on the server (if online) and always clear local auth state.
   ///
   /// Returns `true` when the server-side logout completed (or responded

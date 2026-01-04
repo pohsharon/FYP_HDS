@@ -7,12 +7,24 @@ import 'package:fyp_hbs/services/api/auth_service.dart';
 class ForgotPasswordPage extends StatelessWidget {
   const ForgotPasswordPage({super.key});
 
+  String maskEmail(String email) {
+    if (email.isEmpty) return 'your email';
+    if (email.length <= 3) return email;
+    final firstThree = email.substring(0, 3);
+    final atIndex = email.indexOf('@');
+    if (atIndex > 0) {
+      final domain = email.substring(atIndex);
+      return '$firstThree${'*' * (atIndex - 3)}$domain';
+    }
+    return '$firstThree${'*' * (email.length - 3)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final TextEditingController phoneController = TextEditingController();
     final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
-    Future<bool> isPhoneRegistered(String phone) async {
+    Future<Map<String, dynamic>> isPhoneRegistered(String phone) async {
       final result = await AuthService.checkPhone(phone);
       final exists = (result['exists'] is bool) ? result['exists'] as bool : false;
       if (!exists) {
@@ -25,7 +37,7 @@ class ForgotPasswordPage extends StatelessWidget {
           margin: const EdgeInsets.all(12),
         ).show(context);
       }
-      return exists;
+      return result;
     }
 
     String? validatePhone(String value) {
@@ -105,14 +117,20 @@ class ForgotPasswordPage extends StatelessWidget {
                     onPressed: () async {
                       if (!formKey.currentState!.validate()) return;
                       final phone = phoneController.text.trim();
-                      final registered = await isPhoneRegistered(phone);
-                      if (!registered) {
+                      final result = await isPhoneRegistered(phone);
+                      final exists = (result['exists'] is bool) ? result['exists'] as bool : false;
+                      if (!exists) {
                         return;
                       }
+                      final email = result['email']?.toString() ?? '';
+                      final maskedEmail = maskEmail(email);
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const OTPVerificationPage(),
+                          builder: (context) => OTPVerificationPage(
+                            email: maskedEmail,
+                            phone: phone,
+                          ),
                         ),
                       );
                     },
