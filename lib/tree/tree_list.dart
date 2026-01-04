@@ -360,288 +360,424 @@ class _TreePageState extends State<TreePage> {
   }
 
   void _showSpeciesFilterDialog(BuildContext context) async {
-    // Load diseases if not already loaded
-    if (_diseaseList.isEmpty) {
-      await _loadDiseases();
-    }
-    
-    // 1. Initial values from existing state
-    String? tempSelectedSpecies = _selectedSpecies;
-    String? tempSelectedDiseaseId = _selectedDiseaseId;
-    // Planting date temporary values
-    final plantingFrom = TextEditingController(text: _currentPlantingFrom);
-    final plantingTo = TextEditingController(text: _currentPlantingTo);
+  if (_diseaseList.isEmpty) {
+    await _loadDiseases();
+  }
+  
+  String? tempSelectedSpecies = _selectedSpecies;
+  String? tempSelectedDiseaseId = _selectedDiseaseId;
+  final plantingFrom = TextEditingController(text: _currentPlantingFrom);
+  final plantingTo = TextEditingController(text: _currentPlantingTo);
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          backgroundColor: AppColors.background,
-          title: Row(
-            children: [
-              const SizedBox(width: 10),
-              const Text(
-                "Filter & Sort",
-                style: TextStyle(fontWeight: FontWeight.bold),
+  showDialog(
+    context: context,
+    builder: (context) {
+      return Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        backgroundColor: Colors.transparent,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppColors.white,
+                AppColors.background,
+              ],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 20,
+                spreadRadius: 5,
               ),
             ],
           ),
-          content: StatefulBuilder(
-            builder: (context, setStateDialog) {
-              return SizedBox(
-                width: MediaQuery.of(context).size.width * 0.9,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionHeader("Species"),
-                      // Match the create_tree DropdownMenu styling and popup width
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final menuWidth = constraints.maxWidth;
-                          return SizedBox(
-                            width: double.infinity,
-                            child: DefaultTextStyle.merge(
-                              style: const TextStyle(fontSize: 13),
-                              child: DropdownMenu<String>(
-                                width: menuWidth,
-                                // cap popup height so long lists scroll
-                                menuHeight: 300,
-                                controller: _speciesFilterController,
-                                requestFocusOnTap: true,
-                                initialSelection: tempSelectedSpecies ?? '',
-                                dropdownMenuEntries: [
-                                  const DropdownMenuEntry(
-                                    value: '',
-                                    label: 'All species',
-                                  ),
-                                  ..._speciesList
-                                      .map<DropdownMenuEntry<String>>(
-                                        (species) => DropdownMenuEntry(
-                                          value: species,
-                                          label: species,
-                                        ),
-                                      ),
-                                ],
-                                onSelected: (String? v) {
-                                  setStateDialog(() => tempSelectedSpecies = v);
-                                },
-                              ),
-                            ),
-                          );
-                        },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.hunterGreen,
+                      AppColors.mossGreen,
+                    ],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(24),
+                    topRight: Radius.circular(24),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-
-                      const SizedBox(height: 20),
-                      _buildSectionHeader("Disease"),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final menuWidth = constraints.maxWidth;
-                          return SizedBox(
-                            width: double.infinity,
-                            child: DefaultTextStyle.merge(
-                              style: const TextStyle(fontSize: 13),
-                              child: DropdownMenu<String>(
-                                width: menuWidth,
-                                // cap popup height so long lists scroll
-                                menuHeight: 300,
-                                controller: _diseaseFilterController,
-                                requestFocusOnTap: true,
-                                initialSelection: tempSelectedDiseaseId,
-                                dropdownMenuEntries: [
-                                  const DropdownMenuEntry(
-                                    value: '',
-                                    label: 'All diseases',
-                                  ),
-                                  ..._diseaseList.map<DropdownMenuEntry<String>>(
-                                    (disease) => DropdownMenuEntry(
-                                      value: disease['id'].toString(),
-                                      label: disease['diseaseName'] ?? disease['disease_name'] ?? '',
-                                    ),
-                                  ),
-                                ],
-                                onSelected: (String? v) {
-                                  setStateDialog(
-                                    () => tempSelectedDiseaseId = (v == null || v.isEmpty) ? null : v,
-                                  );
-                                },
-                              ),
-                            ),
-                          );
-                        },
+                      child: const Icon(
+                        Icons.tune,
+                        color: Colors.white,
+                        size: 24,
                       ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text(
+                      "Filter & Sort",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-                      const SizedBox(height: 20),
-                      _buildSectionHeader("Planting Date (From / To)"),
-                      Row(
+              // Content
+              Flexible(
+                child: StatefulBuilder(
+                  builder: (context, setStateDialog) {
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: TextField(
-                              controller: plantingFrom,
-                              readOnly: true,
-                              decoration: const InputDecoration(
-                                border: OutlineInputBorder(),
-                                hintText: 'From',
+                          _buildEnhancedSectionHeader("Species", Icons.eco),
+                          const SizedBox(height: 8),
+                          _buildEnhancedDropdown(
+                            context: context,
+                            controller: _speciesFilterController,
+                            initialSelection: tempSelectedSpecies ?? '',
+                            entries: [
+                              const DropdownMenuEntry(
+                                value: '',
+                                label: 'All species',
                               ),
-                              onTap: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: DateTime.now(),
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime.now(),
-                                );
-                                if (picked != null)
-                                  setStateDialog(
-                                    () =>
-                                        plantingFrom.text = DateFormat(
-                                          'yyyy-MM-dd',
-                                        ).format(picked),
-                                  );
-                              },
-                            ),
+                              ..._speciesList.map<DropdownMenuEntry<String>>(
+                                (species) => DropdownMenuEntry(
+                                  value: species,
+                                  label: species,
+                                ),
+                              ),
+                            ],
+                            onSelected: (String? v) {
+                              setStateDialog(() => tempSelectedSpecies = v);
+                            },
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: plantingTo,
-                              readOnly: true,
-                              decoration: const InputDecoration(
-                                border: OutlineInputBorder(),
-                                hintText: 'To',
+
+                          const SizedBox(height: 20),
+                          _buildEnhancedSectionHeader("Disease", Icons.healing),
+                          const SizedBox(height: 8),
+                          _buildEnhancedDropdown(
+                            context: context,
+                            controller: _diseaseFilterController,
+                            initialSelection: tempSelectedDiseaseId,
+                            entries: [
+                              const DropdownMenuEntry(
+                                value: '',
+                                label: 'All diseases',
                               ),
-                              onTap: () async {
-                                final picked = await showDatePicker(
+                              ..._diseaseList.map<DropdownMenuEntry<String>>(
+                                (disease) => DropdownMenuEntry(
+                                  value: disease['id'].toString(),
+                                  label: disease['diseaseName'] ?? disease['disease_name'] ?? '',
+                                ),
+                              ),
+                            ],
+                            onSelected: (String? v) {
+                              setStateDialog(
+                                () => tempSelectedDiseaseId = (v == null || v.isEmpty) ? null : v,
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 20),
+                          _buildEnhancedSectionHeader("Planting Date Range", Icons.date_range),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildEnhancedDateField(
                                   context: context,
-                                  initialDate: DateTime.now(),
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime.now(),
-                                );
-                                if (picked != null)
-                                  setStateDialog(
-                                    () =>
-                                        plantingTo.text = DateFormat(
-                                          'yyyy-MM-dd',
-                                        ).format(picked),
-                                  );
-                              },
-                            ),
+                                  controller: plantingFrom,
+                                  label: 'From',
+                                  icon: Icons.calendar_today,
+                                  setStateDialog: setStateDialog,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildEnhancedDateField(
+                                  context: context,
+                                  controller: plantingTo,
+                                  label: 'To',
+                                  icon: Icons.event,
+                                  setStateDialog: setStateDialog,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
+                    );
+                  },
+                ),
+              ),
+
+              // Actions
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(24),
+                    bottomRight: Radius.circular(24),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
-          actionsPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _clearSpeciesFilter();
-              },
-              child: Text(
-                "Reset",
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.mossGreen,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _clearSpeciesFilter();
+                        },
+                        icon: const Icon(Icons.clear_all, size: 18),
+                        label: const Text("Reset"),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.gray700,
+                          side: BorderSide(color: AppColors.gray400, width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.hunterGreen,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shadowColor: AppColors.hunterGreen.withOpacity(0.4),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          _applyFilters(
+                            species: tempSelectedSpecies,
+                            plantingFrom: plantingFrom.text,
+                            plantingTo: plantingTo.text,
+                            diseaseId: tempSelectedDiseaseId,
+                          );
+                        },
+                        icon: const Icon(Icons.check, size: 18),
+                        label: const Text(
+                          "Apply Filters",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              onPressed: () {
-                Navigator.of(context).pop();
-                _applyFilters(
-                  species: tempSelectedSpecies,
-                  plantingFrom: plantingFrom.text,
-                  plantingTo: plantingTo.text,
-                  diseaseId: tempSelectedDiseaseId,
-                );
-              },
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Text("Apply Filters"),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
 
   // Helper: Section Headers
-  Widget _buildSectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(
-        title.toUpperCase(),
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: Colors.grey.shade600,
-          letterSpacing: 1.1,
+  Widget _buildEnhancedSectionHeader(String title, IconData icon) {
+  return Row(
+    children: [
+      Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: AppColors.hunterGreen.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          icon,
+          size: 16,
+          color: AppColors.hunterGreen,
         ),
       ),
-    );
-  }
-
-  // Helper: Numeric Range Rows
-  Widget _buildRangeRow(
-    String label,
-    TextEditingController min,
-    TextEditingController max,
-    String unit,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+      const SizedBox(width: 8),
+      Text(
+        title,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: AppColors.gray800,
         ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Expanded(child: _buildCompactField(min, "Min", unit)),
-            const SizedBox(width: 10),
-            Expanded(child: _buildCompactField(max, "Max", unit)),
-          ],
+      ),
+    ],
+  );
+}
+
+Widget _buildEnhancedDropdown({
+  required BuildContext context,
+  required TextEditingController controller,
+  required String? initialSelection,
+  required List<DropdownMenuEntry<String>> entries,
+  required Function(String?) onSelected,
+}) {
+  return Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: AppColors.gray300, width: 1.5),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 4,
+          offset: const Offset(0, 2),
         ),
       ],
-    );
-  }
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final menuWidth = constraints.maxWidth;
+        return DropdownMenu<String>(
+          width: menuWidth,
+          menuHeight: 300,
+          controller: controller,
+          requestFocusOnTap: true,
+          initialSelection: initialSelection ?? '',
+          dropdownMenuEntries: entries,
+          onSelected: onSelected,
+          textStyle: const TextStyle(fontSize: 14),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
 
-  // Helper: Refined TextFields
-  Widget _buildCompactField(
-    TextEditingController controller,
-    String hint,
-    String unit,
-  ) {
-    return TextField(
-      style: const TextStyle(fontSize: 13),
+Widget _buildEnhancedDateField({
+  required BuildContext context,
+  required TextEditingController controller,
+  required String label,
+  required IconData icon,
+  required Function(void Function()) setStateDialog,
+}) {
+  return Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: AppColors.gray300, width: 1.5),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 4,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: TextField(
       controller: controller,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      readOnly: true,
+      style: const TextStyle(fontSize: 14),
       decoration: InputDecoration(
-        hintText: hint,
-        suffixText: unit,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        isDense: true,
+        labelText: label,
+        labelStyle: TextStyle(
+          color: AppColors.gray600,
+          fontSize: 13,
+        ),
+        prefixIcon: Icon(icon, size: 18, color: AppColors.hunterGreen),
+        suffixIcon: controller.text.isNotEmpty
+            ? IconButton(
+                icon: Icon(Icons.clear, size: 18, color: AppColors.gray600),
+                onPressed: () {
+                  setStateDialog(() => controller.clear());
+                },
+              )
+            : null,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
       ),
-    );
-  }
+      onTap: () async {
+        final picked = await showDatePicker(
+          context: context,
+          initialDate: DateTime.now(),
+          firstDate: DateTime(2000),
+          lastDate: DateTime.now(),
+          builder: (context, child) {
+            return Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: ColorScheme.light(
+                  primary: AppColors.hunterGreen,
+                  onPrimary: Colors.white,
+                  surface: Colors.white,
+                ),
+              ),
+              child: child!,
+            );
+          },
+        );
+        if (picked != null) {
+          setStateDialog(
+            () => controller.text = DateFormat('yyyy-MM-dd').format(picked),
+          );
+        }
+      },
+    ),
+  );
+}
 
   // Sort helper removed — replaced by planting date range fields in the dialog.
 
@@ -733,10 +869,194 @@ class _TreePageState extends State<TreePage> {
         _currentPlantingFrom = '';
         _currentPlantingTo = '';
         _diseaseFilterController.clear();
+        _speciesFilterController.clear();
         _filteredTrees = _allTrees;
       });
     }
   }
+
+  String? _diseaseNameById(String? id) {
+    if (id == null) return null;
+    for (final d in _diseaseList) {
+      if (d['id']?.toString() == id) {
+        return (d['diseaseName'] ?? d['disease_name'])?.toString();
+      }
+    }
+    return null;
+  }
+
+  Widget _buildFilterChip(String label, VoidCallback onClear) {
+  return Container(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [
+          AppColors.hunterGreen.withOpacity(0.1),
+          AppColors.mossGreen.withOpacity(0.1),
+        ],
+      ),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(
+        color: AppColors.hunterGreen.withOpacity(0.3),
+        width: 1.5,
+      ),
+    ),
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onClear,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.filter_alt,
+                size: 16,
+                color: AppColors.hunterGreen,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.hunterGreen,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: AppColors.hunterGreen,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.close,
+                  size: 14,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+// Replace the _buildActiveFilters method with this enhanced version:
+Widget _buildActiveFilters() {
+  final chips = <Widget>[];
+
+  if (_selectedSpecies != null && _selectedSpecies!.isNotEmpty) {
+    chips.add(
+      _buildFilterChip(
+        'Species: ${_selectedSpecies!}',
+        () {
+          _speciesFilterController.clear();
+          _applyFilters(
+            species: null,
+            plantingFrom: _currentPlantingFrom,
+            plantingTo: _currentPlantingTo,
+            diseaseId: _selectedDiseaseId,
+          );
+        },
+      ),
+    );
+  }
+
+  if (_selectedDiseaseId != null && _selectedDiseaseId!.isNotEmpty) {
+    final diseaseName = _diseaseNameById(_selectedDiseaseId) ?? _selectedDiseaseId;
+    chips.add(
+      _buildFilterChip(
+        'Disease: $diseaseName',
+        () {
+          _diseaseFilterController.clear();
+          _applyFilters(
+            species: _selectedSpecies,
+            plantingFrom: _currentPlantingFrom,
+            plantingTo: _currentPlantingTo,
+            diseaseId: null,
+          );
+        },
+      ),
+    );
+  }
+
+  if ((_currentPlantingFrom.isNotEmpty) || (_currentPlantingTo.isNotEmpty)) {
+    String label;
+    if (_currentPlantingFrom.isNotEmpty && _currentPlantingTo.isNotEmpty) {
+      label = 'Planted: ${_currentPlantingFrom} to ${_currentPlantingTo}';
+    } else if (_currentPlantingFrom.isNotEmpty) {
+      label = 'Planted >= ${_currentPlantingFrom}';
+    } else {
+      label = 'Planted <= ${_currentPlantingTo}';
+    }
+
+    chips.add(
+      _buildFilterChip(
+        label,
+        () {
+          _applyFilters(
+            species: _selectedSpecies,
+            plantingFrom: '',
+            plantingTo: '',
+            diseaseId: _selectedDiseaseId,
+          );
+        },
+      ),
+    );
+  }
+
+  if (chips.isEmpty) return const SizedBox.shrink();
+
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    decoration: BoxDecoration(
+      color: AppColors.white,
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 4,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Row(
+      children: [
+        Icon(
+          Icons.filter_list,
+          size: 18,
+          color: AppColors.gray600,
+        ),
+        const SizedBox(width: 8),
+        Text(
+          'Active Filters:',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.gray700,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: chips.map((chip) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: chip,
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
   @override
   Widget build(BuildContext context) {
@@ -871,7 +1191,9 @@ class _TreePageState extends State<TreePage> {
           children: [
             const SizedBox(height: 16),
             _buildSearchBar(context),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            _buildActiveFilters(),
+            const SizedBox(height: 8),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
