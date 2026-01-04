@@ -1325,7 +1325,38 @@ Widget _buildActiveFilters() {
                 },
                 child:
                     _filteredTrees.isEmpty
-                        ? const Center(child: Text("Loading..."))
+                        ? Center(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 32),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.search_off,
+                                    size: 48,
+                                    color: AppColors.gray400,
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No trees found',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.gray600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Try adjusting your filters or search',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.gray500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
                         : ListView.builder(
                           controller: _scrollController,
                           padding: const EdgeInsets.symmetric(horizontal: 16),

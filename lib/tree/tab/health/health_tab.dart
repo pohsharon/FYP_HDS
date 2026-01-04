@@ -8,6 +8,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../../services/local database/health_db.dart';
 import '../../../services/local database/disease_db.dart';
 import '../../../config.dart';
+import 'package:intl/intl.dart';
 
 class HealthTabPage extends StatefulWidget {
   final String treeTag;
@@ -25,11 +26,27 @@ class HealthTabPage extends StatefulWidget {
 class _HealthTabPageState extends State<HealthTabPage> {
   String searchQuery = '';
   final Map<String, String> _diseaseCache = {};
+  List<Map<String, dynamic>> _diseaseList = [];
+  String? _selectedDiseaseId;
+  String _currentRecordedFrom = '';
+  String _currentRecordedTo = '';
+  final TextEditingController _diseaseFilterController = TextEditingController();
+  final TextEditingController _recordedFromController = TextEditingController();
+  final TextEditingController _recordedToController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadDiseaseCache();
+    _loadDiseases();
+  }
+
+  @override
+  void dispose() {
+    _diseaseFilterController.dispose();
+    _recordedFromController.dispose();
+    _recordedToController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadDiseaseCache() async {
@@ -49,6 +66,17 @@ class _HealthTabPageState extends State<HealthTabPage> {
     }
   }
 
+  Future<void> _loadDiseases() async {
+    try {
+      final rows = await DiseaseDB().getAllDiseases();
+      setState(() {
+        _diseaseList = rows.map((r) => Map<String, dynamic>.from(r)).toList();
+      });
+    } catch (e) {
+      print('Failed to load diseases: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -58,7 +86,9 @@ class _HealthTabPageState extends State<HealthTabPage> {
         children: [
           const SizedBox(height: 16),
           _buildSearchAndAddButton(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          _buildActiveFilters(),
+          const SizedBox(height: 8),
           FutureBuilder<List<Map<String, dynamic>>>(
             future: _fetchRecords(),
             builder: (context, snapshot) {
@@ -70,12 +100,78 @@ class _HealthTabPageState extends State<HealthTabPage> {
                 return const Center(child: Text("No health records found."));
               }
 
-              final filteredRecords = snapshot.data!.where((record) {
+              var filteredRecords = snapshot.data!;
+              
+              // Apply disease filter
+              if (_selectedDiseaseId != null && _selectedDiseaseId!.isNotEmpty) {
+                filteredRecords = filteredRecords.where((record) {
+                  final did = (record['diseaseId'] ?? record['disease_id'])?.toString() ?? '';
+                  return did == _selectedDiseaseId;
+                }).toList();
+              }
+              
+              // Apply date range filter
+              DateTime? parseDate(String? s) {
+                if (s == null || s.trim().isEmpty) return null;
+                return DateTime.tryParse(s);
+              }
+              
+              final recordedFrom = parseDate(_currentRecordedFrom);
+              final recordedTo = parseDate(_currentRecordedTo);
+              
+              if (recordedFrom != null || recordedTo != null) {
+                filteredRecords = filteredRecords.where((record) {
+                  final s = record['recorded_at']?.toString() ?? '';
+                  final dt = DateTime.tryParse(s);
+                  if (dt == null) return false;
+                  if (recordedFrom != null && dt.isBefore(recordedFrom)) return false;
+                  if (recordedTo != null && dt.isAfter(recordedTo)) return false;
+                  return true;
+                }).toList();
+              }
+              
+              // Apply search query
+              filteredRecords = filteredRecords.where((record) {
                 final name = extractDiseaseName(record);
                 return name.toLowerCase().contains(
                   searchQuery.toLowerCase(),
                 );
               }).toList();
+
+              if (filteredRecords.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 48,
+                          color: AppColors.gray400,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No records found',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.gray600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Try adjusting your filters or search',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.gray500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
 
               return Column(
                 children: filteredRecords
@@ -85,6 +181,148 @@ class _HealthTabPageState extends State<HealthTabPage> {
             },
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActiveFilters() {
+    final chips = <Widget>[];
+
+    if (_selectedDiseaseId != null && _selectedDiseaseId!.isNotEmpty) {
+      final diseaseName = _diseaseCache[_selectedDiseaseId] ?? _selectedDiseaseId;
+      chips.add(
+        _buildFilterChip(
+          'Disease: $diseaseName',
+          () {
+            _diseaseFilterController.clear();
+            setState(() {
+              _selectedDiseaseId = null;
+            });
+          },
+        ),
+      );
+    }
+
+    if ((_currentRecordedFrom.isNotEmpty) || (_currentRecordedTo.isNotEmpty)) {
+      String label;
+      if (_currentRecordedFrom.isNotEmpty && _currentRecordedTo.isNotEmpty) {
+        label = 'Recorded: $_currentRecordedFrom to $_currentRecordedTo';
+      } else if (_currentRecordedFrom.isNotEmpty) {
+        label = 'Recorded >= $_currentRecordedFrom';
+      } else {
+        label = 'Recorded <= $_currentRecordedTo';
+      }
+
+      chips.add(
+        _buildFilterChip(
+          label,
+          () {
+            _recordedFromController.clear();
+            _recordedToController.clear();
+            setState(() {
+              _currentRecordedFrom = '';
+              _currentRecordedTo = '';
+            });
+          },
+        ),
+      );
+    }
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.filter_list,
+            size: 18,
+            color: AppColors.gray600,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Active Filters:',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.gray700,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: chips.map((chip) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: chip,
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, VoidCallback onClear) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.hunterGreen.withOpacity(0.1),
+            AppColors.mossGreen.withOpacity(0.1),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppColors.hunterGreen.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onClear,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.filter_alt,
+                  size: 16,
+                  color: AppColors.hunterGreen,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.hunterGreen,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: AppColors.hunterGreen,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -141,7 +379,7 @@ class _HealthTabPageState extends State<HealthTabPage> {
               ),
               prefixIcon: const Icon(Icons.search),
               suffixIcon: GestureDetector(
-                onTap: () => setState(() => searchQuery = ''),
+                onTap: () => _showFilterDialog(context),
                 child: const Icon(Icons.filter_alt_outlined),
               ),
               filled: true,
@@ -454,6 +692,418 @@ class _HealthTabPageState extends State<HealthTabPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showFilterDialog(BuildContext context) async {
+    // Ensure diseases are loaded before showing dialog
+    if (_diseaseList.isEmpty) {
+      await _loadDiseases();
+    }
+
+    String? tempSelectedDiseaseId = _selectedDiseaseId;
+    final recordedFrom = TextEditingController(text: _currentRecordedFrom);
+    final recordedTo = TextEditingController(text: _currentRecordedTo);
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          backgroundColor: Colors.transparent,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.white,
+                  AppColors.background,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 20,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.hunterGreen,
+                        AppColors.mossGreen,
+                      ],
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.filter_list,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Filter',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Content
+                Flexible(
+                  child: StatefulBuilder(
+                    builder: (context, setStateDialog) {
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildEnhancedSectionHeader("Disease", Icons.healing),
+                            const SizedBox(height: 8),
+                            _buildEnhancedDropdown(
+                              context: context,
+                              controller: _diseaseFilterController,
+                              initialSelection: tempSelectedDiseaseId,
+                              entries: [
+                                const DropdownMenuEntry(
+                                  value: '',
+                                  label: 'All diseases',
+                                ),
+                                ..._diseaseList.map<DropdownMenuEntry<String>>(
+                                  (disease) {
+                                    final id = (disease['id'] ?? '').toString();
+                                    final name = (disease['diseaseName'] ?? disease['disease_name'] ?? disease['name'] ?? '').toString();
+                                    return DropdownMenuEntry(
+                                      value: id.isNotEmpty ? id : '',
+                                      label: name.isNotEmpty ? name : 'Unknown',
+                                    );
+                                  },
+                                ),
+                              ],
+                              onSelected: (String? v) {
+                                setStateDialog(
+                                  () => tempSelectedDiseaseId = (v == null || v.isEmpty) ? null : v,
+                                );
+                              },
+                            ),
+
+                            const SizedBox(height: 20),
+                            _buildEnhancedSectionHeader("Recorded Date Range", Icons.date_range),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildEnhancedDateField(
+                                    context: context,
+                                    controller: recordedFrom,
+                                    label: 'From',
+                                    icon: Icons.calendar_today,
+                                    setStateDialog: setStateDialog,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildEnhancedDateField(
+                                    context: context,
+                                    controller: recordedTo,
+                                    label: 'To',
+                                    icon: Icons.event,
+                                    setStateDialog: setStateDialog,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Actions
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(24),
+                      bottomRight: Radius.circular(24),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _clearFilters();
+                          },
+                          icon: const Icon(Icons.clear_all, size: 18),
+                          label: const Text("Reset"),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.gray700,
+                            side: BorderSide(color: AppColors.gray400, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.hunterGreen,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shadowColor: AppColors.hunterGreen.withOpacity(0.4),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            setState(() {
+                              _selectedDiseaseId = tempSelectedDiseaseId;
+                              _currentRecordedFrom = recordedFrom.text;
+                              _currentRecordedTo = recordedTo.text;
+                            });
+                          },
+                          icon: const Icon(Icons.check, size: 18),
+                          label: const Text(
+                            "Apply Filters",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _clearFilters() {
+    if (mounted) {
+      setState(() {
+        _selectedDiseaseId = null;
+        _currentRecordedFrom = '';
+        _currentRecordedTo = '';
+        _diseaseFilterController.clear();
+        _recordedFromController.clear();
+        _recordedToController.clear();
+      });
+    }
+  }
+
+  Widget _buildEnhancedSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: AppColors.hunterGreen.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: AppColors.hunterGreen,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: AppColors.gray800,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEnhancedDropdown({
+    required BuildContext context,
+    required TextEditingController controller,
+    required String? initialSelection,
+    required List<DropdownMenuEntry<String>> entries,
+    required Function(String?) onSelected,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gray300, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final menuWidth = constraints.maxWidth;
+          return DropdownMenu<String>(
+            width: menuWidth,
+            menuHeight: 200,
+            controller: controller,
+            requestFocusOnTap: true,
+            initialSelection: initialSelection ?? '',
+            dropdownMenuEntries: entries,
+            onSelected: onSelected,
+            textStyle: const TextStyle(fontSize: 14),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEnhancedDateField({
+    required BuildContext context,
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required Function(void Function()) setStateDialog,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gray300, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        readOnly: true,
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(
+            color: AppColors.gray600,
+            fontSize: 13,
+          ),
+          prefixIcon: Icon(icon, size: 18, color: AppColors.hunterGreen),
+          suffixIcon: controller.text.isNotEmpty
+              ? IconButton(
+                  icon: Icon(Icons.clear, size: 18, color: AppColors.gray600),
+                  onPressed: () {
+                    setStateDialog(() => controller.clear());
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+        onTap: () async {
+          final picked = await showDatePicker(
+            context: context,
+            initialDate: DateTime.now(),
+            firstDate: DateTime(2000),
+            lastDate: DateTime.now(),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: AppColors.hunterGreen,
+                    onPrimary: Colors.white,
+                    surface: Colors.white,
+                  ),
+                ),
+                child: child!,
+              );
+            },
+          );
+          if (picked != null) {
+            setStateDialog(
+              () => controller.text = DateFormat('yyyy-MM-dd').format(picked),
+            );
+          }
+        },
       ),
     );
   }
