@@ -517,7 +517,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                       value: floweringPeriod,
                     ),
                     _InfoCard(label: "Height", value: "$height m"),
-                    _InfoCard(label: "Width", value: "$width m"),
+                    _InfoCard(label: "Diameter", value: "$width m"),
                   ],
                 ),
               ),
@@ -547,7 +547,13 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                   children: [
                     HealthTabPage(treeTag: treeTag, treeUuid: uuid),
                     AgrochemicalTabPage(treeUuid: uuid, treeTag: treeTag),
-                    GrowthLogTabPage(treeUuid: uuid),
+                    GrowthLogTabPage(
+                      treeUuid: uuid,
+                      onGrowthLogSaved: () {
+                        _markShouldRefresh();
+                        _loadTreeDetails();
+                      },
+                    ),
                     HarvestTabPage(treeUuid: uuid),
                   ],
                 ),

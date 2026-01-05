@@ -6,6 +6,7 @@ import 'fruit_list.dart';
 import 'package:fyp_hbs/services/local database/fruit_db.dart';
 import 'package:fyp_hbs/services/local database/local_db.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:fyp_hbs/fruit/create_fruit.dart';
 
 class HarvestTabPage extends StatelessWidget {
   final String treeUuid;
@@ -286,10 +287,127 @@ class HarvestTabPage extends StatelessWidget {
         
         return ListView.separated(
           padding: const EdgeInsets.all(16),
-          itemCount: harvests.length,
+          itemCount: harvests.length + 1,
           separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
-            final harvest = harvests[index];
+            // Add Fruit button at the top
+            // Replace the Add Fruit button section in your itemBuilder with this:
+
+// Add Fruit button at the top
+if (index == 0) {
+  return Container(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [
+          AppColors.hunterGreen.withOpacity(0.1),
+          AppColors.mossGreen.withOpacity(0.05),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: AppColors.hunterGreen.withOpacity(0.3),
+        width: 1.5,
+      ),
+    ),
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const CreateFruitPage(),
+            ),
+          );
+          if (result == true) {
+            (context as Element).markNeedsBuild();
+          }
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Icon container
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.hunterGreen,
+                      AppColors.mossGreen,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.hunterGreen.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.add_circle_outline,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              
+              // Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Add New Fruit',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: AppColors.hunterGreen,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Record a new fruit harvest',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.gray600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Arrow
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.hunterGreen.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.arrow_forward,
+                  size: 20,
+                  color: AppColors.hunterGreen,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+            
+            final harvest = harvests[index - 1];
             final eventName = harvest['event_name'] ?? 'Unknown Event';
             final startDate = harvest['start_date'];
             final endDate = harvest['end_date'];
