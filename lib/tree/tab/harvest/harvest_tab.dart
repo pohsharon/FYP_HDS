@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
+import 'package:intl/intl.dart';
 import 'fruit_list.dart';
 import 'package:fyp_hbs/services/local database/fruit_db.dart';
 import 'package:fyp_hbs/services/local database/local_db.dart';
@@ -11,27 +12,24 @@ class HarvestTabPage extends StatelessWidget {
   const HarvestTabPage({super.key, required this.treeUuid});
 
   Future<List<Map<String, dynamic>>> fetchHarvests() async {
-    // Prefer remote when online, but fall back to local cached fruits grouped by harvest_uuid
     final online = await ConnectivityHelper.hasInternetConnection();
-    // load local fruits for this tree so we can filter remote events by local participation
     final treeLocalFruits = await FruitDB().fetchFruitsByTree(treeUuid);
-    // build a set of known harvest UUIDs that this tree participated in (from local cache)
     final Set<String> localHarvestUuids = treeLocalFruits
         .map((f) => (f.harvest_uuid ?? '').toString())
         .where((s) => s.isNotEmpty)
         .toSet();
+    
     if (online) {
       try {
         final response = await TreeApi.getHarvestsByTreeId(treeUuid);
-        // filter remote events to only those the tree participated in
         final List<Map<String, dynamic>> filtered = [];
+        
         for (final ev in response) {
           try {
-            // normalize event id
             final String? evUuid = (ev['uuid'] ?? ev['id'] ?? ev['harvest_uuid'])?.toString();
-            // collect fruits that belong to this tree from remote event (if present)
             final List<Map<String, dynamic>> eventFruits = [];
             bool includesTree = false;
+            
             if (ev['fruits'] is List) {
               for (final f in ev['fruits']) {
                 try {
@@ -41,7 +39,6 @@ class HarvestTabPage extends StatelessWidget {
                     includesTree = true;
                     eventFruits.add(Map<String, dynamic>.from(f));
                   } else if (localHarvestUuids.contains(fHarvest)) {
-                    // if local cache indicates this harvest belongs to our tree, include it
                     includesTree = true;
                     eventFruits.add(Map<String, dynamic>.from(f));
                   }
@@ -49,7 +46,6 @@ class HarvestTabPage extends StatelessWidget {
               }
             }
 
-            // if remote event didn't include tree fruits, check local cache by harvest_uuid
             if (!includesTree && evUuid != null && evUuid.isNotEmpty) {
               if (localHarvestUuids.contains(evUuid)) {
                 final localMatches = treeLocalFruits.where((f) => (f.harvest_uuid ?? '') == evUuid).toList();
@@ -63,7 +59,6 @@ class HarvestTabPage extends StatelessWidget {
             }
 
             if (includesTree) {
-              // build a normalized event shape expected by UI
               filtered.add({
                 'uuid': evUuid ?? '',
                 'event_name': ev['event_name'] ?? ev['name'] ?? 'Harvest ${evUuid ?? ''}',
@@ -73,7 +68,6 @@ class HarvestTabPage extends StatelessWidget {
               });
             }
           } catch (e) {
-            // ignore malformed event entries
             print('⚠️ fetchHarvests: malformed event skipped: $e');
           }
         }
@@ -84,14 +78,10 @@ class HarvestTabPage extends StatelessWidget {
       }
     }
 
-    // Offline or remote failed: build harvest events from local fruits table
     try {
       final treeFruits = await FruitDB().fetchFruitsByTree(treeUuid);
       if (treeFruits.isEmpty) return <Map<String, dynamic>>[];
 
-      // group by harvest_uuid — but for generated per-fruit ids (gen_...)
-      // cluster them by harvest date (YYYY-MM-DD) so multiple fruits created
-      // offline in the same harvest are shown as one event.
       final Map<String, List<Map<String, dynamic>>> grouped = {};
       for (final f in treeFruits) {
         String rawHarvest = f.harvest_uuid ?? '';
@@ -99,14 +89,12 @@ class HarvestTabPage extends StatelessWidget {
         if (rawHarvest.isNotEmpty && !rawHarvest.startsWith('gen_') && rawHarvest != 'unknown') {
           key = rawHarvest;
         } else {
-          // derive date key (prefer harvested_at, fallback to created_at)
           final dateRaw = (f.harvested_at ?? f.created_at ?? '').toString();
           String dateKey = '';
           if (dateRaw.isNotEmpty) {
             dateKey = dateRaw.contains('T') ? dateRaw.split('T').first : dateRaw;
           }
           if (dateKey.isEmpty) {
-            // fall back to the original generated id so we don't lose it
             key = rawHarvest.isNotEmpty ? rawHarvest : 'unknown';
           } else {
             key = 'gen_$dateKey';
@@ -116,13 +104,7 @@ class HarvestTabPage extends StatelessWidget {
         grouped.putIfAbsent(key, () => []).add(f.toMap());
       }
 
-      // convert groups into harvest event shapes expected by UI
-      // Prefer returning real UUID groups (not generated ones like 'gen_...')
       final events = <Map<String, dynamic>>[];
-
-      // choose which harvest uuids to show: include all groups but sort so
-      // server-provided UUIDs appear first and generated offline ids (gen_...)
-      // appear after. This ensures generated harvests are still visible.
       final allKeys = grouped.keys.toList();
       bool isReal(String k) => k != 'unknown' && !k.toString().startsWith('gen_');
       allKeys.sort((a, b) {
@@ -132,15 +114,11 @@ class HarvestTabPage extends StatelessWidget {
         return a.compareTo(b);
       });
 
-      // If there are any real server UUID groups, merge generated per-fruit
-      // groups (gen_...) into the first real group so the UI shows a single
-      // event containing all fruits for that server event when offline.
       final realKeys = allKeys.where((k) => isReal(k)).toList();
       if (realKeys.isNotEmpty) {
         final firstReal = realKeys.first;
         for (final k in List<String>.from(grouped.keys)) {
           if (!isReal(k) && k != firstReal) {
-            // move items from generated key into firstReal
             final itemsToMove = grouped[k] ?? [];
             grouped[firstReal] = (grouped[firstReal] ?? []) + itemsToMove;
             grouped.remove(k);
@@ -189,41 +167,143 @@ class HarvestTabPage extends StatelessWidget {
     }
   }
 
+  String _formatDateRange(String? startDate, String? endDate) {
+    if (startDate == null || startDate.isEmpty) return '';
+    
+    try {
+      final start = DateTime.parse(startDate);
+      final fmt = DateFormat('MMM dd');
+      
+      if (endDate == null || endDate.isEmpty) {
+        return '${fmt.format(start)}, ${start.year}';
+      }
+      
+      final end = DateTime.parse(endDate);
+      
+      // Same month and year
+      if (start.month == end.month && start.year == end.year) {
+        return '${DateFormat('MMM').format(start)} ${start.day}-${end.day}, ${start.year}';
+      }
+      
+      // Different months, same year
+      if (start.year == end.year) {
+        return '${fmt.format(start)} - ${fmt.format(end)}, ${start.year}';
+      }
+      
+      // Different years
+      return '${fmt.format(start)}, ${start.year} - ${fmt.format(end)}, ${end.year}';
+    } catch (e) {
+      return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: fetchHarvests(), // Replace with your API call
+      future: fetchHarvests(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return Center(
+            child: CircularProgressIndicator(
+              color: AppColors.hunterGreen,
+            ),
+          );
         }
+        
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red.shade300,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error loading harvests',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.gray800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${snapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.gray600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
+        
         final harvests = snapshot.data ?? [];
+        
         if (harvests.isEmpty) {
-          return const Center(child: Text('No harvest events found.'));
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.agriculture_outlined,
+                    size: 64,
+                    color: AppColors.gray400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No harvest events yet',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.gray600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Harvest events will appear here once fruits are collected',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppColors.gray500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
+        
         return ListView.separated(
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+          padding: const EdgeInsets.all(16),
           itemCount: harvests.length,
           separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
             final harvest = harvests[index];
+            final eventName = harvest['event_name'] ?? 'Unknown Event';
+            final startDate = harvest['start_date'];
+            final endDate = harvest['end_date'];
+            final dateRange = _formatDateRange(startDate, endDate);
+            final fruitCount = (harvest['fruits'] as List?)?.length ?? 0;
+            
             return Card(
-              // color: AppColors.white,
+              color: AppColors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: AppColors.gray300),
+                side: BorderSide(color: AppColors.gray300, width: 1.5),
               ),
-              
               elevation: 0,
-              child: ListTile(
-                title: Text(
-                  harvest['event_name'] ?? '',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                ),
-                trailing: const Icon(Icons.chevron_right, color: AppColors.hunterGreen),
+              child: InkWell(
                 onTap: () {
                   Navigator.push(
                     context,
@@ -234,7 +314,91 @@ class HarvestTabPage extends StatelessWidget {
                       ),
                     ),
                   );
-                                },
+                },
+                borderRadius: BorderRadius.circular(16),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [                                          
+                      // Content
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              eventName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: AppColors.hunterGreen,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (dateRange.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.calendar_today,
+                                    size: 14,
+                                    color: AppColors.gray500,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      dateRange,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.gray600,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.inventory_2_outlined,
+                                  size: 14,
+                                  color: AppColors.gray500,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '$fruitCount ${fruitCount == 1 ? 'fruit' : 'fruits'}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.gray600,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      // Arrow
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.hunterGreen.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.arrow_forward_ios,
+                          size: 16,
+                          color: AppColors.hunterGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             );
           },

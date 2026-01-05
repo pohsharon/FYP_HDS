@@ -20,8 +20,6 @@ class CreateFruitPage extends StatefulWidget {
   @override
   State<CreateFruitPage> createState() => _CreateFruitPageState();
 }
- 
-
 
 class _CreateFruitPageState extends State<CreateFruitPage> {
   final _formKey = GlobalKey<FormState>();
@@ -29,6 +27,9 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
   final weightController = TextEditingController();
   final gradeController = TextEditingController();
   final harvestedAtController = TextEditingController();
+  final TextEditingController _treeController = TextEditingController();
+  final List<String> _gradeOptions = const ['AA', 'A', 'B', 'C', 'D'];
+  String? _selectedGrade;
 
   bool isLoading = false;
   bool isSpoiled = false;
@@ -39,31 +40,27 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
   List<Map<String, dynamic>> events = [];
   String? selectedHarvestUuid;
   String? matchedEventLabel;
+  DateTime? _matchedEventStartDate;
 
   @override
   void initState() {
     super.initState();
 
-    // If this page was opened to edit an existing fruit, prefill basic fields
     if (widget.fruit != null) {
       final f = widget.fruit!;
       weightController.text = f['weight']?.toString() ?? '';
       gradeController.text = f['grade']?.toString() ?? '';
       harvestedAtController.text = f['harvested_at']?.toString() ?? '';
-      // Accept several representations for spoiled flag
+      _selectedGrade = gradeController.text.isNotEmpty
+          ? gradeController.text
+          : null;
       final spoiled = f['is_spoiled'];
       isSpoiled = (spoiled == true || spoiled == 1 || spoiled?.toString() == 'true');
 
-      // Try to pick up tree uuid from nested shape used in lists or API
       selectedTreeUuid = f['tree']?['uuid'] ?? f['tree_uuid'] ?? f['treeId']?.toString();
-
-      // Tentatively set harvest uuid (will be preserved if possible after events load)
       selectedHarvestUuid = f['uuid'] ?? f['harvest_uuid'];
     }
 
-    // Load trees (and events for selected tree). After loading we re-apply
-    // the selectedHarvestUuid from the incoming fruit so we don't accidentally
-    // overwrite it based on event heuristics.
     _fetchTrees().then((_) {
       if (widget.fruit != null && mounted) {
         setState(() {
@@ -73,58 +70,74 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
     });
   }
 
-  Future<void> _fetchTrees() async {
-  try {
-    // Prefer the local DB for UI dropdowns to avoid triggering remote fetches
-    List<Map<String, dynamic>> treeList = [];
-    try {
-      final local = await TreeDB().fetchAllTrees();
-      treeList = local
-          .map((t) => {'uuid': t.uuid, 'tree_tag': t.treeTag ?? 'Unknown'})
-          .toList();
-    } catch (e) {
-      print('⚠️ _fetchTrees: local DB read failed: $e');
-    }
+  @override
+  void dispose() {
+    weightController.dispose();
+    gradeController.dispose();
+    harvestedAtController.dispose();
+    _treeController.dispose();
+    super.dispose();
+  }
 
-    // If no local trees exist (fresh install), fall back to repository remote fetch
-    if (treeList.isEmpty) {
+  Future<void> _fetchTrees() async {
+    try {
+      List<Map<String, dynamic>> treeList = [];
       try {
-        final repo = TreeRepository();
-        final models = await repo.getTrees();
-        treeList = models
+        final local = await TreeDB().fetchAllTrees();
+        treeList = local
             .map((t) => {'uuid': t.uuid, 'tree_tag': t.treeTag ?? 'Unknown'})
             .toList();
       } catch (e) {
-        print('⚠️ _fetchTrees: repository remote fetch failed: $e');
+        print('⚠️ _fetchTrees: local DB read failed: $e');
       }
-    }
 
-    setState(() {
-      trees = treeList;
-    });
+      if (treeList.isEmpty) {
+        try {
+          final repo = TreeRepository();
+          final models = await repo.getTrees();
+          treeList = models
+              .map((t) => {'uuid': t.uuid, 'tree_tag': t.treeTag ?? 'Unknown'})
+              .toList();
+        } catch (e) {
+          print('⚠️ _fetchTrees: repository remote fetch failed: $e');
+        }
+      }
 
-    // If we have trees cached, pre-select the first and load its events
-    if (trees.isNotEmpty) {
-      selectedTreeUuid ??= trees[0]['uuid'];
-      // load events for selected tree (online preferred, falls back to cached)
-      _loadEventsForTree(selectedTreeUuid!);
+      if (mounted) {
+        setState(() {
+          trees = treeList;
+        });
+        _syncTreeController();
+      }
+
+      if (trees.isNotEmpty) {
+        selectedTreeUuid ??= trees[0]['uuid'];
+        _syncTreeController();
+        _loadEventsForTree(selectedTreeUuid!);
+      }
+    } catch (e) {
+      print(e);
     }
-  } catch (e) {
-    print(e);
   }
-}
 
+  void _syncTreeController() {
+    if (!mounted) return;
+    final match = trees.firstWhere(
+      (t) => t['uuid'] == selectedTreeUuid,
+      orElse: () => <String, String>{},
+    );
+    final label = match.isNotEmpty
+        ? (match['tree_tag']?.toString() ?? '')
+        : '';
+    _treeController.text = label;
+  }
 
-  /// Load harvest events for a specific tree. When online, fetch from API and
-  /// cache per-tree events in SharedPreferences. When offline, load cached events.
   Future<void> _loadEventsForTree(String treeUuid) async {
     final prefs = await SharedPreferences.getInstance();
     List<Map<String, dynamic>> eventsForTree = [];
 
     try {
       if (await isOnline()) {
-        // ONLINE: fetch the global events list (we need to scan all events to
-        // choose the nearest/most relevant event, not just per-tree events).
         final remote = await TreeApi.fetchEvents();
         eventsForTree = List<Map<String, dynamic>>.from(remote);
 
@@ -185,20 +198,36 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
           }
         } catch (_) {}
       }
-      // compute matched event label for UI
+      
       if (selectedHarvestUuid != null) {
         final matched = eventsForTree.firstWhere(
             (e) => (e['uuid'] ?? e['id'])?.toString() == selectedHarvestUuid,
-            orElse: () => {});
+            orElse: () => <String, dynamic>{});
         if (matched.isNotEmpty) {
           matchedEventLabel = (matched['event_name'] ?? matched['name'] ?? matched['title'] ?? matched['event'])?.toString();
+          final startRaw = matched['start_date'] ?? matched['start'];
+          if (startRaw != null && startRaw.toString().isNotEmpty) {
+            try {
+              final startDt = DateTime.parse(startRaw.toString());
+              _matchedEventStartDate = DateTime(startDt.year, startDt.month, startDt.day);
+            } catch (_) {
+              _matchedEventStartDate = null;
+            }
+          } else {
+            _matchedEventStartDate = null;
+          }
         } else {
           matchedEventLabel = null;
+          _matchedEventStartDate = null;
         }
       } else {
         matchedEventLabel = null;
+        _matchedEventStartDate = null;
       }
     }
+    _selectedGrade ??= gradeController.text.isNotEmpty
+        ? gradeController.text
+        : null;
   }
 
   void _updateHarvestEventForDate(DateTime date) {
@@ -215,6 +244,8 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
           if (!picked.isBefore(start)) {
             setState(() {
               selectedHarvestUuid = event['uuid'];
+              matchedEventLabel = (event['event_name'] ?? event['name'] ?? event['title'] ?? event['event'])?.toString();
+              _matchedEventStartDate = start;
             });
             return;
           }
@@ -224,155 +255,202 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
           if (!picked.isBefore(start) && !picked.isAfter(end)) {
             setState(() {
               selectedHarvestUuid = event['uuid'];
+              matchedEventLabel = (event['event_name'] ?? event['name'] ?? event['title'] ?? event['event'])?.toString();
+              _matchedEventStartDate = start;
             });
             return;
           }
         }
-      } catch (_) {
-      }
+      } catch (_) {}
     }
 
     setState(() {
       selectedHarvestUuid = null;
+      matchedEventLabel = null;
+      _matchedEventStartDate = null;
     });
   }
 
   Future<bool> isOnline() async {
-  final connectivityResult = await Connectivity().checkConnectivity();
-  return connectivityResult != ConnectivityResult.none;
-}
-
-Future<void> _saveFruit() async {
-  if (!_formKey.currentState!.validate()) return;
-  if (selectedTreeUuid == null) {
-    Flushbar(
-      message: "Please select a tree",
-      duration: const Duration(seconds: 3),
-      backgroundColor: Colors.red,
-    ).show(context);
-    return;
-  }
-  if (selectedHarvestUuid == null) {
-    Flushbar(
-      message: "No valid harvest event for this date",
-      duration: const Duration(seconds: 3),
-      backgroundColor: Colors.orange,
-    ).show(context);
-    return;
+    final connectivityResult = await Connectivity().checkConnectivity();
+    return connectivityResult != ConnectivityResult.none;
   }
 
-  setState(() => isLoading = true);
+  Future<void> _saveFruit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (selectedTreeUuid == null) {
+      Flushbar(
+        message: "Please select a tree",
+        duration: const Duration(seconds: 3),
+        backgroundColor: Colors.red,
+      ).show(context);
+      return;
+    }
+    if (selectedHarvestUuid == null) {
+      Flushbar(
+        message: "No valid harvest event for this date",
+        duration: const Duration(seconds: 3),
+        backgroundColor: Colors.orange,
+      ).show(context);
+      return;
+    }
 
-  // Prepare typed variables below when saving
-  try {
-    final treeUuid = selectedTreeUuid!;
-    final harvestUuid = selectedHarvestUuid!;
-    final weight = double.parse(weightController.text);
-    final grade = gradeController.text;
-    final harvestedAt = harvestedAtController.text;
-
-    final online = await isOnline();
-    // Build the FruitModel early so we can fall back to local save if network
-    // call fails or we're offline.
-    final fruitModel = FruitModel(
-      fruit_tag: (grade.isNotEmpty)
-          ? 'Grade $grade'
-          : (harvestedAt.isNotEmpty)
-              ? harvestedAt
-              : (harvestUuid.length > 8 ? harvestUuid.substring(0, 8) : harvestUuid),
-      harvest_uuid: harvestUuid,
-      transaction_uuid: null,
-      harvested_at: harvestedAt,
-      created_at: DateTime.now().toIso8601String(),
-      is_spoiled: isSpoiled,
-      tree_uuid: treeUuid,
-      weight: weight,
-      grade: grade,
-      synced: 0,
-      pendingUpdate: 0,
-      pendingDelete: 0,
-    );
-
-    var savedLocally = false;
-    if (online) {
+    // Enforce harvested date not before matched harvest event start
+    final pickedDateStr = harvestedAtController.text;
+    if (pickedDateStr.isNotEmpty) {
       try {
-        await FruitApi.createFruit(
-          tree_uuid: treeUuid,
-          harvest_uuid: harvestUuid,
-          weight: weight,
-          grade: grade,
-          harvested_at: harvestedAt,
-          is_spoiled: isSpoiled,
+        final pickedDate = DateTime.parse(pickedDateStr);
+        final matchedEvent = events.firstWhere(
+          (e) => (e['uuid'] ?? e['id'])?.toString() == selectedHarvestUuid,
+          orElse: () => <String, dynamic>{},
         );
-      } catch (e) {
-        // Network/server error — fall back to local save so user action is not lost.
-        print('⚠️ FruitApi.createFruit failed, saving locally: $e');
-        try {
-          await FruitDB().insertFruit(fruitModel);
-          savedLocally = true;
-        } catch (insertErr) {
-          print('⚠️ Failed to save fruit locally after API failure: $insertErr');
-          // Re-throw original exception so upstream error UI shows it
-          rethrow;
+        final startRaw = matchedEvent['start_date'] ?? matchedEvent['start'];
+        if (startRaw != null && startRaw.toString().isNotEmpty) {
+          final start = DateTime.parse(startRaw.toString());
+          final startDateOnly = DateTime(start.year, start.month, start.day);
+          final pickedDateOnly =
+              DateTime(pickedDate.year, pickedDate.month, pickedDate.day);
+          if (pickedDateOnly.isBefore(startDateOnly)) {
+            await Flushbar(
+              message: "Harvested date must be on/after the event start date",
+              duration: const Duration(seconds: 3),
+              backgroundColor: Colors.orange,
+            ).show(context);
+            return;
+          }
         }
-      }
-    } else {
-      // Offline: save locally
-      await FruitDB().insertFruit(fruitModel);
-      try {
-        final unsynced = await FruitDB().getUnsyncedFruits();
-        print('🍏 Saved fruit locally (harvest_uuid=${fruitModel.harvest_uuid}). Unsynced count=${unsynced.length}');
-      } catch (e) {
-        print('⚠️ Could not read unsynced fruits after insert: $e');
-      }
-      savedLocally = true;
+      } catch (_) {}
     }
 
-    if (mounted) {
-      // Show a confirmation Flushbar and wait for it to dismiss before popping.
-      try {
-        if (online && !savedLocally) {
-          await Flushbar(
-            message: widget.fruit == null ? 'Fruit created successfully (online)' : 'Fruit updated successfully (online)',
-            icon: const Icon(Icons.check_circle, color: Colors.white),
-            backgroundColor: Colors.green.shade700,
-            duration: const Duration(seconds: 2),
-            borderRadius: BorderRadius.circular(12),
-            margin: const EdgeInsets.all(12),
-            flushbarPosition: FlushbarPosition.TOP,
-          ).show(context);
-        } else {
-          final offlineMsg = widget.fruit != null
-              ? 'Changes saved locally and will be synced'
-              : 'Fruit saved locally';
-          await Flushbar(
-            message: offlineMsg,
-            icon: const Icon(Icons.cloud_off, color: Colors.white),
-            backgroundColor: Colors.orange.shade700,
-            duration: const Duration(seconds: 2),
-            borderRadius: BorderRadius.circular(12),
-            margin: const EdgeInsets.all(12),
-            flushbarPosition: FlushbarPosition.TOP,
-          ).show(context);
+    setState(() => isLoading = true);
+
+    try {
+      final treeUuid = selectedTreeUuid!;
+      final harvestUuid = selectedHarvestUuid!;
+      final weight = double.parse(weightController.text);
+      final grade = gradeController.text;
+      final harvestedAt = harvestedAtController.text;
+
+      final online = await isOnline();
+      final isEdit = widget.fruit != null;
+      final fruitUuid = isEdit ? (widget.fruit!['uuid']?.toString() ?? '') : '';
+      
+      final fruitModel = FruitModel(
+        fruit_tag: (grade.isNotEmpty)
+            ? 'Grade $grade'
+            : (harvestedAt.isNotEmpty)
+                ? harvestedAt
+                : (harvestUuid.length > 8 ? harvestUuid.substring(0, 8) : harvestUuid),
+        harvest_uuid: isEdit && fruitUuid.isNotEmpty ? fruitUuid : harvestUuid,
+        transaction_uuid: null,
+        harvested_at: harvestedAt,
+        created_at: DateTime.now().toIso8601String(),
+        is_spoiled: isSpoiled,
+        tree_uuid: treeUuid,
+        weight: weight,
+        grade: grade,
+        synced: 0,
+        pendingUpdate: 0,
+        pendingDelete: 0,
+      );
+
+      var savedLocally = false;
+
+      if (online) {
+        try {
+          if (isEdit && fruitUuid.isNotEmpty) {
+            await FruitApi.updateFruit(
+              uuid: fruitUuid,
+              tree_uuid: treeUuid,
+              harvest_uuid: harvestUuid,
+              weight: weight,
+              grade: grade,
+              harvested_at: harvestedAt,
+              is_spoiled: isSpoiled,
+            );
+          } else {
+            await FruitApi.createFruit(
+              tree_uuid: treeUuid,
+              harvest_uuid: harvestUuid,
+              weight: weight,
+              grade: grade,
+              harvested_at: harvestedAt,
+              is_spoiled: isSpoiled,
+            );
+          }
+        } catch (e) {
+          print('⚠️ FruitApi.${isEdit ? "updateFruit" : "createFruit"} failed, saving locally: $e');
+          try {
+            if (isEdit && fruitUuid.isNotEmpty) {
+              await FruitDB().updateFruit(fruitModel);
+            } else {
+              await FruitDB().insertFruit(fruitModel);
+            }
+            savedLocally = true;
+          } catch (insertErr) {
+            print('⚠️ Failed to save fruit locally after API failure: $insertErr');
+            rethrow;
+          }
         }
-      } catch (_) {
-        // If Flushbar fails for any reason, still attempt to pop to return to caller
+      } else {
+        if (isEdit && fruitUuid.isNotEmpty) {
+          await FruitDB().updateFruit(fruitModel);
+        } else {
+          await FruitDB().insertFruit(fruitModel);
+        }
+        try {
+          final unsynced = await FruitDB().getUnsyncedFruits();
+          print('🍏 Saved fruit locally (harvest_uuid=${fruitModel.harvest_uuid}). Unsynced count=${unsynced.length}');
+        } catch (e) {
+          print('⚠️ Could not read unsynced fruits after insert: $e');
+        }
+        savedLocally = true;
       }
-      Navigator.pop(context, true);
+
+      if (mounted) {
+        try {
+          if (online && !savedLocally) {
+            await Flushbar(
+              message: widget.fruit == null ? 'Fruit created successfully' : 'Fruit updated successfully',
+              icon: const Icon(Icons.check_circle, color: Colors.white),
+              backgroundColor: Colors.green.shade700,
+              duration: const Duration(seconds: 2),
+              borderRadius: BorderRadius.circular(12),
+              margin: const EdgeInsets.all(12),
+              flushbarPosition: FlushbarPosition.TOP,
+            ).show(context);
+          } else {
+            final offlineMsg = widget.fruit != null
+                ? 'Changes saved locally and will be synced'
+                : 'Fruit saved locally';
+            await Flushbar(
+              message: offlineMsg,
+              icon: const Icon(Icons.cloud_off, color: Colors.white),
+              backgroundColor: Colors.orange.shade700,
+              duration: const Duration(seconds: 2),
+              borderRadius: BorderRadius.circular(12),
+              margin: const EdgeInsets.all(12),
+              flushbarPosition: FlushbarPosition.TOP,
+            ).show(context);
+          }
+        } catch (_) {}
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      Flushbar(
+        message: "Error saving fruit: $e",
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+      ).show(context);
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
-  } catch (e) {
-    Flushbar(
-      message: "Error saving fruit: $e",
-      icon: const Icon(Icons.error, color: Colors.white),
-      backgroundColor: Colors.red.shade700,
-      duration: const Duration(seconds: 3),
-      borderRadius: BorderRadius.circular(8),
-      margin: const EdgeInsets.all(12),
-    ).show(context);
-  } finally {
-    setState(() => isLoading = false);
   }
-}
 
   @override
   Widget build(BuildContext context) {
@@ -387,6 +465,72 @@ Future<void> _saveFruit() async {
           ),
         ),
         backgroundColor: AppColors.pakistanGreen,
+        actions: widget.fruit != null
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.white),
+                  onPressed: () async {
+                    final shouldDelete = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete Fruit'),
+                        content: const Text(
+                          'Are you sure you want to delete this fruit?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Cancel'),
+                          ),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                            ),
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    if (shouldDelete == true) {
+                      try {
+                        final fruitUuid = widget.fruit!['uuid'];
+                        if (fruitUuid != null) {
+                          await FruitApi.deleteFruit(fruitUuid.toString());
+                          if (mounted) {
+                            await Flushbar(
+                              message: 'Fruit deleted successfully',
+                              icon: const Icon(
+                                Icons.check_circle,
+                                color: Colors.white,
+                              ),
+                              backgroundColor: Colors.green.shade700,
+                              duration: const Duration(seconds: 2),
+                              borderRadius: BorderRadius.circular(12),
+                              margin: const EdgeInsets.all(12),
+                              flushbarPosition: FlushbarPosition.TOP,
+                            ).show(context);
+                            Navigator.pop(context, true);
+                          }
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          await Flushbar(
+                            message: 'Error deleting fruit: $e',
+                            icon: const Icon(Icons.error, color: Colors.white),
+                            backgroundColor: Colors.red.shade700,
+                            duration: const Duration(seconds: 3),
+                            borderRadius: BorderRadius.circular(8),
+                            margin: const EdgeInsets.all(12),
+                          ).show(context);
+                        }
+                      }
+                    }
+                  },
+                ),
+              ]
+            : null,
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
@@ -394,34 +538,72 @@ Future<void> _saveFruit() async {
           key: _formKey,
           child: ListView(
             children: [
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: "Select Tree",
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-                value: selectedTreeUuid,
-                items:
-                    trees.map((tree) {
-                      return DropdownMenuItem<String>(
-                        value: tree['uuid'],
-                        child: Text(tree['tree_tag'] ?? 'Unknown'),
-                      );
-                    }).toList(),
-                onChanged: (value) async {
-                  setState(() {
-                    selectedTreeUuid = value;
-                    // Clear prior selection when switching tree
-                    selectedHarvestUuid = null;
-                    events = [];
-                  });
-                  if (value != null) {
-                    await _loadEventsForTree(value);
-                  }
+              FormField<String>(
+                validator: (value) =>
+                    selectedTreeUuid == null || selectedTreeUuid!.isEmpty
+                        ? 'Please select a tree'
+                        : null,
+                builder: (field) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final menuWidth = constraints.maxWidth;
+                          return SizedBox(
+                            width: double.infinity,
+                            child: DropdownMenu<String>(
+                              width: menuWidth,
+                              controller: _treeController,
+                              requestFocusOnTap: true,
+                              initialSelection: selectedTreeUuid,
+                              label: const Text('Tree'),
+                              menuHeight: 300,
+                              dropdownMenuEntries: trees
+                                  .map<DropdownMenuEntry<String>>(
+                                    (tree) => DropdownMenuEntry(
+                                      value: tree['uuid']?.toString() ?? '',
+                                      label:
+                                          tree['tree_tag']?.toString() ?? 'Unknown',
+                                    ),
+                                  )
+                                  .toList(),
+                              onSelected: (value) async {
+                                if (value == null || value.isEmpty) return;
+                                setState(() {
+                                  selectedTreeUuid = value;
+                                  selectedHarvestUuid = null;
+                                  events = [];
+                                  matchedEventLabel = null;
+                                  _treeController.text = trees
+                                          .firstWhere(
+                                            (t) => t['uuid']?.toString() == value,
+                                            orElse: () => <String, String>{'tree_tag': ''},
+                                          )['tree_tag']
+                                          ?.toString() ??
+                                      '';
+                                });
+                                await _loadEventsForTree(value);
+                                field.didChange(value);
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                      if (field.hasError)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6, left: 12),
+                          child: Text(
+                            field.errorText!,
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
                 },
-                validator:
-                    (value) => value == null ? 'Please select a tree' : null,
               ),
               const SizedBox(height: 16),
 
@@ -436,48 +618,151 @@ Future<void> _saveFruit() async {
                 ),
                 readOnly: true,
                 onTap: () async {
+                  final firstDate = _matchedEventStartDate ?? DateTime(2000);
+                  DateTime lastDate = DateTime.now();
+                  if (firstDate.isAfter(lastDate)) {
+                    lastDate = firstDate;
+                  }
                   final pickedDate = await showDatePicker(
                     context: context,
-                    initialDate: DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime.now(),
+                    initialDate: lastDate,
+                    firstDate: firstDate,
+                    lastDate: lastDate,
                   );
                   if (pickedDate != null) {
-                    harvestedAtController.text = DateFormat(
-                      'yyyy-MM-dd',
-                    ).format(pickedDate);
+                    harvestedAtController.text = DateFormat('yyyy-MM-dd').format(pickedDate);
                     _updateHarvestEventForDate(pickedDate);
                   }
                 },
-                validator:
-                    (value) =>
-                        value == null || value.isEmpty ? 'Pick a date' : null,
+                validator: (value) => value == null || value.isEmpty ? 'Pick a date' : null,
               ),
-              const SizedBox(height: 8),
-              // show matched event / cached count for debugging and UX
-              Builder(builder: (context) {
-                final count = events.length;
-                if (count == 0) return const SizedBox.shrink();
-                final label = matchedEventLabel ?? 'No event matched yet';
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12.0),
-                  child: Text('Events matched: $label', style: const TextStyle(fontSize: 13, color: Colors.black54)),
-                );
-              }),
+              const SizedBox(height: 12),
+
+              // Enhanced Events Matched Display
+              if (events.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        matchedEventLabel != null
+                            ? AppColors.hunterGreen.withOpacity(0.1)
+                            : Colors.orange.withOpacity(0.1),
+                        matchedEventLabel != null
+                            ? AppColors.mossGreen.withOpacity(0.05)
+                            : Colors.orange.withOpacity(0.05),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: matchedEventLabel != null
+                          ? AppColors.hunterGreen.withOpacity(0.3)
+                          : Colors.orange.withOpacity(0.3),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: matchedEventLabel != null
+                              ? AppColors.hunterGreen.withOpacity(0.15)
+                              : Colors.orange.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          matchedEventLabel != null ? Icons.event_available : Icons.event_busy,
+                          color: matchedEventLabel != null ? AppColors.hunterGreen : Colors.orange.shade700,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Harvest Event',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: matchedEventLabel != null
+                                    ? AppColors.hunterGreen
+                                    : Colors.orange.shade700,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              matchedEventLabel ?? 'No event matched for this date',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: matchedEventLabel != null ? AppColors.gray800 : AppColors.gray600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 16),
 
-              TextFormField(
-                controller: gradeController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Grade',
-                  hintText: 'Enter grade',
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-                validator:
-                    (value) =>
-                        value == null || value.isEmpty ? 'Enter grade' : null,
+              FormField<String>(
+                validator: (value) =>
+                    _selectedGrade == null || _selectedGrade!.isEmpty
+                        ? 'Select grade'
+                        : null,
+                builder: (field) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final menuWidth = constraints.maxWidth;
+                          return SizedBox(
+                            width: double.infinity,
+                            child: DropdownMenu<String>(
+                              width: menuWidth,
+                              controller: gradeController,
+                              requestFocusOnTap: true,
+                              initialSelection: _selectedGrade,
+                              label: const Text('Grade'),
+                              dropdownMenuEntries: _gradeOptions
+                                  .map<DropdownMenuEntry<String>>(
+                                    (g) => DropdownMenuEntry(
+                                      value: g,
+                                      label: g,
+                                    ),
+                                  )
+                                  .toList(),
+                              onSelected: (value) {
+                                setState(() {
+                                  _selectedGrade = value;
+                                  gradeController.text = value ?? '';
+                                  field.didChange(value);
+                                });
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                      if (field.hasError)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6, left: 12),
+                          child: Text(
+                            field.errorText!,
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 16),
 
@@ -491,42 +776,134 @@ Future<void> _saveFruit() async {
                   fillColor: Colors.white,
                 ),
                 keyboardType: TextInputType.number,
-                validator:
-                    (value) =>
-                        value == null || value.isEmpty ? 'Enter weight' : null,
+                validator: (value) => value == null || value.isEmpty ? 'Enter weight' : null,
               ),
               const SizedBox(height: 16),
 
-              SwitchListTile(
-                title: const Text("Is Spoiled?"),
-                value: isSpoiled,
-                onChanged: (value) {
-                  setState(() {
-                    isSpoiled = value;
-                  });
-                },
+              // Enhanced Is Spoiled Design
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSpoiled ? Colors.red.withOpacity(0.3) : AppColors.gray300,
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.03),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      setState(() {
+                        isSpoiled = !isSpoiled;
+                      });
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: isSpoiled
+                                  ? Colors.red.withOpacity(0.1)
+                                  : AppColors.hunterGreen.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              isSpoiled ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+                              color: isSpoiled ? Colors.red.shade700 : AppColors.hunterGreen,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Fruit Condition',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.gray600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  isSpoiled ? 'Spoiled' : 'Fresh',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: isSpoiled ? Colors.red.shade700 : AppColors.hunterGreen,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Transform.scale(
+                            scale: 0.9,
+                            child: Switch(
+                              value: isSpoiled,
+                              onChanged: (value) {
+                                setState(() {
+                                  isSpoiled = value;
+                                });
+                              },
+                              activeColor: Colors.red.shade700,
+                              activeTrackColor: Colors.red.shade200,
+                              inactiveThumbColor: AppColors.hunterGreen,
+                              inactiveTrackColor: AppColors.hunterGreen.withOpacity(0.3),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
 
               ElevatedButton(
                 onPressed: isLoading ? null : _saveFruit,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.pakistanGreen,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
                 ),
-                
-                child:
-                    isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text(
-                          'Save',
-                          style: TextStyle(color: Colors.white),
+                child: isLoading
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
                         ),
+                      )
+                    : const Text(
+                        'Save',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ],
           ),
         ),
       ),
     );
-}
+  }
 }

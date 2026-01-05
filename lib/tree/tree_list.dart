@@ -17,7 +17,6 @@ import 'package:fyp_hbs/authentication/reset_password.dart';
 import 'package:fyp_hbs/widgets/persistent_appbar.dart';
 import 'package:fyp_hbs/services/api/disease_api.dart';
 import 'package:fyp_hbs/services/api/agrochemical_api.dart';
-import 'dart:math' show max;
 
 class TreePage extends StatefulWidget {
   const TreePage({super.key});
@@ -86,10 +85,12 @@ class _TreePageState extends State<TreePage> {
         if (n.isNotEmpty) names.add(n);
       }
 
-      setState(() {
-        _speciesList.clear();
-        _speciesList.addAll(names);
-      });
+      if (mounted) {
+        setState(() {
+          _speciesList.clear();
+          _speciesList.addAll(names);
+        });
+      }
     } catch (e) {
       // Non-fatal: log and continue (dialog will show empty if no species available)
       print('Failed to load local species: $e');
@@ -99,9 +100,11 @@ class _TreePageState extends State<TreePage> {
   Future<void> _loadDiseases() async {
     try {
       final diseases = await DiseaseApi.fetchDiseases();
-      setState(() {
-        _diseaseList = diseases;
-      });
+      if (mounted) {
+        setState(() {
+          _diseaseList = diseases;
+        });
+      }
     } catch (e) {
       print('Failed to load diseases: $e');
     }
@@ -110,9 +113,11 @@ class _TreePageState extends State<TreePage> {
   Future<void> _loadAgrochemicals() async {
     try {
       final agrochemicals = await AgrochemicalApi.getAgrochemical();
-      setState(() {
-        _agrochemicalList = agrochemicals;
-      });
+      if (mounted) {
+        setState(() {
+          _agrochemicalList = agrochemicals;
+        });
+      }
     } catch (e) {
       print('Failed to load agrochemicals: $e');
     }
@@ -138,9 +143,13 @@ class _TreePageState extends State<TreePage> {
   }
 
   Future<void> _loadMoreTrees() async {
-    setState(() => _isLoadingMore = true);
+    if (mounted) {
+      setState(() => _isLoadingMore = true);
+    }
     await fetchTrees(page: _currentPage + 1, isLoadMore: true);
-    setState(() => _isLoadingMore = false);
+    if (mounted) {
+      setState(() => _isLoadingMore = false);
+    }
   }
 
   void filterTrees(String query) {
@@ -159,7 +168,9 @@ class _TreePageState extends State<TreePage> {
 
   Future<void> fetchTrees({int page = 1, bool isLoadMore = false}) async {
     if (!isLoadMore && page == 1) {
-      setState(() => _isInitialLoading = true);
+      if (mounted) {
+        setState(() => _isInitialLoading = true);
+      }
     }
     try {
       final response = await TreeApi.fetchTrees(page: page);
@@ -1603,7 +1614,7 @@ Widget _buildActiveFilters() {
                 await _handleNavigationResult(result);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.hunterGreen,
+                backgroundColor: AppColors.mossGreen,
                 foregroundColor: Colors.white,
                 minimumSize: const Size(60, 36),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

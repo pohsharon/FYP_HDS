@@ -82,6 +82,47 @@ class FruitApi {
     }
   }
 
+  static Future<List<Map<String, dynamic>>> fetchFruitsByHarvestUuid(
+      String harvestUuid) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final response = await http.get(
+        Uri.parse("${Config.apiBaseUrl}/harvest-events/$harvestUuid/fruits"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        if (data is Map && data["data"] is List) {
+          return (data["data"] as List)
+              .map<Map<String, dynamic>>(
+                  (e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+
+        if (data is List) {
+          return data
+              .map<Map<String, dynamic>>(
+                  (e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+
+        throw Exception("Unexpected response format: $data");
+      } else {
+        throw Exception(
+            data["message"] ?? "Failed to fetch fruits for harvest");
+      }
+    } catch (e) {
+      throw Exception("Error: ${e.toString()}");
+    }
+  }
+
   static Future<void> updateFruit({
     required String uuid,
     required String tree_uuid,

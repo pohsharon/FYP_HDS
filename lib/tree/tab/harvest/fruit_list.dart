@@ -4,10 +4,12 @@ import 'package:fyp_hbs/services/api/tree_api.dart';
 import 'package:fyp_hbs/services/local database/fruit_db.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:another_flushbar/flushbar.dart';
+import 'package:intl/intl.dart';
+import 'package:fyp_hbs/fruit/create_fruit.dart';
 
 class FruitListPage extends StatefulWidget {
-  final String treeUuid; // <-- pass in the tree UUID
-  final String? harvestUuid; // optional: show a single harvest's fruits
+  final String treeUuid;
+  final String? harvestUuid;
 
   const FruitListPage({super.key, required this.treeUuid, this.harvestUuid});
 
@@ -29,18 +31,16 @@ class _FruitPageState extends State<FruitListPage> {
     try {
       final events = await TreeApi.getHarvestsByTreeId(widget.treeUuid);
 
-      // If a specific harvestUuid was requested, try to find it in remote events
       if (widget.harvestUuid != null && widget.harvestUuid!.isNotEmpty) {
         final String target = widget.harvestUuid!;
-        // first try remote payload
         Map<String, dynamic>? matched;
+        
         for (final ev in events) {
           final evUuid = (ev['uuid'] ?? ev['id'] ?? ev['harvest_uuid'])?.toString();
           if (evUuid == target) {
             matched = Map<String, dynamic>.from(ev);
             break;
           }
-          // if fruits present, check their harvest_uuid / tree_uuid
           if (ev['fruits'] is List) {
             final list = List.from(ev['fruits']);
             if (list.any((f) => (f['harvest_uuid'] ?? '') == target || (f['tree_uuid'] ?? '') == widget.treeUuid)) {
@@ -51,7 +51,6 @@ class _FruitPageState extends State<FruitListPage> {
         }
 
         if (matched != null) {
-          // restrict fruits to this tree if possible
           List<Map<String, dynamic>> fruits = [];
           if (matched['fruits'] is List) {
             for (final f in matched['fruits']) {
@@ -61,7 +60,6 @@ class _FruitPageState extends State<FruitListPage> {
             }
           }
 
-          // if remote didn't contain fruits for this tree, fall back to local DB
           if (fruits.isEmpty) {
             final local = await FruitDB().getAllFruits();
             final localMatches = local.where((f) => (f.harvest_uuid ?? '') == target && (f.tree_uuid ?? '') == widget.treeUuid).toList();
@@ -69,25 +67,26 @@ class _FruitPageState extends State<FruitListPage> {
           }
 
           final matchedNonNull = matched;
-          setState(() {
-            _harvestEvents = [
-              {
-                'uuid': widget.harvestUuid,
-                'event_name': matchedNonNull['event_name'] ?? 'Harvest ${widget.harvestUuid}',
-                'start_date': matchedNonNull['start_date'] ?? '',
-                'end_date': matchedNonNull['end_date'] ?? '',
-                'fruits': fruits,
-              }
-            ];
-            _isLoading = false;
-          });
+          if (mounted) {
+            setState(() {
+              _harvestEvents = [
+                {
+                  'uuid': widget.harvestUuid,
+                  'event_name': matchedNonNull['event_name'] ?? 'Harvest ${widget.harvestUuid}',
+                  'start_date': matchedNonNull['start_date'] ?? '',
+                  'end_date': matchedNonNull['end_date'] ?? '',
+                  'fruits': fruits,
+                }
+              ];
+              _isLoading = false;
+            });
+          }
           return;
         }
 
-        // if not found remotely, try local DB for this harvest
         final local = await FruitDB().getAllFruits();
         final localMatches = local.where((f) => (f.harvest_uuid ?? '') == widget.harvestUuid && (f.tree_uuid ?? '') == widget.treeUuid).toList();
-        if (localMatches.isNotEmpty) {
+        if (localMatches.isNotEmpty && mounted) {
           setState(() {
             _harvestEvents = [
               {
@@ -104,18 +103,18 @@ class _FruitPageState extends State<FruitListPage> {
         }
       }
 
-      // default: show all remote events (existing behavior)
-      setState(() {
-        _harvestEvents = events;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _harvestEvents = events;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      // Remote fetch failed (likely offline) — try local cache
       try {
         if (widget.harvestUuid != null && widget.harvestUuid!.isNotEmpty) {
           final local = await FruitDB().getAllFruits();
           final localMatches = local.where((f) => (f.harvest_uuid ?? '') == widget.harvestUuid && (f.tree_uuid ?? '') == widget.treeUuid).toList();
-          if (localMatches.isNotEmpty) {
+          if (localMatches.isNotEmpty && mounted) {
             setState(() {
               _harvestEvents = [
                 {
@@ -132,24 +131,24 @@ class _FruitPageState extends State<FruitListPage> {
           }
         }
 
-        // If no specific harvest requested or not found, group by harvest_uuid for this tree
         final localAll = await FruitDB().fetchFruitsByTree(widget.treeUuid);
         if (localAll.isEmpty) {
-          setState(() {
-            _isLoading = false;
-            _harvestEvents = [];
-          });
-          await Flushbar(
-            message: "Offline: no cached fruits found: $e",
-            backgroundColor: Colors.orange.shade700,
-            duration: const Duration(seconds: 3),
-            margin: const EdgeInsets.all(12),
-            borderRadius: BorderRadius.circular(8),
-          ).show(context);
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _harvestEvents = [];
+            });
+            await Flushbar(
+              message: "Offline: no cached fruits found: $e",
+              backgroundColor: Colors.orange.shade700,
+              duration: const Duration(seconds: 3),
+              margin: const EdgeInsets.all(12),
+              borderRadius: BorderRadius.circular(8),
+            ).show(context);
+          }
           return;
         }
 
-        // group local fruits by harvest_uuid
         final Map<String, List<Map<String, dynamic>>> grouped = {};
         for (final f in localAll) {
           final h = f.harvest_uuid ?? 'unknown';
@@ -167,22 +166,53 @@ class _FruitPageState extends State<FruitListPage> {
           });
         });
 
-        setState(() {
-          _harvestEvents = events;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _harvestEvents = events;
+            _isLoading = false;
+          });
+        }
       } catch (localErr) {
-        setState(() {
-          _isLoading = false;
-        });
-        await Flushbar(
-          message: "Error loading harvest events: $e | $localErr",
-          backgroundColor: Colors.red.shade700,
-          duration: const Duration(seconds: 3),
-          margin: const EdgeInsets.all(12),
-          borderRadius: BorderRadius.circular(8),
-        ).show(context);
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+          await Flushbar(
+            message: "Error loading harvest events: $e | $localErr",
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 3),
+            margin: const EdgeInsets.all(12),
+            borderRadius: BorderRadius.circular(8),
+          ).show(context);
+        }
       }
+    }
+  }
+
+  String _formatDateRange(String? startDate, String? endDate) {
+    if (startDate == null || startDate.isEmpty) return 'Date not available';
+    
+    try {
+      final start = DateTime.parse(startDate);
+      final fmt = DateFormat('MMM dd');
+      
+      if (endDate == null || endDate.isEmpty || endDate == 'Ongoing') {
+        return '${fmt.format(start)}, ${start.year} - Ongoing';
+      }
+      
+      final end = DateTime.parse(endDate);
+      
+      if (start.month == end.month && start.year == end.year) {
+        return '${DateFormat('MMM').format(start)} ${start.day}-${end.day}, ${start.year}';
+      }
+      
+      if (start.year == end.year) {
+        return '${fmt.format(start)} - ${fmt.format(end)}, ${start.year}';
+      }
+      
+      return '${fmt.format(start)}, ${start.year} - ${fmt.format(end)}, ${end.year}';
+    } catch (e) {
+      return startDate;
     }
   }
 
@@ -190,59 +220,186 @@ class _FruitPageState extends State<FruitListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Harvest Events'),
+        title: const Text(
+          'Harvest Fruits',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: AppColors.pakistanGreen,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.hunterGreen,
+                ),
+              )
             : _harvestEvents.isEmpty
-                ? const Center(child: Text("No harvest events found"))
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 64,
+                            color: AppColors.gray400,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No fruits found',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.gray600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Fruits from this harvest will appear here',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.gray500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
                 : ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _harvestEvents.length,
                     itemBuilder: (context, index) {
                       final event = _harvestEvents[index];
-                      final fruits =
-                          List<Map<String, dynamic>>.from(event['fruits']);
+                      final fruits = List<Map<String, dynamic>>.from(event['fruits']);
+                      final dateRange = _formatDateRange(event['start_date'], event['end_date']);
 
-                      return Card(
+                      return Container(
                         margin: const EdgeInsets.only(bottom: 20),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 2,
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                event['event_name'] ?? 'Unnamed Event',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                  color: AppColors.hunterGreen,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                "Start: ${event['start_date'] ?? '-'} | End: ${event['end_date'] ?? 'Ongoing'}",
-                                style: const TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const Divider(height: 20, thickness: 1),
-
-                              // Fruits under this harvest
-                              ...fruits.map((fruit) => _buildFruitCard(fruit)),
-                            ],
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: AppColors.gray300,
+                            width: 1.5,
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Header
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    AppColors.hunterGreen.withOpacity(0.1),
+                                    AppColors.mossGreen.withOpacity(0.05),
+                                  ],
+                                ),
+                                borderRadius: const BorderRadius.only(
+                                  topLeft: Radius.circular(16),
+                                  topRight: Radius.circular(16),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.hunterGreen.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(
+                                          Icons.agriculture,
+                                          color: AppColors.hunterGreen,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          event['event_name'] ?? 'Unnamed Event',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                            color: AppColors.hunterGreen,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.calendar_today,
+                                        size: 14,
+                                        color: AppColors.gray600,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          dateRange,
+                                          style: TextStyle(
+                                            color: AppColors.gray600,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.inventory_2_outlined,
+                                        size: 14,
+                                        color: AppColors.gray600,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '${fruits.length} ${fruits.length == 1 ? 'fruit' : 'fruits'} collected',
+                                        style: TextStyle(
+                                          color: AppColors.gray600,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // Fruits List
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                children: fruits.map((fruit) => _buildFruitCard(fruit)).toList(),
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -256,122 +413,378 @@ class _FruitPageState extends State<FruitListPage> {
     final String weight = fruit['weight']?.toString() ?? 'Unknown';
     final String grade = fruit['grade'] ?? 'Unknown';
     final String uuid = (fruit['uuid'] ?? fruit['id'] ?? fruit['harvest_uuid'] ?? '').toString();
+    final bool isSpoiled = fruit['is_spoiled'] == true || 
+                           fruit['is_spoiled'] == 1 || 
+                           fruit['is_spoiled']?.toString() == 'true';
 
-    return Card(
-      color: AppColors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: AppColors.gray400),
-      ),
+    return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0,
-      child: ListTile(
-        leading: SizedBox(
-          width: 50,
-          height: 50,
-          child: uuid.isNotEmpty
-              ? QrImageView(data: uuid, version: QrVersions.auto)
-              : Icon(Icons.local_florist, color: AppColors.hunterGreen),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: AppColors.gray300,
+          width: 1.5,
         ),
-        title: Text(
-          tag,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Text("$weight kg | Grade $grade"),
+      ),
+      child: InkWell(
         onTap: () => _showFruitDetailsDialog(context, fruit),
-        trailing: ElevatedButton(
-          onPressed: () => _showFruitDetailsDialog(context, fruit),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.hunterGreen,
-            foregroundColor: Colors.white,
-            minimumSize: const Size(60, 30),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            textStyle: const TextStyle(fontSize: 12),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // QR Code
+              Container(
+                width: 60,
+                height: 60,
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.gray300,
+                    width: 1,
+                  ),
+                ),
+                child: uuid.isNotEmpty
+                    ? QrImageView(data: uuid, version: QrVersions.auto)
+                    : Icon(Icons.local_florist, color: AppColors.hunterGreen),
+              ),
+              const SizedBox(width: 12),
+
+              // Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tag,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: AppColors.hunterGreen,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.scale,
+                          size: 13,
+                          color: AppColors.gray500,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          "$weight kg",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.gray600,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.grade,
+                          size: 13,
+                          color: AppColors.gray500,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          "Grade $grade",
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.gray600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (isSpoiled) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 13,
+                            color: Colors.red.shade700,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Spoiled',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.red.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              // View Button
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.hunterGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: AppColors.hunterGreen,
+                ),
+              ),
+            ],
           ),
-          child: const Text("View"),
         ),
       ),
     );
   }
 
-  void _showFruitDetailsDialog(
-    BuildContext context,
-    Map<String, dynamic> fruit,
-  ) {
+  void _showFruitDetailsDialog(BuildContext context, Map<String, dynamic> fruit) {
     final String uuid = fruit['uuid'] ?? '';
     final String tag = fruit['fruit_tag'] ?? 'Unknown';
     final String date = fruit['harvested_at'] ?? '';
     final String weight = fruit['weight']?.toString() ?? '';
     final String grade = fruit['grade'] ?? '';
     final String? transactionId = fruit['transaction_uuid'];
+    final bool isSpoiled = fruit['is_spoiled'] == true || 
+                           fruit['is_spoiled'] == 1 || 
+                           fruit['is_spoiled']?.toString() == 'true';
 
     showDialog(
       context: context,
       builder: (context) {
         return Dialog(
-          backgroundColor: AppColors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.15),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Align(
-                  alignment: Alignment.topLeft,
-                  child: IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ),
-                QrImageView(
-                  data: uuid,
-                  version: QrVersions.auto,
-                  size: 150,
-                  gapless: true,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  uuid,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  tag,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 22,
-                    color: AppColors.hunterGreen,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _buildDetailRow("Date", date),
-                _buildDetailRow("Weight", "$weight kg"),
-                _buildDetailRow("Grade", grade),
-                const SizedBox(height: 16),
-                if (transactionId != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 8,
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.hunterGreen, AppColors.mossGreen],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    decoration: BoxDecoration(
-                      color: AppColors.warningActive,
-                      borderRadius: BorderRadius.circular(20),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
                     ),
-                    child: const Text(
-                      "Sold",
-                      style: TextStyle(
-                        color: AppColors.hunterGreen,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.white.withOpacity(0.2),
+                        ),
                       ),
+                      const Text(
+                        'Fruit Details',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.white),
+                        onPressed: () async {
+                          Navigator.of(context).pop();
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CreateFruitPage(fruit: fruit),
+                            ),
+                          );
+                          if (result == true) {
+                            await fetchHarvestEvents();
+                          }
+                        },
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.white.withOpacity(0.2),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Content
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        // QR Code
+                        GestureDetector(
+                          onTap: () {
+                            if (uuid.isEmpty) return;
+                            showDialog(
+                              context: context,
+                              builder: (_) => Dialog(
+                                backgroundColor: Colors.transparent,
+                                child: Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      QrImageView(
+                                        data: uuid,
+                                        version: QrVersions.auto,
+                                        size: 300,
+                                        gapless: true,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        uuid,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.black,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: AppColors.background,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: AppColors.gray300, width: 1.5),
+                            ),
+                            child: Column(
+                              children: [
+                                QrImageView(
+                                  data: uuid,
+                                  version: QrVersions.auto,
+                                  size: 140,
+                                  gapless: true,
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.gray200,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    uuid,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.gray600,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Title
+                        Text(
+                          tag,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 24,
+                            color: AppColors.hunterGreen,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Status Badges
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (transactionId != null)
+                              _buildStatusBadge(
+                                'Sold',
+                                Icons.check_circle,
+                                AppColors.warningActive,
+                                AppColors.hunterGreen,
+                              ),
+                            if (transactionId != null && isSpoiled)
+                              const SizedBox(width: 8),
+                            if (isSpoiled)
+                              _buildStatusBadge(
+                                'Spoiled',
+                                Icons.warning_amber_rounded,
+                                Colors.red.withOpacity(0.1),
+                                Colors.red.shade700,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Details Card
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.background,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.gray300, width: 1.5),
+                          ),
+                          child: Column(
+                            children: [
+                              _buildDetailRow(
+                                Icons.calendar_today,
+                                'Harvest Date',
+                                date.isNotEmpty 
+                                    ? DateFormat('MMM dd, yyyy').format(DateTime.parse(date))
+                                    : 'N/A',
+                                isFirst: true,
+                              ),
+                              const Divider(height: 1, thickness: 1),
+                              _buildDetailRow(
+                                Icons.scale,
+                                'Weight',
+                                weight.isNotEmpty ? '$weight kg' : 'N/A',
+                              ),
+                              const Divider(height: 1, thickness: 1),
+                              _buildDetailRow(
+                                Icons.grade,
+                                'Grade',
+                                grade.isNotEmpty ? 'Grade $grade' : 'N/A',
+                                isLast: true,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                ),
               ],
             ),
           ),
@@ -380,30 +793,69 @@ class _FruitPageState extends State<FruitListPage> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 40),
+  Widget _buildStatusBadge(String label, IconData icon, Color bgColor, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: textColor.withOpacity(0.3), width: 1.5),
+      ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: AppColors.hunterGreen,
-                fontSize: 15,
-              ),
+          Icon(icon, size: 16, color: textColor),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value, {bool isFirst = false, bool isLast = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.hunterGreen.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 20, color: AppColors.hunterGreen),
+          ),
+          const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: AppColors.mossGreen,
-                fontSize: 15,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.gray600,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.gray800,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

@@ -38,7 +38,7 @@ class _NavState extends State<Nav> {
       body: _pages[_selectedIndex],
       backgroundColor: AppColors.background,
       floatingActionButton: FloatingActionButton(
-        backgroundColor: activeColor,
+        backgroundColor: AppColors.gray500,
         onPressed: _onFabPressed,
         tooltip: 'Scan QR',
         child: const Icon(Icons.qr_code_scanner, color: Colors.white),
