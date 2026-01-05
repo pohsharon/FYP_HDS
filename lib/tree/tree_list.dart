@@ -48,6 +48,7 @@ class _TreePageState extends State<TreePage> {
   int _currentPage = 1;
   int _lastPage = 1;
   bool _isLoadingMore = false;
+  bool _isInitialLoading = true;
   // Persistent filter state so dialog opens with current values
   // Planting date filter state
   String _currentPlantingFrom = '';
@@ -128,6 +129,14 @@ class _TreePageState extends State<TreePage> {
     super.dispose();
   }
 
+  bool _hasActiveFilters() {
+    return _selectedSpecies != null ||
+        _selectedDiseaseId != null ||
+        _selectedAgrochemicalId != null ||
+        _currentPlantingFrom.isNotEmpty ||
+        _currentPlantingTo.isNotEmpty;
+  }
+
   Future<void> _loadMoreTrees() async {
     setState(() => _isLoadingMore = true);
     await fetchTrees(page: _currentPage + 1, isLoadMore: true);
@@ -143,11 +152,15 @@ class _TreePageState extends State<TreePage> {
     if (mounted) {
       setState(() {
         _filteredTrees = filtered;
+        _isInitialLoading = false;
       });
     }
   }
 
   Future<void> fetchTrees({int page = 1, bool isLoadMore = false}) async {
+    if (!isLoadMore && page == 1) {
+      setState(() => _isInitialLoading = true);
+    }
     try {
       final response = await TreeApi.fetchTrees(page: page);
 
@@ -274,6 +287,7 @@ class _TreePageState extends State<TreePage> {
 
           _filteredTrees = unique;
           _allTrees = unique;
+          _isInitialLoading = false;
         });
       } catch (e) {
         // If anything goes wrong merging local unsynced, fall back to remote-only list
@@ -286,6 +300,7 @@ class _TreePageState extends State<TreePage> {
             _filteredTrees = cleanedTrees;
             _allTrees = cleanedTrees;
           }
+          _isInitialLoading = false;
         });
       }
 
@@ -340,9 +355,15 @@ class _TreePageState extends State<TreePage> {
             _filteredTrees = cleanedLocal;
             _allTrees = cleanedLocal;
           }
+          _isInitialLoading = false;
         });
       } catch (e2) {
         print('Failed to load trees from local DB: $e2');
+        if (mounted) {
+          setState(() {
+            _isInitialLoading = false;
+          });
+        }
       }
     }
   }
@@ -1323,8 +1344,13 @@ Widget _buildActiveFilters() {
                 onRefresh: () async {
                   await fetchTrees();
                 },
-                child:
-                    _filteredTrees.isEmpty
+                child: _isInitialLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.hunterGreen,
+                        ),
+                      )
+                    : _filteredTrees.isEmpty
                         ? Center(
                             child: Padding(
                               padding: const EdgeInsets.symmetric(vertical: 32),
@@ -1338,7 +1364,9 @@ Widget _buildActiveFilters() {
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
-                                    'No trees found',
+                                    _hasActiveFilters()
+                                        ? 'No trees found'
+                                        : 'No trees yet',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w600,
@@ -1347,7 +1375,9 @@ Widget _buildActiveFilters() {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Try adjusting your filters or search',
+                                    _hasActiveFilters()
+                                        ? 'Try adjusting your filters or search'
+                                        : 'Create your first tree to get started',
                                     style: TextStyle(
                                       fontSize: 13,
                                       color: AppColors.gray500,
