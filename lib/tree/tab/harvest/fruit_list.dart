@@ -436,9 +436,9 @@ class _FruitPageState extends State<FruitListPage> {
             children: [
               // QR Code
               Container(
-                width: 60,
-                height: 60,
-                padding: const EdgeInsets.all(6),
+                width: 50,
+                height: 50,
+                padding: const EdgeInsets.all(0),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
