@@ -1302,7 +1302,7 @@ Widget _buildActiveFilters() {
                               ).show(context);
                             } else {
                               await Flushbar(
-                                message: 'Logged out (server revoke pending)',
+                                message: 'Logging out',
                                 icon: const Icon(
                                   Icons.info,
                                   color: Colors.white,
