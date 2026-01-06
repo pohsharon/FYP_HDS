@@ -599,17 +599,33 @@ class _CreateTreePageState extends State<CreateTreePage> {
                       try {
                         final online =
                             await ConnectivityHelper.hasInternetConnection();
+                        final treeUuid = (widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString()) ?? '';
+                        
+                        if (treeUuid.isEmpty) {
+                          throw Exception('Cannot delete: tree ID not found');
+                        }
+                        
                         if (!online) {
-                          await TreeDB().markAsPendingDelete(widget.tree!['uuid']);
+                          // Offline: Mark as pending delete (keep the row locally so sync can find it)
+                          // The tree will be hidden from the UI but sync will process the delete when online
+                          await TreeDB().markAsPendingDelete(treeUuid);
                           if (!mounted) return;
                           await Flushbar(
                             message:
-                                'Tree will be deleted when you are back online',
+                                'Tree marked for deletion (will sync when online)',
+                            icon: const Icon(Icons.check_circle, color: Colors.white),
+                            backgroundColor: Colors.orange.shade700,
+                            duration: const Duration(seconds: 2),
+                            borderRadius: BorderRadius.circular(12),
+                            margin: const EdgeInsets.all(12),
+                            flushbarPosition: FlushbarPosition.TOP,
                           ).show(context);
                           // Single pop: return true to signal deletion/refresh
                           Navigator.pop(context, true);
                         } else {
+                          // Online: Delete from remote AND local immediately
                           await TreeApi.deleteTree(widget.tree!['id'].toString());
+                          await TreeDB().deleteTreeByUuid(treeUuid);
                           if (!mounted) return;
                           await Flushbar(
                             message: 'Tree deleted successfully',

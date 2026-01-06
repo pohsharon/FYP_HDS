@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/disease_api.dart';
 import 'package:another_flushbar/flushbar.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
 
 class CreateDiseasePage extends StatefulWidget {
   final Map<String, dynamic>? disease;
@@ -54,6 +55,8 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
     try {
       setState(() => isLoading = true);
 
+      final online = await ConnectivityHelper.hasInternetConnection();
+
       if (widget.disease == null) {
         // CREATE mode
         await DiseaseApi.createDisease(
@@ -63,8 +66,10 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
         );
       } else {
         // UPDATE mode
+        final diseaseId = widget.disease!['uuid']?.toString() ?? 
+                          widget.disease!['id']?.toString() ?? '';
         await DiseaseApi.updateDisease(
-          id: widget.disease!['id'].toString(),
+          id: diseaseId,
           diseaseName: diseaseNameController.text,
           symptoms: symptomsController.text,
           remarks: remarksController.text,
@@ -72,12 +77,18 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
       }
 
       await Flushbar(
- message:
-            widget.disease != null
+        message: online
+            ? (widget.disease != null
                 ? 'Disease updated successfully.'
-                : 'Disease created successfully.',
-        icon: const Icon(Icons.check_circle, color: Colors.white),
-        backgroundColor: Colors.green.shade700,
+                : 'Disease created successfully.')
+            : (widget.disease != null
+                ? 'Disease updated offline'
+                : 'Disease created offline'),
+        icon: Icon(
+          online ? Icons.check_circle : Icons.cloud_off,
+          color: Colors.white,
+        ),
+        backgroundColor: online ? Colors.green.shade700 : Colors.orange.shade700,
         duration: const Duration(seconds: 2),
         borderRadius: BorderRadius.circular(12),
         margin: const EdgeInsets.all(12),
@@ -138,11 +149,21 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
 
     if (confirm == true) {
       try {
-        await DiseaseApi.deleteDisease(widget.disease!['id'].toString());
+        final online = await ConnectivityHelper.hasInternetConnection();
+        final diseaseId = widget.disease!['uuid']?.toString() ?? 
+                          widget.disease!['id']?.toString() ?? '';
+        
+        await DiseaseApi.deleteDisease(diseaseId);
+        
         await Flushbar(
-          message: 'Disease deleted successfully',
-          icon: const Icon(Icons.check_circle, color: Colors.white),
-          backgroundColor: Colors.green.shade700,
+          message: online
+              ? 'Disease deleted successfully'
+              : 'Disease marked for deletion',
+          icon: Icon(
+            online ? Icons.check_circle : Icons.cloud_off,
+            color: Colors.white,
+          ),
+          backgroundColor: online ? Colors.green.shade700 : Colors.orange.shade700,
           duration: const Duration(seconds: 2),
           margin: const EdgeInsets.all(12),
           borderRadius: BorderRadius.circular(8),

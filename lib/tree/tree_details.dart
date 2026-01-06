@@ -375,6 +375,19 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
             IconButton(
               icon: const Icon(Icons.edit, color: Colors.white),
               onPressed: () async {
+                if (!_isOnline) {
+                  await Flushbar(
+                    message: 'Editing is disabled while offline',
+                    icon: const Icon(Icons.cloud_off, color: Colors.white),
+                    backgroundColor: Colors.orange.shade700,
+                    duration: const Duration(seconds: 2),
+                    borderRadius: BorderRadius.circular(12),
+                    margin: const EdgeInsets.all(12),
+                    flushbarPosition: FlushbarPosition.TOP,
+                  ).show(context);
+                  return;
+                }
+                
                 final updated = await Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => CreateTreePage(tree: tree)),

@@ -23,6 +23,7 @@ import 'sync_services/tree_sync.dart';
 import 'sync_services/fruit_sync.dart';
 import 'sync_services/health_sync.dart';
 import 'sync_services/agro_sync.dart';
+import 'sync_services/disease_sync.dart';
 import '../services/local database/disease_db.dart';
 import 'package:flutter/foundation.dart';
 
@@ -219,6 +220,13 @@ class AppInitializer {
         _log('❌ Error syncing agrochemicals: $e');
       }
 
+      // Attempt to sync any pending disease records created while offline
+      try {
+        await SyncDiseases().syncDiseases();
+      } catch (e) {
+        _log('❌ Error syncing diseases: $e');
+      }
+
       final timestamp = DateTime.now().toIso8601String();
       _log('✅ Sync complete at $timestamp');
 
@@ -361,7 +369,14 @@ class AppInitializer {
         try {
           await SyncAgro().syncAgro();
         } catch (e) {
-          _log('❌ Error syncing agro in init: $e');
+          _log('❌ Error syncing agrochemicals in init: $e');
+        }
+        
+        // Attempt to sync any pending disease records created while offline
+        try {
+          await SyncDiseases().syncDiseases();
+        } catch (e) {
+          _log('❌ Error syncing diseases in init: $e');
         }
         // Fetch and cache harvest events for offline use
         try {

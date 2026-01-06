@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/disease_api.dart';
 import 'package:fyp_hbs/tree/tab/health/create_disease.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class DiseaseListPage extends StatefulWidget {
   const DiseaseListPage({super.key});
@@ -102,6 +104,22 @@ class _DiseaseListPageState extends State<DiseaseListPage> {
 
                 return GestureDetector(
                   onTap: () async {
+                    // Check if offline
+                    final hasInternet = await ConnectivityHelper.hasInternetConnection();
+                    if (!hasInternet) {
+                      if (context.mounted) {
+                        Flushbar(
+                          message: "Cannot edit disease while offline",
+                          duration: const Duration(seconds: 3),
+                          backgroundColor: Colors.red,
+                          flushbarPosition: FlushbarPosition.TOP,
+                          margin: const EdgeInsets.all(8),
+                          borderRadius: BorderRadius.circular(8),
+                        ).show(context);
+                      }
+                      return;
+                    }
+                    
                     // ✅ When editing, pass the tapped disease record
                     final result = await Navigator.push(
                       context,

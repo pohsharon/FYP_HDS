@@ -245,7 +245,9 @@ class _TreePageState extends State<TreePage> {
       try {
         final localUnsynced = await TreeDB().fetchUnsyncedTrees();
         final mappedLocal =
-            localUnsynced.map((TreeModel m) {
+            localUnsynced
+            .where((m) => m.pendingDelete == 0) // Filter out trees marked for deletion
+            .map((TreeModel m) {
               return {
                 'id': m.id ?? m.uuid,
                 'uuid': m.uuid,
