@@ -12,7 +12,7 @@ class SyncTrees {
 
   bool get isRunning => _isRunning;
 
- Future<void> syncUnsyncedTrees() async {
+  Future<void> syncUnsyncedTrees() async {
     final now = DateTime.now();
     // 🕒 Prevent duplicate runs
     if (_lastRun != null && now.difference(_lastRun!).inMilliseconds < 1200) {
@@ -29,7 +29,8 @@ class SyncTrees {
 
     try {
       // 🔌 Step 1: Check connection (ensure actual internet connectivity)
-      final hasInternet = await Connectivity().checkConnectivity() != ConnectivityResult.none;
+      final hasInternet =
+          await Connectivity().checkConnectivity() != ConnectivityResult.none;
       if (!hasInternet) {
         print('📴 Offline — sync postponed');
         return;
@@ -50,24 +51,34 @@ class SyncTrees {
               treeObj = Map<String, dynamic>.from(remote);
             }
 
-            final serverId = treeObj['id']?.toString() ?? treeObj['server_id']?.toString();
+            final serverId =
+                treeObj['id']?.toString() ?? treeObj['server_id']?.toString();
             if (serverId != null && serverId.isNotEmpty) {
               await TreeApi.deleteTree(serverId);
               await TreeDB().deleteTreeByUuid(t.uuid);
-              print('✅ Deleted remote & local by resolved id: ${t.uuid} -> $serverId');
+              print(
+                '✅ Deleted remote & local by resolved id: ${t.uuid} -> $serverId',
+              );
               continue;
             } else {
               print('⚠️ Could not resolve server id for delete for ${t.uuid}');
             }
           } catch (e) {
             final msg = e.toString();
-            if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('Not Found')) {
+            if (msg.contains('No query results') ||
+                msg.contains('NotFoundHttpException') ||
+                msg.contains('404') ||
+                msg.contains('Not Found')) {
               // Remote already missing — remove local row and consider delete successful
               await TreeDB().deleteTreeByUuid(t.uuid);
-              print('ℹ️ Remote not found for uuid ${t.uuid}; removed local row');
+              print(
+                'ℹ️ Remote not found for uuid ${t.uuid}; removed local row',
+              );
               continue;
             } else {
-              print('⚠️ Failed to resolve server id for delete for ${t.uuid}: $e');
+              print(
+                '⚠️ Failed to resolve server id for delete for ${t.uuid}: $e',
+              );
             }
           }
 
@@ -79,15 +90,22 @@ class SyncTrees {
               print('✅ Deleted remote & local by local id fallback: ${t.uuid}');
             } catch (e) {
               final msg = e.toString();
-              if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('Not Found')) {
+              if (msg.contains('No query results') ||
+                  msg.contains('NotFoundHttpException') ||
+                  msg.contains('404') ||
+                  msg.contains('Not Found')) {
                 await TreeDB().deleteTreeByUuid(t.uuid);
-                print('ℹ️ Remote record not found for id ${t.id}; removed local row ${t.uuid}');
+                print(
+                  'ℹ️ Remote record not found for id ${t.id}; removed local row ${t.uuid}',
+                );
               } else {
                 print('⚠️ Delete by id fallback failed for ${t.uuid}: $e');
               }
             }
           } else {
-            print('⚠️ Could not delete ${t.uuid}: no server id resolved and no local id available');
+            print(
+              '⚠️ Could not delete ${t.uuid}: no server id resolved and no local id available',
+            );
           }
         } catch (e) {
           print('⚠️ Error deleting ${t.uuid}: $e');
@@ -120,11 +138,8 @@ class SyncTrees {
               }
             } catch (e) {
               final msg = e.toString();
-              if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('Not Found')) {
-                print('ℹ️ Update by id returned 404/not-found for ${t.uuid}; will try resolving by uuid');
-              } else {
-                print('⚠️ Update by id failed for ${t.uuid}: $e');
-              }
+
+              print('⚠️ Update by id failed for ${t.uuid}: $e');
             }
           }
 
@@ -140,7 +155,8 @@ class SyncTrees {
                 treeObj = Map<String, dynamic>.from(remote);
               }
 
-              final serverId = treeObj['id']?.toString() ?? treeObj['server_id']?.toString();
+              final serverId =
+                  treeObj['id']?.toString() ?? treeObj['server_id']?.toString();
               if (serverId != null && serverId.isNotEmpty) {
                 final resp3 = await TreeApi.updateTree(
                   id: serverId,
@@ -153,26 +169,39 @@ class SyncTrees {
                 );
                 if (resp3['success'] == true || resp3.containsKey('data')) {
                   await TreeDB().clearPendingUpdate(t.uuid);
-                  print('✅ Synced update by resolved server id: ${t.uuid} -> $serverId');
+                  print(
+                    '✅ Synced update by resolved server id: ${t.uuid} -> $serverId',
+                  );
                   updated = true;
                 } else {
-                  print('⚠️ Server rejected update for resolved id $serverId for ${t.uuid}');
+                  print(
+                    '⚠️ Server rejected update for resolved id $serverId for ${t.uuid}',
+                  );
                 }
               } else {
                 print('⚠️ Could not resolve server id for uuid ${t.uuid}');
               }
             } catch (e) {
               final msg = e.toString();
-              if (msg.contains('No query results') || msg.contains('NotFoundHttpException') || msg.contains('404') || msg.contains('MethodNotAllowedHttpException')) {
-                print('ℹ️ Could not resolve server id or update for ${t.uuid}: ${msg.split("\n").first}');
+              if (msg.contains('No query results') ||
+                  msg.contains('NotFoundHttpException') ||
+                  msg.contains('404') ||
+                  msg.contains('MethodNotAllowedHttpException')) {
+                print(
+                  'ℹ️ Could not resolve server id or update for ${t.uuid}: ${msg.split("\n").first}',
+                );
               } else {
-                print('⚠️ Failed to resolve server id/update for ${t.uuid}: $e');
+                print(
+                  '⚠️ Failed to resolve server id/update for ${t.uuid}: $e',
+                );
               }
             }
           }
 
           if (!updated) {
-            print('⚠️ Update failed for ${t.uuid}: unable to sync by id or uuid');
+            print(
+              '⚠️ Update failed for ${t.uuid}: unable to sync by id or uuid',
+            );
           }
         } catch (e) {
           print('⚠️ Update failed for ${t.uuid}: $e');
@@ -192,7 +221,8 @@ class SyncTrees {
 
           String speciesIdToSend = resolveSpeciesId(tree.speciesId?.toString());
 
-          if (speciesIdToSend.isEmpty || int.tryParse(speciesIdToSend) == null) {
+          if (speciesIdToSend.isEmpty ||
+              int.tryParse(speciesIdToSend) == null) {
             try {
               final speciesList = await TreeApi.fetchSpecies();
               final match = speciesList.firstWhere(
@@ -212,16 +242,16 @@ class SyncTrees {
           // --- upload ---
           final response = await TreeApi.createTree(
             speciesId: speciesIdToSend,
-            plantedAt: tree.plantedAt is String
-                ? tree.plantedAt as String
-                : (tree.plantedAt == null
-                    ? ''
-                    : tree.plantedAt.toString()),
+            plantedAt:
+                tree.plantedAt is String
+                    ? tree.plantedAt as String
+                    : (tree.plantedAt == null ? '' : tree.plantedAt.toString()),
             height: tree.height ?? 0.0,
             diameter: tree.diameter ?? 0.0,
-            floweringPeriod: tree.floweringPeriod is String
-                ? tree.floweringPeriod as String
-                : (tree.floweringPeriod ?? '').toString(),
+            floweringPeriod:
+                tree.floweringPeriod is String
+                    ? tree.floweringPeriod as String
+                    : (tree.floweringPeriod ?? '').toString(),
             imageFile: tree.imageFile,
           );
 
@@ -246,8 +276,14 @@ class SyncTrees {
                 serverObj = Map<String, dynamic>.from(response);
               }
 
-              final serverUuid = (serverObj['uuid'] ?? serverObj['id'] ?? serverObj['server_id'])?.toString();
-              if (serverUuid != null && serverUuid.isNotEmpty && serverUuid != tree.uuid) {
+              final serverUuid =
+                  (serverObj['uuid'] ??
+                          serverObj['id'] ??
+                          serverObj['server_id'])
+                      ?.toString();
+              if (serverUuid != null &&
+                  serverUuid.isNotEmpty &&
+                  serverUuid != tree.uuid) {
                 // Update trees table uuid
                 await TreeDB().reassignUuid(tree.uuid, serverUuid);
 
@@ -258,13 +294,21 @@ class SyncTrees {
                   await GrowthDB().reassignTreeUuid(tree.uuid, serverUuid);
                   await FruitDB().reassignTreeUuid(tree.uuid, serverUuid);
                 } catch (childErr) {
-                  print('⚠️ Failed to remap child records for ${tree.uuid} -> $serverUuid: $childErr');
+                  print(
+                    '⚠️ Failed to remap child records for ${tree.uuid} -> $serverUuid: $childErr',
+                  );
                 }
                 // If the server provided an authoritative tree_tag, persist it locally
                 try {
-                  final serverTag = (serverObj['tree_tag'] ?? serverObj['treeTag'] ?? serverObj['tag'])?.toString();
+                  final serverTag =
+                      (serverObj['tree_tag'] ??
+                              serverObj['treeTag'] ??
+                              serverObj['tag'])
+                          ?.toString();
                   if (serverTag != null && serverTag.isNotEmpty) {
-                    await TreeDB().updateTreeByUuid(serverUuid, {'tree_tag': serverTag}, markPendingUpdate: false);
+                    await TreeDB().updateTreeByUuid(serverUuid, {
+                      'tree_tag': serverTag,
+                    }, markPendingUpdate: false);
                   }
                 } catch (e) {
                   print('❌ Error updating tree_tag: $e');

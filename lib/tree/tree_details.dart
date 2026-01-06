@@ -38,6 +38,31 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   bool _shouldRefresh = false;
   bool _isOnline = true;
 
+  Map<String, dynamic> _normalizeTree(Map<String, dynamic> src) {
+    final normalized = Map<String, dynamic>.from(src);
+
+    // Normalize diameter/width so UI always has both keys.
+    final widthVal = normalized['width'] ?? normalized['diameter'];
+    if (widthVal != null) {
+      normalized['width'] = widthVal;
+      normalized['diameter'] = widthVal;
+    }
+
+    // Coerce numeric strings to double for height/width if possible so they render offline.
+    double? _asDouble(dynamic v) {
+      if (v is num) return v.toDouble();
+      return double.tryParse(v?.toString() ?? '');
+    }
+
+    final h = _asDouble(normalized['height']);
+    if (h != null) normalized['height'] = h;
+
+    final w = _asDouble(normalized['width']);
+    if (w != null) normalized['width'] = w;
+
+    return normalized;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -81,9 +106,17 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   Future<void> _loadTreeDetails() async {
     try {
       final data = await TreeApi.getTreeByUuid(widget.treeID);
+      
+      // 💾 Cache fetched tree to local DB immediately
+      try {
+        await TreeDB().upsertTreeFromApi(data);
+      } catch (e) {
+        print('⚠️ Failed to cache tree to local DB: $e');
+      }
+      
       if (!mounted) return;
       setState(() {
-        tree = data;
+        tree = _normalizeTree(data);
         isLoading = false;
       });
       // Merge any cached growth measurements (offline cache) to show latest values
@@ -94,9 +127,17 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     } catch (e1) {
       try {
         final data = await TreeApi.getTreeById(widget.treeID);
+        
+        // 💾 Cache fetched tree to local DB immediately
+        try {
+          await TreeDB().upsertTreeFromApi(data);
+        } catch (e) {
+          print('⚠️ Failed to cache tree to local DB: $e');
+        }
+        
         if (!mounted) return;
         setState(() {
-          tree = data;
+          tree = _normalizeTree(data);
           isLoading = false;
         });
         // Merge cached growth measurements (if any) after loading by numeric id
@@ -145,12 +186,13 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
               'thumbnail': m.thumbnail ?? '',
               'height': m.height ?? 0.0,
               'width': m.diameter ?? 0.0,
+              'diameter': m.diameter ?? 0.0,
               'flowering_period': m.floweringPeriod ?? 0,
             };
 
             if (!mounted) return;
             setState(() {
-              tree = localMap;
+              tree = _normalizeTree(localMap);
               isLoading = false;
             });
             // Merge cached growth measurements for this offline tree
@@ -198,9 +240,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
         // Also print total rows in DB for debugging
         try {
           final all = await GrowthDB().fetchAllGrowths();
-          print('ℹ️ No cached growth found for $uuid — total growth rows in DB=${all.length}');
         } catch (_) {
-          print('ℹ️ No cached growth found for $uuid');
         }
         return;
       }
@@ -254,7 +294,6 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
         });
       } else {
         // Growth record is older than the tree record; do not override.
-        print('ℹ️ Latest growth ($latestCreated) is older than tree updated at $treeUpdated — skipping merge');
       }
     } catch (e) {
       print('❌ Failed to merge cached growth: $e');

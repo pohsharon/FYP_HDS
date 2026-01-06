@@ -177,4 +177,74 @@ class TreeDB{
       whereArgs: [oldUuid],
     );
   }
+
+  /// Upsert a single tree from API response into local cache. This is used
+  /// when fetching tree details or updating a tree online to immediately
+  /// reflect changes in the local DB so offline mode shows current data.
+  Future<void> upsertTreeFromApi(Map<String, dynamic> apiTree) async {
+    final db = await LocalDB.getDatabase();
+    
+    final uuid = (apiTree['uuid'] ?? apiTree['id'])?.toString();
+    if (uuid == null || uuid.isEmpty) return;
+
+    final plantedRaw = apiTree['planted_at'] ?? apiTree['plantedAt'];
+    String? plantedIso;
+    if (plantedRaw != null) {
+      try {
+        plantedIso = DateTime.parse(plantedRaw.toString()).toIso8601String();
+      } catch (_) {
+        plantedIso = plantedRaw.toString();
+      }
+    }
+
+    double? _asDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '');
+    }
+
+    int? _asInt(dynamic value) {
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '');
+    }
+
+    final values = {
+      'uuid': uuid,
+      'tree_tag': apiTree['tree_tag'] ?? apiTree['treeTag'] ?? apiTree['tag'],
+      'species_id': apiTree['species']?['id']?.toString() ?? apiTree['species_id']?.toString(),
+      'planted_at': plantedIso,
+      'height': _asDouble(apiTree['height']),
+      'diameter': _asDouble(apiTree['diameter'] ?? apiTree['width']),
+      'flowering_period': _asInt(apiTree['flowering_period']),
+      'thumbnail': apiTree['thumbnail'],
+      'latitude': _asDouble(apiTree['latitude']),
+      'longitude': _asDouble(apiTree['longitude']),
+      'updated_at': (apiTree['updated_at'] ?? apiTree['updatedAt'] ?? DateTime.now().toIso8601String()).toString(),
+      'synced': 1,
+      'pending_update': 0,
+      'pending_delete': 0,
+    };
+
+    // Update existing row by uuid; insert if missing so offline views reuse latest copy.
+    final updated = await db.update(
+      'trees',
+      values,
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+    );
+
+    if (updated == 0) {
+      await db.insert(
+        'trees',
+        values,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    // Remove older duplicates for this uuid to avoid stale reads in offline mode.
+    await db.delete(
+      'trees',
+      where: 'uuid = ? AND rowid NOT IN (SELECT MAX(rowid) FROM trees WHERE uuid = ?)',
+      whereArgs: [uuid, uuid],
+    );
+  }
 }

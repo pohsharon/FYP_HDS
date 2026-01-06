@@ -41,6 +41,16 @@ class TreeRepository {
           // Ensure speciesId is stored as a string (API may return numeric id)
           speciesId: tree['species']?['id']?.toString() ?? tree['species_id']?.toString(),
           plantedAt: DateTime.parse(tree['planted_at'] ?? DateTime.now().toIso8601String()),
+          height: (() {
+            final h = tree['height'];
+            if (h is num) return h.toDouble();
+            return double.tryParse(h?.toString() ?? '') ?? 0.0;
+          })(),
+          diameter: (() {
+            final d = tree['diameter'] ?? tree['width'];
+            if (d is num) return d.toDouble();
+            return double.tryParse(d?.toString() ?? '') ?? 0.0;
+          })(),
           thumbnail: tree['thumbnail'],
           latitude: double.tryParse(tree['latitude']?.toString() ?? '') ?? (tree['latitude'] is num ? (tree['latitude'] as num).toDouble() : 0.0),
           longitude: double.tryParse(tree['longitude']?.toString() ?? '') ?? (tree['longitude'] is num ? (tree['longitude'] as num).toDouble() : 0.0),
@@ -58,10 +68,15 @@ class TreeRepository {
         _cachedTrees = trees;
         _lastFetch = DateTime.now();
 
+        // 💾 Cache to local DB so offline mode has latest data
         try {
-          final allLocal = await _localDB.fetchAllTrees();
+          for (final tree in treeList) {
+            if (tree is Map<String, dynamic>) {
+              await _localDB.upsertTreeFromApi(tree);
+            }
+          }
         } catch (e) {
-          print('⚠️ Error reading local DB after caching: $e');
+          print('⚠️ Failed to cache trees to local DB: $e');
         }
 
         return trees;

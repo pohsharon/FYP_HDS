@@ -219,6 +219,17 @@ class _TreePageState extends State<TreePage> {
       final List<dynamic> treeList = pagination['data'] ?? [];
       final int lastPage = pagination['last_page'] ?? 1;
 
+      // 💾 Cache fetched trees to local DB immediately so offline mode has latest data
+      try {
+        for (final tree in treeList) {
+          if (tree is Map<String, dynamic>) {
+            await TreeDB().upsertTreeFromApi(tree);
+          }
+        }
+      } catch (e) {
+        print('⚠️ Failed to cache fetched trees to local DB: $e');
+      }
+
       final cleanedTrees =
           treeList.map((tree) {
             final t = tree as Map<String, dynamic>;
@@ -252,6 +263,7 @@ class _TreePageState extends State<TreePage> {
                 'thumbnail': m.thumbnail ?? '',
                 'height': m.height ?? 0.0,
                 'diameter': m.diameter ?? 0.0,
+                'flowering_period': m.floweringPeriod ?? 0,
                 'synced': m.synced,
               };
             }).toList();
@@ -304,8 +316,10 @@ class _TreePageState extends State<TreePage> {
         setState(() {
           _lastPage = lastPage;
 
-          // Always re-merge & re-sort so offline trees stay on top
-          final mergedAll = [..._filteredTrees, ...combined];
+          // When loading more pages, merge with existing filtered trees
+          // When loading page 1 (refresh), start fresh with combined results
+          final baseList = isLoadMore ? List<Map<String, dynamic>>.from(_filteredTrees) : <Map<String, dynamic>>[];
+          final mergedAll = [...baseList, ...combined];
 
           // Deduplicate by uuid
           final seen = <String>{};
@@ -392,6 +406,7 @@ class _TreePageState extends State<TreePage> {
                 'thumbnail': m.thumbnail ?? '',
                 'height': m.height ?? 0.0,
                 'diameter': m.diameter ?? 0.0,
+                'flowering_period': m.floweringPeriod ?? 0,
                 'synced': m.synced,
               };
             }).toList();
@@ -417,12 +432,25 @@ class _TreePageState extends State<TreePage> {
 
         setState(() {
           _lastPage = 1;
-          if (isLoadMore) {
-            _filteredTrees.addAll(cleanedLocal);
-          } else {
-            _filteredTrees = cleanedLocal;
-            _allTrees = cleanedLocal;
+          
+          // When in offline mode, deduplicate before displaying
+          final baseList = isLoadMore ? List<Map<String, dynamic>>.from(_filteredTrees) : <Map<String, dynamic>>[];
+          final mergedAll = [...baseList, ...cleanedLocal];
+          
+          // Deduplicate by uuid
+          final seen = <String>{};
+          final unique = <Map<String, dynamic>>[];
+          
+          for (final t in mergedAll) {
+            final u = (t['uuid'] ?? t['id'] ?? '').toString();
+            if (u.isNotEmpty && !seen.contains(u)) {
+              unique.add(t);
+              seen.add(u);
+            }
           }
+          
+          _filteredTrees = unique;
+          _allTrees = unique;
           _isInitialLoading = false;
         });
       } catch (e2) {

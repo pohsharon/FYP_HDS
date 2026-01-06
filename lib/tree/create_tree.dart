@@ -10,9 +10,13 @@ import '../config.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:uuid/uuid.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
+import 'package:fyp_hbs/models/tree_growth_model.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/services/local%20database/tree_db.dart';
+import 'package:fyp_hbs/services/local%20database/growth_db.dart';
+import 'package:fyp_hbs/services/local%20database/local_db.dart';
+import 'package:sqflite/sqflite.dart';
 
 // Formatter that allows decimals and limits fractional digits
 // e.g. DecimalTextInputFormatter(decimalRange: 2) allows up to 2 decimals
@@ -76,7 +80,11 @@ class _CreateTreePageState extends State<CreateTreePage> {
     _fetchSpecies().then((_) {
       if (widget.tree != null) {
         final tree = widget.tree!;
-        plantingDateController.text = tree['planted_at'] ?? '';
+        // Clean up planted_at to remove time portion if present
+        final rawPlantedAt = tree['planted_at'] ?? '';
+        plantingDateController.text = rawPlantedAt.toString().contains('T') 
+            ? rawPlantedAt.toString().split('T').first 
+            : rawPlantedAt.toString();
 
         // Don't prefill with a leading 0 — treat null/0 as empty so the
         // user sees a blank input instead of '0' or '0.0'.
@@ -192,6 +200,22 @@ class _CreateTreePageState extends State<CreateTreePage> {
             floweringPeriod: floweringPeriodController.text,
             imageFile: _selectedImage,
           );
+          try {
+            final serverTree = _extractTreePayload(createResp);
+            await _cacheOnlineTree(
+              serverTree,
+              fallback: {
+                'uuid': _extractCreatedId(createResp) ?? serverTree['id']?.toString(),
+                'species_id': selectedSpeciesId,
+                'planted_at': plantingDateController.text,
+                'height': double.tryParse(heightController.text),
+                'diameter': double.tryParse(widthController.text),
+                'flowering_period': int.tryParse(floweringPeriodController.text),
+              },
+            );
+          } catch (e) {
+            print('⚠️ Failed to cache online-created tree locally: $e');
+          }
         } else {
           final resp = await TreeApi.updateTree(
             id: widget.tree!['id'].toString(),
@@ -208,35 +232,25 @@ class _CreateTreePageState extends State<CreateTreePage> {
             floweringPeriod: floweringPeriodController.text,
             imageFile: _selectedImage,
           );
-
-          // Update local cache so the local SQLite `trees` row reflects the
-          // server-side change immediately. Use uuid when available, else id.
-            try {
-              final uuid = widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString();
-              if (uuid != null) {
-                final changes = <String, dynamic>{
-                  'species_id': selectedSpeciesId!,
-                  'planted_at': plantingDateController.text,
-                  'height': double.tryParse(heightController.text),
-                  'diameter': double.tryParse(widthController.text),
-                  'flowering_period': int.tryParse(floweringPeriodController.text),
-                };
-
-                // If server returned an updated timestamp, persist it locally so
-                // future merges can compare timestamps correctly.
-                try {
-                  final serverUpdated = resp['updated_at'] ?? resp['updatedAt'];
-                  if (serverUpdated != null) {
-                    changes['updated_at'] = serverUpdated.toString();
-                  }
-                } catch (_) {}
-
-                await TreeDB().updateTreeByUuid(uuid, changes, markPendingUpdate: false);
-              }
-            } catch (e) {
-            // If local update fails, continue — it's non-fatal and will be
-            // reconciled during the next sync.
-            print('⚠️ Failed to update local tree row after online update: $e');
+          try {
+            final serverTree = _extractTreePayload(resp);
+            await _cacheOnlineTree(
+              serverTree,
+              fallback: {
+                'uuid': widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString(),
+                'tree_tag': widget.tree!['tree_tag'],
+                'species_id': selectedSpeciesId,
+                'planted_at': plantingDateController.text,
+                'height': double.tryParse(heightController.text),
+                'diameter': double.tryParse(widthController.text),
+                'flowering_period': int.tryParse(floweringPeriodController.text),
+                'thumbnail': widget.tree!['thumbnail'],
+                'latitude': widget.tree!['latitude'],
+                'longitude': widget.tree!['longitude'],
+              },
+            );
+          } catch (e) {
+            print('⚠️ Failed to cache online-updated tree locally: $e');
           }
         }
 
@@ -286,6 +300,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
               widget.tree!['uuid']?.toString() ??
               widget.tree!['id']?.toString() ??
               const Uuid().v4();
+          final now = DateTime.now();
+          final growthTimestamp = now.add(const Duration(milliseconds: 1));
           final changes = {
             'tree_tag':
                 widget.tree!['tree_tag'] ??
@@ -295,22 +311,35 @@ class _CreateTreePageState extends State<CreateTreePage> {
             'height': double.tryParse(heightController.text),
             'diameter': double.tryParse(widthController.text),
             'flowering_period': int.tryParse(floweringPeriodController.text),
+            'updated_at': now.toIso8601String(),
             // Do not clear thumbnail here; imageFile is stored separately in TreeModel.imageFile
           };
-          // Mark local row as updated now so UI merge logic can compare timestamps
-          changes['updated_at'] = DateTime.now().toIso8601String();
 
           final updatedRows = await TreeDB().updateTreeByUuid(
             uuidExisting,
             changes,
             markPendingUpdate: true,
           );
-          print(
-            '🌱 Offline edit saved locally for uuid=$uuidExisting (updated rows: $updatedRows)',
-          );
+
+          // Log growth entry for height/diameter changes so they sync via growth table
+          try {
+            final growth = TreeGrowthModel(
+              uuid: const Uuid().v4(),
+              treeUuid: uuidExisting,
+              height: double.tryParse(heightController.text),
+              diameter: double.tryParse(widthController.text),
+              createdAt: growthTimestamp.toIso8601String(),
+              synced: 0,
+              pendingUpdate: 0,
+              pendingDelete: 0,
+            );
+            await GrowthDB().insertGrowth(growth);
+          } catch (e) {
+            print('⚠️ Failed to log offline growth: $e');
+          }
 
           await Flushbar(
-            message: 'No internet — changes saved locally and will be synced',
+            message: 'Changes saved locally',
             icon: const Icon(Icons.cloud_off, color: Colors.white),
             backgroundColor: Colors.orange.shade700,
             duration: const Duration(seconds: 2),
@@ -382,7 +411,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
           final insertedId = await TreeDB().insertTree(offlineTree);
 
           await Flushbar(
-            message: 'No internet — tree saved locally',
+            message: 'Tree saved locally',
             icon: const Icon(Icons.cloud_off, color: Colors.white),
             backgroundColor: Colors.orange.shade700,
             duration: const Duration(seconds: 2),
@@ -419,6 +448,94 @@ class _CreateTreePageState extends State<CreateTreePage> {
         setState(() => isLoading = false);
       }
     }
+  }
+
+  Map<String, dynamic> _extractTreePayload(dynamic resp) {
+    if (resp is Map<String, dynamic>) {
+      if (resp['data'] is Map<String, dynamic>) {
+        final data = Map<String, dynamic>.from(resp['data']);
+        // If this is a paginated response, ignore it here; otherwise treat as the tree payload.
+        if (!(data['data'] is List)) return data;
+      }
+      if (resp['tree'] is Map<String, dynamic>) {
+        return Map<String, dynamic>.from(resp['tree']);
+      }
+      return Map<String, dynamic>.from(resp);
+    }
+    return <String, dynamic>{};
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '');
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  Future<void> _cacheOnlineTree(
+    Map<String, dynamic> treeData, {
+    Map<String, dynamic>? fallback,
+  }) async {
+    final merged = <String, dynamic>{};
+    if (fallback != null) merged.addAll(fallback);
+    merged.addAll(treeData);
+
+    final uuid = (merged['uuid'] ?? merged['id'])?.toString();
+    if (uuid == null || uuid.isEmpty) return;
+
+    final plantedRaw = merged['planted_at'] ?? merged['plantedAt'];
+    String? plantedIso;
+    if (plantedRaw != null) {
+      try {
+        plantedIso = DateTime.parse(plantedRaw.toString()).toIso8601String();
+      } catch (_) {
+        plantedIso = plantedRaw.toString();
+      }
+    }
+
+    final db = await LocalDB.getDatabase();
+    final values = {
+      'uuid': uuid,
+      'tree_tag': merged['tree_tag'] ?? merged['treeTag'] ?? merged['tag'],
+      'species_id': merged['species']?['id']?.toString() ?? merged['species_id']?.toString(),
+      'planted_at': plantedIso,
+      'height': _asDouble(merged['height']),
+      'diameter': _asDouble(merged['diameter'] ?? merged['width']),
+      'flowering_period': _asInt(merged['flowering_period']),
+      'thumbnail': merged['thumbnail'],
+      'latitude': _asDouble(merged['latitude']),
+      'longitude': _asDouble(merged['longitude']),
+      'updated_at': (merged['updated_at'] ?? merged['updatedAt'] ?? DateTime.now().toIso8601String()).toString(),
+      'synced': 1,
+      'pending_update': 0,
+      'pending_delete': 0,
+    };
+
+    // Update the existing cached row for this uuid; insert if not present.
+    final updated = await db.update(
+      'trees',
+      values,
+      where: 'uuid = ?',
+      whereArgs: [uuid],
+    );
+
+    if (updated == 0) {
+      await db.insert(
+        'trees',
+        values,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+
+    // Clean up any duplicate rows for the same uuid so offline reads see the latest values.
+    await db.delete(
+      'trees',
+      where: 'uuid = ? AND rowid NOT IN (SELECT MAX(rowid) FROM trees WHERE uuid = ?)',
+      whereArgs: [uuid, uuid],
+    );
   }
 
   // Safely pull a tree id from diverse API response shapes.
@@ -534,13 +651,15 @@ class _CreateTreePageState extends State<CreateTreePage> {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final menuWidth = constraints.maxWidth;
+                  final isEditing = widget.tree != null;
                   return SizedBox(
                     width: double.infinity,
                     child: DropdownMenu<String>(
                       // ensure popup has a reasonable minimum width on larger screens
                       width: max(menuWidth, 360),
                       controller: speciesController,
-                      requestFocusOnTap: true,
+                      requestFocusOnTap: !isEditing,
+                      enabled: !isEditing,
                       initialSelection: selectedSpeciesId,
                       label: const Text('Species'),
                       dropdownMenuEntries: speciesList
@@ -551,7 +670,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
                             ),
                           )
                           .toList(),
-                      onSelected: (String? v) {
+                      onSelected: isEditing ? null : (String? v) {
                         if (v == null) return;
                         setState(() {
                           selectedSpeciesId = v;
