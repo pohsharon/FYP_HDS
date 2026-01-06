@@ -24,6 +24,7 @@ import 'sync_services/fruit_sync.dart';
 import 'sync_services/health_sync.dart';
 import 'sync_services/agro_sync.dart';
 import '../services/local database/disease_db.dart';
+import 'package:flutter/foundation.dart';
 
 class AppInitializer {
   static const bool _logEnabled = false;
@@ -38,6 +39,28 @@ class AppInitializer {
   // This prevents duplicate caching when `cacheAllData()` already performed the initial cache
   // and the listener fires immediately after registration on some platforms.
   static bool _skipFirstReconnect = false;
+  // Track last known online state to only trigger sync on offline -> online transitions
+  static bool _wasOnline = false;
+  // Prevent overlapping syncs when connectivity flaps quickly
+  static bool _isSyncing = false;
+  // Expose sync-in-progress so UI can show a spinner
+  static final ValueNotifier<bool> syncInProgress = ValueNotifier<bool>(false);
+  // Notify listeners when sync completes so they can refresh
+  static final ValueNotifier<int> syncCompleted = ValueNotifier<int>(0);
+
+  static bool _beginSync() {
+    if (syncInProgress.value) {
+      return false;
+    }
+    syncInProgress.value = true;
+    return true;
+  }
+
+  static void _endSync() {
+    syncInProgress.value = false;
+    // Increment counter to notify all listeners that sync completed
+    syncCompleted.value++;
+  }
 
   static void enableConnectivitySync() {
     _connectivitySyncEnabled = true;
@@ -45,6 +68,13 @@ class AppInitializer {
 
   /// Cache all data from remote to local storage
   static Future<void> cacheAllData() async {
+    // Avoid overlapping syncs
+    final started = _beginSync();
+    if (!started) {
+      _log('⚠️ Sync already running, skipping cacheAllData');
+      return;
+    }
+
     final online = await ConnectivityHelper.hasInternetConnection();
     final treeDB = TreeDB();
     final fruitDB = FruitDB();
@@ -53,6 +83,7 @@ class AppInitializer {
     final nowStamp = DateTime.now().toIso8601String();
     if (!online) {
       _log('📴 Offline mode detected at $nowStamp');
+      _endSync();
       return;
     }
 
@@ -196,10 +227,19 @@ class AppInitializer {
       _skipFirstReconnect = true;
     } catch (e) {
       _log('❌ Error during cache: $e');
+    } finally {
+      _endSync();
     }
   }
 
   static Future<List<TreeModel>> initializeApp() async {
+    // Prevent overlapping with other sync operations
+    final started = _beginSync();
+    if (!started) {
+      _log('⚠️ Sync already running, skipping initializeApp');
+      return [];
+    }
+
     final online = await ConnectivityHelper.hasInternetConnection();
   // Local DB instance will be fetched where needed
     final treeDB = TreeDB();
@@ -339,6 +379,7 @@ class AppInitializer {
       }
     }
 
+    _endSync();
     return trees;
   }
 
@@ -347,22 +388,47 @@ class AppInitializer {
       return;
     }
     _connectivityListenerInitialized = true;
+
+    // Initialize last known state so we only fire on true offline -> online transitions
+    ConnectivityHelper.hasInternetConnection().then((online) {
+      _wasOnline = online;
+    });
+
     Connectivity().onConnectivityChanged.listen((status) async {
       if (!_connectivitySyncEnabled) {
         return;
       }
+
       final online = await ConnectivityHelper.hasInternetConnection();
-      if (online) {
-        // If requested, skip the first reconnect event to avoid duplicating the init cache
-        if (_skipFirstReconnect) {
-          _skipFirstReconnect = false;
-          return;
-        }
+
+      // Reset when offline so the next online event can trigger a sync
+      if (!online) {
+        _wasOnline = false;
+        // Once we've truly gone offline, allow the next reconnect to sync
+        _skipFirstReconnect = false;
+        return;
+      }
+
+      // If requested, skip the first reconnect event to avoid duplicating the init cache
+      if (_skipFirstReconnect) {
+        _skipFirstReconnect = false;
+        _wasOnline = true;
+        return;
+      }
+
+      // Only sync when transitioning from offline -> online, and avoid overlapping runs
+      if (!_wasOnline && !_isSyncing) {
+        _isSyncing = true;
         try {
           await cacheAllData();
         } catch (e) {
           _log('❌ Error during reconnect sync: $e');
+        } finally {
+          _isSyncing = false;
+          _wasOnline = true;
         }
+      } else {
+        _wasOnline = true;
       }
     });
   }

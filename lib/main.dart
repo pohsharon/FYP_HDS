@@ -12,6 +12,8 @@ void main() async {
 
   // Initialize connectivity listener only - caching happens after login
   AppInitializer.initConnectivityListener();
+  // Ensure connectivity-driven syncs are enabled even for already logged-in users
+  AppInitializer.enableConnectivitySync();
   // final localDB = LocalDB.instance;
   // await localDB.resetTreesTable();
 

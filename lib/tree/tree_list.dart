@@ -9,6 +9,7 @@ import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/services/local%20database/tree_db.dart';
 import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/services/local%20database/species_db.dart';
+import 'package:fyp_hbs/services/app_initializer.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:intl/intl.dart';
 import 'package:fyp_hbs/tree/map.dart';
@@ -17,6 +18,8 @@ import 'package:fyp_hbs/authentication/reset_password.dart';
 import 'package:fyp_hbs/widgets/persistent_appbar.dart';
 import 'package:fyp_hbs/services/api/disease_api.dart';
 import 'package:fyp_hbs/services/api/agrochemical_api.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
 
 class TreePage extends StatefulWidget {
   const TreePage({super.key});
@@ -36,6 +39,7 @@ class _TreePageState extends State<TreePage> {
   String? _selectedSpecies;
     String? _selectedAgrochemicalId;
   final ScrollController _scrollController = ScrollController();
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   // Controllers for matching create_tree's DropdownMenu style
   final TextEditingController _speciesFilterController =
       TextEditingController();
@@ -48,6 +52,7 @@ class _TreePageState extends State<TreePage> {
   int _lastPage = 1;
   bool _isLoadingMore = false;
   bool _isInitialLoading = true;
+  bool _isOnline = true;
   // Persistent filter state so dialog opens with current values
   // Planting date filter state
   String _currentPlantingFrom = '';
@@ -64,6 +69,20 @@ class _TreePageState extends State<TreePage> {
     _loadLocalSpecies();
     _loadDiseases();
     _loadAgrochemicals();
+    _checkOnline();
+    _connectivitySub = Connectivity()
+        .onConnectivityChanged
+        .listen((status) {
+      final onlineNow = status.any((s) => s != ConnectivityResult.none);
+      if (mounted) {
+        setState(() {
+          _isOnline = onlineNow;
+        });
+      }
+    });
+
+    // Listen for sync completion and auto-refresh
+    AppInitializer.syncCompleted.addListener(_onSyncCompleted);
 
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >=
@@ -74,6 +93,23 @@ class _TreePageState extends State<TreePage> {
         _loadMoreTrees();
       }
     });
+  }
+
+  void _onSyncCompleted() {
+    if (mounted) {
+      _currentPage = 1;
+      fetchTrees(page: 1);
+    }
+  }
+
+  Future<void> _checkOnline() async {
+    final status = await Connectivity().checkConnectivity();
+    final onlineNow = status != ConnectivityResult.none;
+    if (mounted) {
+      setState(() {
+        _isOnline = onlineNow;
+      });
+    }
   }
 
   Future<void> _loadLocalSpecies() async {
@@ -122,6 +158,8 @@ class _TreePageState extends State<TreePage> {
 
   @override
   void dispose() {
+    _connectivitySub?.cancel();
+    AppInitializer.syncCompleted.removeListener(_onSyncCompleted);
     _scrollController.dispose();
     _speciesFilterController.dispose();
     _diseaseFilterController.dispose();
@@ -166,7 +204,12 @@ class _TreePageState extends State<TreePage> {
   Future<void> fetchTrees({int page = 1, bool isLoadMore = false}) async {
     if (!isLoadMore && page == 1) {
       if (mounted) {
-        setState(() => _isInitialLoading = true);
+        setState(() {
+          _isInitialLoading = true;
+          // Clear existing trees when refreshing from page 1
+          _filteredTrees = [];
+          _allTrees = [];
+        });
       }
     }
     try {
@@ -352,6 +395,23 @@ class _TreePageState extends State<TreePage> {
                 'synced': m.synced,
               };
             }).toList();
+
+        // Sort offline trees: unsynced first, then by sequence number descending
+        cleanedLocal.sort((a, b) {
+          final aSyn =
+              (a['synced'] == 0 || a['synced']?.toString() == '0') ? 0 : 1;
+          final bSyn =
+              (b['synced'] == 0 || b['synced']?.toString() == '0') ? 0 : 1;
+          if (aSyn != bSyn) return aSyn - bSyn; // unsynced (0) first
+
+          int parseSeq(Map<String, dynamic> m) {
+            final tag = (m['tree_tag'] ?? '').toString();
+            final seq = RegExp(r'\d+$').firstMatch(tag)?.group(0);
+            return int.tryParse(seq ?? '') ?? 0;
+          }
+
+          return parseSeq(b).compareTo(parseSeq(a)); // larger sequence first
+        });
 
         if (!mounted) return;
 
@@ -1350,7 +1410,8 @@ Widget _buildActiveFilters() {
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async {
-                  await fetchTrees();
+                  _currentPage = 1;
+                  await fetchTrees(page: 1);
                 },
                 child: _isInitialLoading
                     ? const Center(
@@ -1428,69 +1489,77 @@ Widget _buildActiveFilters() {
   Widget _buildSearchBar(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          IconButton(
-            icon: const Icon(
-              Icons.location_on,
-              color: AppColors.danger,
-              size: 30,
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const MapPage()),
-              );
-            },
-          ),
-          const SizedBox(width: 5),
-          Expanded(
-            child: TextField(
-              onChanged: (value) {
-                filterTrees(value);
-              },
-              decoration: InputDecoration(
-                hintText: 'Search Tree',
-                hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: GestureDetector(
-                  onTap: () => _showSpeciesFilterDialog(context),
-                  child: const Icon(Icons.filter_alt_outlined),
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(
+                  Icons.location_on,
+                  color: AppColors.danger,
+                  size: 30,
                 ),
-                filled: true,
-                fillColor: AppColors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide(color: AppColors.gray400, width: 1.2),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide(
-                    color: AppColors.hunterGreen,
-                    width: 1.5,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const MapPage()),
+                  );
+                },
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: TextField(
+                  onChanged: (value) {
+                    filterTrees(value);
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search Tree',
+                    hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: GestureDetector(
+                      onTap: _isOnline ? () => _showSpeciesFilterDialog(context) : null,
+                      child: Icon(
+                        Icons.filter_alt_outlined,
+                        color: _isOnline ? null : AppColors.gray400,
+                      ),
+                    ),
+                    filled: true,
+                    fillColor: AppColors.white,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide(color: AppColors.gray400, width: 1.2),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide(
+                        color: AppColors.hunterGreen,
+                        width: 1.5,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CreateTreePage()),
-              );
-              await _handleNavigationResult(result);
-            },
-            child: Container(
-              decoration: const BoxDecoration(
-                color: AppColors.pakistanGreen,
-                shape: BoxShape.circle,
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CreateTreePage()),
+                  );
+                  await _handleNavigationResult(result);
+                },
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: AppColors.pakistanGreen,
+                    shape: BoxShape.circle,
+                  ),
+                  padding: const EdgeInsets.all(6),
+                  child: const Icon(Icons.add, color: Colors.white),
+                ),
               ),
-              padding: const EdgeInsets.all(6),
-              child: const Icon(Icons.add, color: Colors.white),
-            ),
+            ],
           ),
         ],
       ),
@@ -1518,7 +1587,7 @@ Widget _buildActiveFilters() {
       }
     }
     final String type = tree['species']?['name'] ?? 'Unknown Species';
-    final String uuid = tree['uuid'];
+    final String uuid = tree['uuid']?.toString() ?? tree['id']?.toString() ?? 'pending';
 
     // Color statusColor =
     //     status == 'Flowering' ? AppColors.successLight : AppColors.dangerLight;
@@ -1608,7 +1677,11 @@ Widget _buildActiveFilters() {
                   ),
                 );
 
-                await _handleNavigationResult(result);
+                // Reload tree list when returning from tree details
+                if (result != null) {
+                  _currentPage = 1;
+                  await fetchTrees(page: 1);
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.mossGreen,

@@ -19,6 +19,7 @@ import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/authentication/reset_password.dart';
 import 'package:fyp_hbs/authentication/login.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:fyp_hbs/services/app_initializer.dart';
 
 class FruitPage extends StatefulWidget {
   const FruitPage({super.key});
@@ -61,6 +62,7 @@ class _FruitPageState extends State<FruitPage> {
   @override
   void dispose() {
     _connectivitySub?.cancel();
+    AppInitializer.syncCompleted.removeListener(_onSyncCompleted);
     _speciesFilterController.dispose();
     _gradeController.dispose();
     _harvestFromController.dispose();
@@ -171,6 +173,15 @@ class _FruitPageState extends State<FruitPage> {
         });
       }
     });
+
+    // Listen for sync completion and auto-refresh
+    AppInitializer.syncCompleted.addListener(_onSyncCompleted);
+  }
+
+  void _onSyncCompleted() {
+    if (mounted) {
+      _loadHarvestEvents();
+    }
   }
 
   Future<void> _checkOnline() async {
@@ -1421,77 +1432,105 @@ class _FruitPageState extends State<FruitPage> {
   Widget _buildSearchBar(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: TextField(
-              onChanged: (value) {
-                filterFruits(value);
-              },
-              decoration: InputDecoration(
-                hintText: 'Search Fruit',
-                hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _isOnline
-                    ? GestureDetector(
-                        onTap: () => _showSpeciesFilterDialog(context),
-                        child: const Icon(Icons.filter_alt_outlined),
-                      )
-                    : null,
-                filled: true,
-                fillColor: AppColors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide(color: AppColors.gray400, width: 1.2),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide(
-                    color: AppColors.hunterGreen,
-                    width: 1.5,
+          if (!_isOnline)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.orange.shade800),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Offline: showing all fruits (filters disabled).',
+                      style: TextStyle(
+                        color: Colors.orange.shade800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  onChanged: (value) {
+                    filterFruits(value);
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search Fruit',
+                    hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _isOnline
+                        ? GestureDetector(
+                            onTap: () => _showSpeciesFilterDialog(context),
+                            child: const Icon(Icons.filter_alt_outlined),
+                          )
+                        : Icon(
+                            Icons.filter_alt_outlined,
+                            color: AppColors.gray400,
+                          ),
+                    filled: true,
+                    fillColor: AppColors.white,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide(color: AppColors.gray400, width: 1.2),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide(
+                        color: AppColors.hunterGreen,
+                        width: 1.5,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () async {
-              if (!_canCreateFruit) {
-                await Flushbar(
-                  message:
-                      'New fruits can only be added to the active harvest event.',
-                  backgroundColor: Colors.orange.shade700,
-                  duration: const Duration(seconds: 2),
-                  margin: const EdgeInsets.all(12),
-                  borderRadius: BorderRadius.circular(8),
-                ).show(context);
-                return;
-              }
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CreateFruitPage()),
-              );
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () async {
+                  if (!_canCreateFruit) {
+                    await Flushbar(
+                      message:
+                          'New fruits can only be added to the active harvest event.',
+                      backgroundColor: Colors.orange.shade700,
+                      duration: const Duration(seconds: 2),
+                      margin: const EdgeInsets.all(12),
+                      borderRadius: BorderRadius.circular(8),
+                    ).show(context);
+                    return;
+                  }
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CreateFruitPage()),
+                  );
 
-              if (result == true) {
-                await _changeHarvestEvent(
-                  _selectedHarvestUuid ??
-                      _activeHarvestEvent?['uuid']?.toString(),
-                );
-              }
-            },
-            child: Opacity(
-              opacity: _canCreateFruit ? 1.0 : 0.4,
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: AppColors.pakistanGreen,
-                  shape: BoxShape.circle,
+                  if (result == true) {
+                    await _changeHarvestEvent(
+                      _selectedHarvestUuid ??
+                          _activeHarvestEvent?['uuid']?.toString(),
+                    );
+                  }
+                },
+                child: Opacity(
+                  opacity: _canCreateFruit ? 1.0 : 0.4,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: AppColors.pakistanGreen,
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(6),
+                    child: const Icon(Icons.add, color: Colors.white),
+                  ),
                 ),
-                padding: const EdgeInsets.all(6),
-                child: const Icon(Icons.add, color: Colors.white),
               ),
-            ),
+            ],
           ),
         ],
       ),
