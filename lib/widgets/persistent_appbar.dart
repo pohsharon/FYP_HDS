@@ -96,10 +96,17 @@ class PersistentAppBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
-class _ConnectionBadge extends StatelessWidget {
+class _ConnectionBadge extends StatefulWidget {
   const _ConnectionBadge({this.onTap});
 
   final VoidCallback? onTap;
+
+  @override
+  State<_ConnectionBadge> createState() => _ConnectionBadgeState();
+}
+
+class _ConnectionBadgeState extends State<_ConnectionBadge> {
+  bool? _lastOnlineStatus;
 
   Future<bool> _hasInternet() async {
     try {
@@ -126,6 +133,13 @@ class _ConnectionBadge extends StatelessWidget {
             final timestamp = DateTime.now().toIso8601String();
             final status = online ? 'ONLINE' : 'OFFLINE';
             print('📡 Connectivity status changed: $status at $timestamp');
+            
+            // 🔄 Trigger auto-sync when transitioning from offline to online
+            if (last == false && online == true) {
+              print('🔄 Auto-syncing after reconnection...');
+              _triggerAutoSync();
+            }
+            
             last = online;
             controller.add(online);
           }
@@ -155,6 +169,23 @@ class _ConnectionBadge extends StatelessWidget {
     });
   }
 
+  void _triggerAutoSync() async {
+    if (!mounted) return;
+    
+    // Check if already syncing to avoid duplicate sync operations
+    if (AppInitializer.syncInProgress.value) {
+      print('⚠️ Sync already in progress, skipping auto-sync');
+      return;
+    }
+
+    try {
+      await AppInitializer.initializeApp();
+      print('✅ Auto-sync completed successfully');
+    } catch (e) {
+      print('❌ Auto-sync failed: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -181,7 +212,7 @@ class _ConnectionBadge extends StatelessWidget {
 
               return InkWell(
                 borderRadius: BorderRadius.circular(20),
-                onTap: syncing ? null : onTap,
+                onTap: syncing ? null : widget.onTap,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
