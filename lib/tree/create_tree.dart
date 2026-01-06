@@ -344,36 +344,20 @@ class _CreateTreePageState extends State<CreateTreePage> {
             }
           } catch (_) {}
 
-          // Calculate next sequence by scanning existing local trees with same prefix
+          // Calculate next sequence by scanning ALL existing trees regardless of species
           int nextSeq = 1;
           try {
             final existing = await TreeDB().fetchAllTrees();
             int maxSeq = 0;
+            
+            // Scan all trees and extract the highest sequence number
             for (final t in existing) {
-              // Prefer matching by speciesId first (server/cached rows should have speciesId)
-              if ((t.speciesId?.toString() ?? '') == (selectedSpeciesId?.toString() ?? '')) {
-                final tag = (t.treeTag ?? '').toString();
-                if (tag.contains('-')) {
-                  final parts = tag.split('-');
-                  final seqStr = parts.last.replaceAll(RegExp(r'[^0-9]'), '');
-                  final val = int.tryParse(seqStr) ?? 0;
-                  if (val > maxSeq) maxSeq = val;
-                }
-              }
-            }
-
-            // If none matched by speciesId, fall back to scanning all tags for the prefix
-            if (maxSeq == 0) {
-              for (final t in existing) {
-                final tag = (t.treeTag ?? '').toString();
-                if (tag.startsWith('$prefix-')) {
-                  final parts = tag.split('-');
-                  if (parts.length >= 2) {
-                    final seqStr = parts.last.replaceAll(RegExp(r'[^0-9]'), '');
-                    final val = int.tryParse(seqStr) ?? 0;
-                    if (val > maxSeq) maxSeq = val;
-                  }
-                }
+              final tag = (t.treeTag ?? '').toString();
+              if (tag.contains('-')) {
+                final parts = tag.split('-');
+                final seqStr = parts.last.replaceAll(RegExp(r'[^0-9]'), '');
+                final val = int.tryParse(seqStr) ?? 0;
+                if (val > maxSeq) maxSeq = val;
               }
             }
 
@@ -397,24 +381,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
 
           final insertedId = await TreeDB().insertTree(offlineTree);
 
-          print(
-            '🌱 Offline tree saved locally: ${offlineTree.treeTag} (row id: $insertedId)',
-          );
-
-          // DEBUG: verify unsynced rows count immediately after insert
-          try {
-            final unsyncedNow = await TreeDB().fetchUnsyncedTrees();
-            print(
-              '📦 After offline insert, unsynced count: ${unsyncedNow.length}',
-            );
-            for (final u in unsyncedNow) {
-              print(
-                '   • unsynced -> uuid=${u.uuid}, tree_tag=${u.treeTag}, synced=${u.synced}',
-              );
-            }
-          } catch (e) {
-            print('⚠️ Error reading unsynced rows after insert: $e');
-          }
           await Flushbar(
             message: 'No internet — tree saved locally',
             icon: const Icon(Icons.cloud_off, color: Colors.white),

@@ -123,11 +123,16 @@ class _ConnectionBadge extends StatelessWidget {
           final hasInternet = hasNetwork && await _hasInternet();
           final online = hasNetwork && hasInternet;
           if (last == null || online != last) {
+            final timestamp = DateTime.now().toIso8601String();
+            final status = online ? 'ONLINE' : 'OFFLINE';
+            print('📡 Connectivity status changed: $status at $timestamp');
             last = online;
             controller.add(online);
           }
         } catch (_) {
           if (last != false) {
+            final timestamp = DateTime.now().toIso8601String();
+            print('📡 Connectivity status changed: OFFLINE at $timestamp');
             last = false;
             controller.add(false);
           }

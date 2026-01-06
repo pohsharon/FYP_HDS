@@ -230,9 +230,7 @@ class SyncTrees {
               response.containsKey('data')) {
             // mark as synced
             final updated = await TreeDB().markAsSynced(tree.uuid);
-            if (updated > 0) {
-              print('✅ Synced new tree: ${tree.uuid}');
-            } else {
+            if (updated == 0) {
               print('⚠️ markAsSynced updated 0 rows for ${tree.uuid}');
             }
 
@@ -251,16 +249,14 @@ class SyncTrees {
               final serverUuid = (serverObj['uuid'] ?? serverObj['id'] ?? serverObj['server_id'])?.toString();
               if (serverUuid != null && serverUuid.isNotEmpty && serverUuid != tree.uuid) {
                 // Update trees table uuid
-                final changed = await TreeDB().reassignUuid(tree.uuid, serverUuid);
-                print('🔁 Reassigned tree uuid locally: ${tree.uuid} -> $serverUuid (rows updated: $changed)');
+                await TreeDB().reassignUuid(tree.uuid, serverUuid);
 
                 // Remap child records to point to serverUuid
                 try {
-                  final agroUpdated = await AgroDB().reassignTreeUuid(tree.uuid, serverUuid);
-                  final healthUpdated = await HealthDB().reassignTreeUuid(tree.uuid, serverUuid);
-                  final growthUpdated = await GrowthDB().reassignTreeUuid(tree.uuid, serverUuid);
-                  final fruitUpdated = await FruitDB().reassignTreeUuid(tree.uuid, serverUuid);
-                  print('🔁 Reassigned child rows -> agro:$agroUpdated health:$healthUpdated growth:$growthUpdated fruit:$fruitUpdated');
+                  await AgroDB().reassignTreeUuid(tree.uuid, serverUuid);
+                  await HealthDB().reassignTreeUuid(tree.uuid, serverUuid);
+                  await GrowthDB().reassignTreeUuid(tree.uuid, serverUuid);
+                  await FruitDB().reassignTreeUuid(tree.uuid, serverUuid);
                 } catch (childErr) {
                   print('⚠️ Failed to remap child records for ${tree.uuid} -> $serverUuid: $childErr');
                 }
@@ -269,7 +265,6 @@ class SyncTrees {
                   final serverTag = (serverObj['tree_tag'] ?? serverObj['treeTag'] ?? serverObj['tag'])?.toString();
                   if (serverTag != null && serverTag.isNotEmpty) {
                     await TreeDB().updateTreeByUuid(serverUuid, {'tree_tag': serverTag}, markPendingUpdate: false);
-                    print('🔁 Updated local tree_tag for $serverUuid -> $serverTag');
                   }
                 } catch (e) {
                   print('❌ Error updating tree_tag: $e');
