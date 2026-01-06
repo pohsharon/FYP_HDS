@@ -24,7 +24,6 @@ class SyncAgro {
 
       // 1) Pending deletes
       final deletes = await db.fetchPendingDeletes();
-      print('🗑️ Found ${deletes.length} pending agrochemical deletes');
       for (final a in deletes) {
         try {
           final tu = a.tree_uuid ?? '';
@@ -74,7 +73,6 @@ class SyncAgro {
 
       // 2) Pending updates
       final updates = await db.fetchPendingUpdates();
-      print('🔁 Found ${updates.length} pending agrochemical updates');
       for (final a in updates) {
         try {
           final tu = a.tree_uuid ?? '';
@@ -131,7 +129,6 @@ class SyncAgro {
       // 3) New unsynced health records
       final unsynced = await db.fetchUnsyncedAgrochemicals();
       final newOnes = unsynced.where((h) => h.pendingUpdate == 0 && h.pendingDelete == 0).toList();
-      print('🌱 Found ${newOnes.length} new unsynced agrochemical records');
       for (final h in newOnes) {
         try {
           // Ensure we send a server-valid agrochemical UUID. If the local row

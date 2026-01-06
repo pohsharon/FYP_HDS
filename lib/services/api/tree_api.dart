@@ -123,7 +123,6 @@ class TreeApi {
         // Also persist species into local SQLite for stronger offline lookup
         try {
           await SpeciesDB().saveSpeciesList(speciesList);
-          print('✅ Species saved to local DB (${speciesList.length})');
         } catch (e) {
           print('⚠️ Failed to save species to local DB: $e');
         }
@@ -140,7 +139,6 @@ class TreeApi {
       // Try loading from cache as fallback
       final cachedSpecies = prefs.getString('cached_species');
       if (cachedSpecies != null) {
-        print("📦 Using cached species as fallback");
         final List<dynamic> decodedList = jsonDecode(cachedSpecies);
         return decodedList.map<Map<String, dynamic>>((item) {
           return Map<String, dynamic>.from(item);

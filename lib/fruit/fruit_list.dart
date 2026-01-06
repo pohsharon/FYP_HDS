@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/fruit/create_fruit.dart';
 import 'package:fyp_hbs/services/api/fruit_api.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
+import 'package:fyp_hbs/models/fruit_model.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/services/local database/fruit_db.dart';
@@ -16,6 +18,7 @@ import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/authentication/reset_password.dart';
 import 'package:fyp_hbs/authentication/login.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class FruitPage extends StatefulWidget {
   const FruitPage({super.key});
@@ -39,6 +42,8 @@ class _FruitPageState extends State<FruitPage> {
   final TextEditingController _weightMinController = TextEditingController();
   final TextEditingController _weightMaxController = TextEditingController();
   bool _isInitialLoading = true;
+  bool _isOnline = true;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   bool _hasActiveFilters() {
     return _selectedSpecies != null ||
@@ -55,6 +60,7 @@ class _FruitPageState extends State<FruitPage> {
 
   @override
   void dispose() {
+    _connectivitySub?.cancel();
     _speciesFilterController.dispose();
     _gradeController.dispose();
     _harvestFromController.dispose();
@@ -154,6 +160,27 @@ class _FruitPageState extends State<FruitPage> {
   void initState() {
     super.initState();
     _loadHarvestEvents();
+    _checkOnline();
+    _connectivitySub = Connectivity()
+        .onConnectivityChanged
+        .listen((status) {
+      final onlineNow = status.any((s) => s != ConnectivityResult.none);
+      if (mounted) {
+        setState(() {
+          _isOnline = onlineNow;
+        });
+      }
+    });
+  }
+
+  Future<void> _checkOnline() async {
+    final status = await Connectivity().checkConnectivity();
+    final onlineNow = status != ConnectivityResult.none;
+    if (mounted) {
+      setState(() {
+        _isOnline = onlineNow;
+      });
+    }
   }
 
   Future<void> _loadHarvestEvents() async {
@@ -240,7 +267,7 @@ class _FruitPageState extends State<FruitPage> {
     try {
       final fruits =
           useEventScopedEndpoint
-              ? await FruitApi.fetchFruitsByHarvestUuid(targetUuidStr!)
+            ? await FruitApi.fetchFruitsByHarvestUuid(targetUuidStr)
               : await FruitApi.fetchFruits();
 
       final speciesSet = <String>{};
@@ -261,13 +288,19 @@ class _FruitPageState extends State<FruitPage> {
       }
     } catch (e) {
       // On error (likely offline), try to load fruits from local DB cache
+      await _checkOnline();
       try {
         var localFruits = await FruitDB().getAllFruits();
-        if (useEventScopedEndpoint && targetUuidStr != null) {
-          localFruits =
+        List<FruitModel> scopedFruits = localFruits;
+        if (useEventScopedEndpoint) {
+          scopedFruits =
               localFruits
                   .where((f) => f.harvest_uuid?.toString() == targetUuidStr)
                   .toList();
+          // If nothing or very few match the selected harvest event offline, fall back to all cached fruits
+          if (scopedFruits.isEmpty || scopedFruits.length < localFruits.length) {
+            scopedFruits = localFruits;
+          }
         }
 
         // build tree/species lookup to populate nested fields similar to API shape
@@ -286,7 +319,7 @@ class _FruitPageState extends State<FruitPage> {
         }
 
         final mapped =
-            localFruits.map((f) {
+          scopedFruits.map((f) {
               final treeUuid = f.tree_uuid;
               String speciesName = 'Unknown Species';
               String treeTag = 'Offline Tree';
@@ -543,6 +576,7 @@ class _FruitPageState extends State<FruitPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildCompactField(
     TextEditingController controller,
     String hint,
@@ -881,6 +915,11 @@ class _FruitPageState extends State<FruitPage> {
   }
 
   void _showSpeciesFilterDialog(BuildContext context) {
+    if (!_isOnline) {
+      // ignore: avoid_print
+      print('Filters disabled offline');
+      return;
+    }
     String? tempSelectedSpecies = _selectedSpecies;
     String? tempGrade = _currentGrade;
     String? tempHarvestUuid =
@@ -1307,7 +1346,7 @@ class _FruitPageState extends State<FruitPage> {
             const SizedBox(height: 16),
             _buildSearchBar(context),
             const SizedBox(height: 8),
-            _buildActiveFilters(),
+            if (_isOnline) _buildActiveFilters(),
             const SizedBox(height: 16),
             Expanded(
               child: RefreshIndicator(
@@ -1393,10 +1432,12 @@ class _FruitPageState extends State<FruitPage> {
                 hintText: 'Search Fruit',
                 hintStyle: TextStyle(color: AppColors.gray600, fontSize: 12),
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: GestureDetector(
-                  onTap: () => _showSpeciesFilterDialog(context),
-                  child: const Icon(Icons.filter_alt_outlined),
-                ),
+                suffixIcon: _isOnline
+                    ? GestureDetector(
+                        onTap: () => _showSpeciesFilterDialog(context),
+                        child: const Icon(Icons.filter_alt_outlined),
+                      )
+                    : null,
                 filled: true,
                 fillColor: AppColors.white,
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),

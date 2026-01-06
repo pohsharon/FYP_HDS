@@ -16,7 +16,6 @@ class SyncHealth {
 
       // 1) Pending deletes
       final deletes = await db.fetchPendingDeletes();
-      print('🗑️ Found ${deletes.length} pending health deletes');
       for (final h in deletes) {
         try {
           final tu = h.tree_uuid ?? '';
@@ -56,7 +55,6 @@ class SyncHealth {
 
       // 2) Pending updates
       final updates = await db.fetchPendingUpdates();
-      print('🔁 Found ${updates.length} pending health updates');
       for (final h in updates) {
         try {
           final tu = h.tree_uuid ?? '';
@@ -111,7 +109,6 @@ class SyncHealth {
       // 3) New unsynced health records
       final unsynced = await db.fetchUnsyncedHealths();
       final newOnes = unsynced.where((h) => h.pendingUpdate == 0 && h.pendingDelete == 0).toList();
-      print('🌱 Found ${newOnes.length} new unsynced health records');
       for (final h in newOnes) {
         try {
           final resp = await HealthApi.createHealthRecord(

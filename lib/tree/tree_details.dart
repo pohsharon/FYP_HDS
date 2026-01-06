@@ -15,6 +15,7 @@ import 'package:fyp_hbs/services/local%20database/tree_db.dart';
 import 'package:fyp_hbs/services/local%20database/species_db.dart';
 import 'package:fyp_hbs/services/local%20database/growth_db.dart';
 import 'package:another_flushbar/flushbar.dart';
+import '../utils/connectivity_helper.dart';
 
 
 class TreeDetailsPage extends StatefulWidget {
@@ -35,12 +36,27 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   bool isLoading = true;
   Map<String, dynamic>? tree;
   bool _shouldRefresh = false;
+  bool _isOnline = true;
 
   @override
   void initState() {
     super.initState();
     _shouldRefresh = widget.refreshOnPop;
+    _checkConnectivity();
     _loadTreeDetails();
+  }
+
+  Future<void> _checkConnectivity() async {
+    try {
+      final online = await ConnectivityHelper.hasInternetConnection();
+      if (mounted) {
+        setState(() => _isOnline = online);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isOnline = false);
+      }
+    }
   }
 
   void _markShouldRefresh() {
@@ -206,10 +222,6 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
       final double? latestHeight = latest.height;
       final double? latestDiameter = latest.diameter; // <-- KEEP THIS NAME
 
-      print(
-        '🍃 Cached growth found for $uuid -> H:$latestHeight D:$latestDiameter',
-      );
-
       if (!mounted) return;
 
       // Determine the last-updated timestamp of the tree record (if available).
@@ -250,7 +262,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   }
 
   Widget _buildTreeImage(String? thumbnail) {
-    if (thumbnail != null && thumbnail.isNotEmpty) {
+    if (_isOnline && thumbnail != null && thumbnail.isNotEmpty) {
       // Build full URL to Supabase image
       final imageUrl = '${Config.supabaseBaseUrl}$thumbnail';
 
@@ -354,7 +366,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
             children: [
               GestureDetector(
                 onTap: () {
-                  if (treeImage.isNotEmpty) {
+                  if (_isOnline && treeImage.isNotEmpty) {
                     showDialog(
                       context: context,
                       builder:

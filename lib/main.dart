@@ -10,8 +10,7 @@ void main() async {
 
   // (We use a simple file-backed tile cache implemented in the app.)
 
-  // Initialize offline/online setup and preload local cache
-  await AppInitializer.initializeApp();
+  // Initialize connectivity listener only - caching happens after login
   AppInitializer.initConnectivityListener();
   // final localDB = LocalDB.instance;
   // await localDB.resetTreesTable();

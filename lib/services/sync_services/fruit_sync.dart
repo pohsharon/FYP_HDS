@@ -14,7 +14,6 @@ class SyncFruits {
 
       // 1) Pending deletes
       final deletes = await FruitDB().fetchPendingFruitDeletes();
-      print('🗑️ Found ${deletes.length} pending fruit deletes');
       for (final f in deletes) {
         try {
           try {
@@ -42,7 +41,6 @@ class SyncFruits {
 
       // 2) Pending updates
       final updates = await FruitDB().fetchPendingFruitUpdates();
-      print('🔁 Found ${updates.length} pending fruit updates');
       for (final f in updates) {
         try {
           try {
@@ -107,7 +105,6 @@ class SyncFruits {
           unsynced
               .where((f) => f.pendingUpdate == 0 && f.pendingDelete == 0)
               .toList();
-      print('� Found ${newOnes.length} new unsynced fruits');
       for (final fruit in newOnes) {
         try {
           final payload = {

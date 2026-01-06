@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config.dart';
+import '../app_initializer.dart';
 
 class AuthService {
   static Future<Map<String, dynamic>> login(
@@ -190,5 +191,11 @@ class AuthService {
     await prefs.remove('user_json');
 
     return serverOk;
+  }
+
+  /// Cache all data after successful login
+  static Future<void> cacheAfterLogin() async {
+    await AppInitializer.cacheAllData();
+    AppInitializer.enableConnectivitySync();
   }
 }

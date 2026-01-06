@@ -29,7 +29,6 @@ class HarvestDB {
           await txn.insert('harvest_events', insertMap);
         }
       });
-      print('✅ HarvestDB: cached ${remoteEvents.length} harvest events locally');
     } catch (e) {
       print('⚠️ HarvestDB.cacheRemoteHarvestEvents failed: $e');
       rethrow;
@@ -43,8 +42,7 @@ class HarvestDB {
       if (remote.isNotEmpty) {
         await cacheRemoteHarvestEvents(remote);
       }
-    } catch (e) {
-      print('⚠️ HarvestDB.fetchAndCacheFromCloud: failed to fetch events: $e');
+    } catch (_) {
       rethrow;
     }
   }

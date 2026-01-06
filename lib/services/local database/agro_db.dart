@@ -122,8 +122,6 @@ class AgroDB {
       await db.insert('agrochemical_record', u, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
-    final total = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM agrochemical_record'));
-    print('✅ Local agrochemical cache updated. Total agrochemical rows in DB: $total');
   }
 
   // Save master list of agrochemical types (from API) into `agrochemical` lookup table
@@ -142,8 +140,6 @@ class AgroDB {
         print('⚠️ saveAgrochemicalList: failed to insert $entry: $e');
       }
     }
-    final total = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM agrochemical'));
-    print('✅ Saved ${list.length} agrochemical types to local lookup (total=$total)');
   }
 
   /// Replace tree_uuid for agrochemical rows when a locally-created tree

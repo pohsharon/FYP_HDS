@@ -60,7 +60,6 @@ class TreeRepository {
 
         try {
           final allLocal = await _localDB.fetchAllTrees();
-          print('📦 After caching, local DB has ${allLocal.length} trees');
         } catch (e) {
           print('⚠️ Error reading local DB after caching: $e');
         }
@@ -77,8 +76,7 @@ class TreeRepository {
     } on SocketException catch (_) {
       print("📴 Offline mode — loading from local DB");
       return await _localDB.fetchAllTrees();
-    } catch (e) {
-print("❌ Error loading trees: $e — loading local cache instead");
+    } catch (_) {
       return await _localDB.fetchAllTrees();
     }
   }

@@ -127,11 +127,8 @@ class FruitDB{
     final db = await LocalDB.getDatabase();
 
     try {
-      final beforeAll = await db.query('fruits');
-      print('ℹ️ cacheRemoteFruits: rows before caching=${beforeAll.length}');
-    } catch (e) {
-      print('⚠️ cacheRemoteFruits: error dumping rows before caching: $e');
-    }
+      await db.query('fruits');
+    } catch (_) {}
 
     final unsyncedOrPending = await db.query(
       'fruits',
@@ -141,7 +138,6 @@ class FruitDB{
 
     // Step 2: Delete only synced ones
     await db.delete('fruits', where: 'synced = ?', whereArgs: [1]);
-    print('📥 Inserting ${remoteFruits.length} remote fruits into local DB');
     final seen = <String>{};
     int genCounter = 0;
     for (var i = 0; i < remoteFruits.length; i++) {
@@ -188,8 +184,7 @@ class FruitDB{
           insertMap['created_at'].toString().trim().isEmpty) {
         insertMap['created_at'] = DateTime.now().toIso8601String();
       }
-
-      await db.insert(
+            await db.insert(
         'fruits',
         insertMap,
         conflictAlgorithm: ConflictAlgorithm.ignore,
@@ -207,10 +202,7 @@ class FruitDB{
       );
     }
 
-    final total = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM fruits'),
-    );
-    print('✅ Local cache updated. Total fruits in DB: $total');
+
   }
 
   /// Reassign tree_uuid for local fruit rows when a locally-created tree

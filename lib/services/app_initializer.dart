@@ -26,12 +26,178 @@ import 'sync_services/agro_sync.dart';
 import '../services/local database/disease_db.dart';
 
 class AppInitializer {
+  static const bool _logEnabled = false;
+  static void _log(String message) {
+    if (_logEnabled) print(message);
+  }
   // Guard to ensure we only register the connectivity listener once
   static bool _connectivityListenerInitialized = false;
+  // Gate to avoid running connectivity-driven syncs before login completes
+  static bool _connectivitySyncEnabled = false;
   // When true, the connectivity listener will ignore the first reconnect event.
-  // This prevents duplicate caching when `initializeApp()` already performed the initial cache
+  // This prevents duplicate caching when `cacheAllData()` already performed the initial cache
   // and the listener fires immediately after registration on some platforms.
   static bool _skipFirstReconnect = false;
+
+  static void enableConnectivitySync() {
+    _connectivitySyncEnabled = true;
+  }
+
+  /// Cache all data from remote to local storage
+  static Future<void> cacheAllData() async {
+    final online = await ConnectivityHelper.hasInternetConnection();
+    final treeDB = TreeDB();
+    final fruitDB = FruitDB();
+    final growthDB = GrowthDB();
+
+    final nowStamp = DateTime.now().toIso8601String();
+    if (!online) {
+      _log('📴 Offline mode detected at $nowStamp');
+      return;
+    }
+
+    _log('🌐 Online mode detected at $nowStamp');
+    try {
+      // Fetch species
+      try {
+        await TreeApi.fetchSpecies();
+      } catch (e) {
+        _log('❌ Error fetching species: $e');
+      }
+
+      // Fetch and cache disease list for offline use
+      try {
+        final remoteDiseases = await DiseaseApi.fetchDiseases();
+        await DiseaseDB().saveDiseaseList(remoteDiseases);
+      } catch (e) {
+        _log('❌ Error fetching diseases: $e');
+      }
+
+      // Fetch and cache agrochemical master list for offline use
+      try {
+        final agroTypes = await AgrochemicalApi.getAgrochemical();
+        await AgroDB().saveAgrochemicalList(agroTypes);
+      } catch (e) {
+        _log('❌ Error fetching agrochemicals: $e');
+      }
+
+      // Fetch and cache trees
+      final repo = TreeRepository();
+      final trees = await repo.getTrees(forceRefresh: true);
+      await treeDB.cacheRemoteTrees(trees);
+
+      // Fetch and cache fruits for offline use
+      try {
+        final remoteFruits = await FruitApi.fetchFruits();
+        final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
+        await fruitDB.cacheRemoteFruits(fruitModels);
+      } catch (e) {
+          _log('❌ Error fetching fruits: $e');
+      }
+
+      // Fetch and cache health records in bulk, then group per-tree before caching
+      try {
+        final healthDB = HealthDB();
+        final allRemoteHealth = await HealthApi.fetchAllHealthRecords();
+
+        // Group by tree_uuid
+        final Map<String, List<Map<String, dynamic>>> healthByTree = {};
+        for (final h in allRemoteHealth) {
+          final tUuid = h['tree_uuid'] ?? h['treeUuid'] ?? '';
+          if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
+          healthByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(h));
+        }
+
+        for (final t in trees) {
+          try {
+            final remoteForTree = healthByTree[t.uuid] ?? [];
+            final healthModels = remoteForTree.map((h) => HealthModel.fromMap(h)).toList();
+            await healthDB.cacheRemoteHealth(healthModels);
+          } catch (e) {
+            _log('❌ Error caching health for tree ${t.uuid}: $e');
+          }
+        }
+      } catch (e) {
+        _log('❌ Error fetching health records: $e');
+      }
+
+      // Fetch and cache agrochemical records in bulk, then group per-tree before caching
+      try {
+        final agroDB = AgroDB();
+        final allRemoteAgro = await AgrochemicalApi.fetchAllAgroRecords();
+
+        // Group by tree_uuid
+        final Map<String, List<Map<String, dynamic>>> agroByTree = {};
+        for (final a in allRemoteAgro) {
+          final tUuid = a['tree_uuid'] ?? a['treeUuid'] ?? '';
+          if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
+          agroByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(a));
+        }
+
+        for (final t in trees) {
+          try {
+            final remoteForTree = agroByTree[t.uuid] ?? [];
+            final agroModels = remoteForTree.map((a) => AgrochemicalModel.fromMap(a)).toList();
+            await agroDB.cacheRemoteAgrochemical(agroModels);
+          } catch (e) {
+            _log('❌ Error caching agro for tree ${t.uuid}: $e');
+          }
+        }
+      } catch (e) {
+        _log('❌ Error fetching agrochemical records: $e');
+      }
+
+      // Fetch and cache growth logs once, then group them per-tree before caching
+      try {
+        final remoteGrowth = await TreeGrowthApi.fetchAllGrowthLogs();
+        final growthModels = remoteGrowth.map((g) => TreeGrowthModel.fromMap(g)).toList();
+        await growthDB.cacheRemoteGrowths(growthModels);
+      } catch (e) {
+        _log('❌ Error fetching growth logs: $e');
+      }
+
+      // Fetch and cache harvest events for offline use
+      try {
+        final harvestDB = HarvestDB();
+        await harvestDB.fetchAndCacheFromCloud();
+      } catch (e) {
+        _log('❌ Error fetching harvest events: $e');
+      }
+
+      // Sync any unsynced data
+      await SyncTrees().syncUnsyncedTrees();
+
+      // Also attempt to sync any fruits that were created offline
+      try {
+        await SyncFruits().syncFruits();
+      } catch (e) {
+        _log('❌ Error syncing fruits: $e');
+      }
+
+      // Attempt to sync any pending health records created while offline
+      try {
+        await SyncHealth().syncHealth();
+      } catch (e) {
+        _log('❌ Error syncing health: $e');
+      }
+
+      // Attempt to sync any pending agrochemical records created while offline
+      try {
+        await SyncAgro().syncAgro();
+      } catch (e) {
+        _log('❌ Error syncing agrochemicals: $e');
+      }
+
+      final timestamp = DateTime.now().toIso8601String();
+      _log('✅ Sync complete at $timestamp');
+
+      // We performed the initial full cache; skip the first reconnect
+      // event in the connectivity listener (if it fires immediately after registration)
+      _skipFirstReconnect = true;
+    } catch (e) {
+      _log('❌ Error during cache: $e');
+    }
+  }
 
   static Future<List<TreeModel>> initializeApp() async {
     final online = await ConnectivityHelper.hasInternetConnection();
@@ -41,32 +207,31 @@ class AppInitializer {
     final growthDB = GrowthDB();
     List<TreeModel> trees = [];
 
+    final nowStamp = DateTime.now().toIso8601String();
     if (!online) {
-      print('📴 Offline mode detected. Loading from local DB...');
+      _log('📴 Offline mode detected at $nowStamp');
       trees = await treeDB.fetchAllTrees();
     } else {
-      print('🌐 Online mode detected. Fetching from remote...');
+      _log('🌐 Online mode detected at $nowStamp');
       try {
         try {
           await TreeApi.fetchSpecies();
         } catch (e) {
-          print('⚠️ Failed to fetch species during init: $e');
+          _log('❌ Error fetching species: $e');
         }
         // Fetch and cache disease list for offline use
         try {
           final remoteDiseases = await DiseaseApi.fetchDiseases();
           await DiseaseDB().saveDiseaseList(remoteDiseases);
-          print('🦠 Diseases fetched & cached during init (${remoteDiseases.length})');
         } catch (e) {
-          print('⚠️ Failed to fetch/cache diseases during init: $e');
+          _log('❌ Error caching diseases: $e');
         }
         // Fetch and cache agrochemical master list for offline use
         try {
           final agroTypes = await AgrochemicalApi.getAgrochemical();
           await AgroDB().saveAgrochemicalList(agroTypes);
-          print('🧾 Agrochemical master list fetched & cached during init (${agroTypes.length})');
         } catch (e) {
-          print('⚠️ Failed to fetch/cache agrochemical master list during init: $e');
+          _log('❌ Error caching agrochemicals: $e');
         }
   final repo = TreeRepository();
   // Force a fresh remote fetch during initialization
@@ -77,15 +242,13 @@ class AppInitializer {
           final remoteFruits = await FruitApi.fetchFruits();
           final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
           await fruitDB.cacheRemoteFruits(fruitModels);
-          print('🍎 Fruits fetched & cached during init');
         } catch (e) {
-          print('⚠️ Failed to fetch/cache fruits during init: $e');
+          _log('❌ Error caching fruits: $e');
         }
         // Fetch and cache health records in bulk, then group per-tree before caching
         try {
           final healthDB = HealthDB();
           final allRemoteHealth = await HealthApi.fetchAllHealthRecords();
-          print('ℹ️ Fetched ${allRemoteHealth.length} total remote health rows during init');
 
           // Group by tree_uuid
           final Map<String, List<Map<String, dynamic>>> healthByTree = {};
@@ -101,18 +264,16 @@ class AppInitializer {
               final healthModels = remoteForTree.map((h) => HealthModel.fromMap(h)).toList();
               await healthDB.cacheRemoteHealth(healthModels);
             } catch (e) {
-              print('⚠️ Failed to cache health for tree=${t.uuid} during init: $e');
+              _log('❌ Error caching health for tree ${t.uuid}: $e');
             }
           }
-          print('🌱 Health records fetched & cached during init');
         } catch (e) {
-          print('⚠️ Failed to fetch/cache health records during init: $e');
+          _log('❌ Error fetching health in init: $e');
         }
         // Fetch and cache agrochemical records in bulk, then group per-tree before caching
         try {
           final agroDB = AgroDB();
           final allRemoteAgro = await AgrochemicalApi.fetchAllAgroRecords();
-          print('ℹ️ Fetched ${allRemoteAgro.length} total remote agro rows during init');
 
           // Group by tree_uuid
           final Map<String, List<Map<String, dynamic>>> agroByTree = {};
@@ -128,58 +289,52 @@ class AppInitializer {
               final agroModels = remoteForTree.map((a) => AgrochemicalModel.fromMap(a)).toList();
               await agroDB.cacheRemoteAgrochemical(agroModels);
             } catch (e) {
-              print('⚠️ Failed to cache agrochemical for tree=${t.uuid} during init: $e');
+              _log('❌ Error caching agro for tree ${t.uuid}: $e');
             }
           }
-          print('🧪 Agrochemical records fetched & cached during init');
         } catch (e) {
-          print('⚠️ Failed to fetch/cache agrochemical records during init: $e');
+          _log('❌ Error fetching agro in init: $e');
         }
         // Fetch and cache growth logs once, then group them per-tree before caching
         try {
           final remoteGrowth = await TreeGrowthApi.fetchAllGrowthLogs();
           final growthModels = remoteGrowth.map((g) => TreeGrowthModel.fromMap(g)).toList();
           await growthDB.cacheRemoteGrowths(growthModels);
-          print('🌱 Growth logs fetched & cached during init');
         } catch (e) {
-          print('⚠️ Failed to fetch/cache growth logs during init: $e');
+          _log('❌ Error caching growth in init: $e');
         }
         await SyncTrees().syncUnsyncedTrees();
         // Also attempt to sync any fruits that were created offline
         try {
           await SyncFruits().syncFruits();
-          print('🍎 Fruit sync complete during init');
         } catch (e) {
-          print('⚠️ Fruit sync during init failed: $e');
+          _log('❌ Error syncing fruits in init: $e');
         }
 
         // Attempt to sync any pending health records created while offline
         try {
           await SyncHealth().syncHealth();
-          print('🩺 Health sync attempted during init');
         } catch (e) {
-          print('⚠️ Health sync during init failed: $e');
+          _log('❌ Error syncing health in init: $e');
         }
         // Attempt to sync any pending agrochemical records created while offline
         try {
           await SyncAgro().syncAgro();
-          print('🧪 Agrochemical sync attempted during init');
         } catch (e) {
-          print('⚠️ Agrochemical sync during init failed: $e');
+          _log('❌ Error syncing agro in init: $e');
         }
         // Fetch and cache harvest events for offline use
         try {
           final harvestDB = HarvestDB();
           await harvestDB.fetchAndCacheFromCloud();
-          print('🌾 Harvest events fetched & cached during init');
         } catch (e) {
-          print('⚠️ Failed to fetch/cache harvest events during init: $e');
+          _log('❌ Error caching harvest in init: $e');
         }
           // We performed the initial full cache during init; skip the first reconnect
           // event in the connectivity listener (if it fires immediately after registration)
           _skipFirstReconnect = true;
       } catch (e) {
-        print('⚠️ Remote fetch failed: $e');
+        _log('❌ Error during init: $e');
         trees = await treeDB.fetchAllTrees();
       }
     }
@@ -189,170 +344,25 @@ class AppInitializer {
 
   static void initConnectivityListener() {
     if (_connectivityListenerInitialized) {
-      print('⚠️ Connectivity listener already initialized — skipping duplicate registration');
       return;
     }
     _connectivityListenerInitialized = true;
-    print('ℹ️ Registering connectivity listener');
     Connectivity().onConnectivityChanged.listen((status) async {
+      if (!_connectivitySyncEnabled) {
+        return;
+      }
       final online = await ConnectivityHelper.hasInternetConnection();
       if (online) {
         // If requested, skip the first reconnect event to avoid duplicating the init cache
         if (_skipFirstReconnect) {
-          print('ℹ️ Skipping first reconnect event after init to avoid duplicate caching');
           _skipFirstReconnect = false;
           return;
         }
-        print('🌐 Reconnected — syncing...');
         try {
-          final treeDB = TreeDB();
-          final fruitDB = FruitDB();
-          final growthDB = GrowthDB();
-          final repo = TreeRepository();
-          // On reconnect we want a fresh copy
-          final refreshed = await repo.getTrees(forceRefresh: true);
-          await treeDB.cacheRemoteTrees(refreshed);
-          // Fetch and cache fruits after reconnect
-          try {
-            final remoteFruits = await FruitApi.fetchFruits();
-            final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
-            await fruitDB.cacheRemoteFruits(fruitModels);
-            print('🍎 Fruits fetched & cached after reconnect');
-          } catch (e) {
-            print('⚠️ Failed to fetch/cache fruits after reconnect: $e');
-          }
-          // Fetch and cache growth logs once after reconnect, then group per tree
-          try {
-            final remoteGrowths = await TreeGrowthApi.fetchAllGrowthLogs();
-            print('ℹ️ Fetched ${remoteGrowths.length} remote growth rows total after reconnect');
-
-            // Group by tree UUID
-            final Map<String, List<Map<String, dynamic>>> growthsByTree = {};
-            for (final g in remoteGrowths) {
-              final tUuid = g['tree_uuid'] ?? g['treeUuid'] ?? '';
-              if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
-              growthsByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(g));
-            }
-
-            for (final t in refreshed) {
-              try {
-                final treeUuid = t.uuid;
-                final remoteForTree = growthsByTree[treeUuid] ?? [];
-                final growthModels = remoteForTree.map((g) => TreeGrowthModel.fromMap(g)).toList();
-                await growthDB.cacheRemoteGrowths(growthModels);
-              } catch (inner) {
-                print('⚠️ Failed to cache growths for a tree after reconnect: $inner');
-              }
-            }
-            // Fetch and cache health records in bulk after reconnect, then group per-tree
-            try {
-              final healthDB = HealthDB();
-              final allRemoteHealth = await HealthApi.fetchAllHealthRecords();
-              print('ℹ️ Fetched ${allRemoteHealth.length} total remote health rows after reconnect');
-
-              // Group by tree_uuid
-              final Map<String, List<Map<String, dynamic>>> healthByTree = {};
-              for (final h in allRemoteHealth) {
-                final tUuid = h['tree_uuid'] ?? h['treeUuid'] ?? '';
-                if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
-                healthByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(h));
-              }
-
-              for (final t in refreshed) {
-                try {
-                  final remoteForTree = healthByTree[t.uuid] ?? [];
-                  final healthModels = remoteForTree.map((h) => HealthModel.fromMap(h)).toList();
-                  await healthDB.cacheRemoteHealth(healthModels);
-                } catch (e) {
-                  print('⚠️ Failed to cache health for tree=${t.uuid} after reconnect: $e');
-                }
-              }
-              print('🌱 Health records fetched & cached after reconnect');
-            } catch (e) {
-              print('⚠️ Failed to fetch/cache health records after reconnect: $e');
-            }
-            // Fetch and cache global diseases list after reconnect
-            try {
-              final remoteDiseases = await DiseaseApi.fetchDiseases();
-              await DiseaseDB().saveDiseaseList(remoteDiseases);
-              print('🦠 Diseases fetched & cached after reconnect (${remoteDiseases.length})');
-            } catch (e) {
-              print('⚠️ Failed to fetch/cache diseases after reconnect: $e');
-            }
-            // Fetch and cache agrochemical master list after reconnect
-            try {
-              final agroTypes = await AgrochemicalApi.getAgrochemical();
-              await AgroDB().saveAgrochemicalList(agroTypes);
-              print('🧾 Agrochemical master list fetched & cached after reconnect (${agroTypes.length})');
-            } catch (e) {
-              print('⚠️ Failed to fetch/cache agrochemical master list after reconnect: $e');
-            }
-            // Fetch and cache agrochemical records in bulk after reconnect, then group per-tree
-            try {
-              final agroDB = AgroDB();
-              final allRemoteAgro = await AgrochemicalApi.fetchAllAgroRecords();
-              print('ℹ️ Fetched ${allRemoteAgro.length} total remote agro rows after reconnect');
-
-              // Group by tree_uuid
-              final Map<String, List<Map<String, dynamic>>> agroByTree = {};
-              for (final a in allRemoteAgro) {
-                final tUuid = a['tree_uuid'] ?? a['treeUuid'] ?? '';
-                if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
-                agroByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(a));
-              }
-
-              for (final t in refreshed) {
-                try {
-                  final remoteForTree = agroByTree[t.uuid] ?? [];
-                  final agroModels = remoteForTree.map((a) => AgrochemicalModel.fromMap(a)).toList();
-                  await agroDB.cacheRemoteAgrochemical(agroModels);
-                } catch (e) {
-                  print('⚠️ Failed to cache agrochemical for tree=${t.uuid} after reconnect: $e');
-                }
-              }
-              print('🧪 Agrochemical records fetched & cached after reconnect');
-            } catch (e) {
-              print('⚠️ Failed to fetch/cache agrochemical records after reconnect: $e');
-            }
-            // Fetch and cache harvest events after reconnect
-            try {
-              final harvestDB = HarvestDB();
-              await harvestDB.fetchAndCacheFromCloud();
-              print('🌾 Harvest events fetched & cached after reconnect');
-            } catch (e) {
-              print('⚠️ Failed to fetch/cache harvest events after reconnect: $e');
-            }
-            print('🌱 Growth logs fetched & cached after reconnect');
-          } catch (e) {
-            print('⚠️ Failed to fetch/cache growth logs after reconnect: $e');
-          }
-          await SyncTrees().syncUnsyncedTrees();
-          // Sync fruits after trees
-          try {
-            await SyncFruits().syncFruits();
-            print('🍎 Fruit sync complete after reconnect');
-          } catch (e) {
-            print('⚠️ Fruit sync after reconnect failed: $e');
-          }
-          // Sync health after fruits
-          try {
-            await SyncHealth().syncHealth();
-            print('🩺 Health sync complete after reconnect');
-          } catch (e) {
-            print('⚠️ Health sync after reconnect failed: $e');
-          }
-          // Sync agrochemical after health
-          try {
-            await SyncAgro().syncAgro();
-            print('🧪 Agrochemical sync complete after reconnect');
-          } catch (e) {
-            print('⚠️ Agrochemical sync after reconnect failed: $e');
-          }
+          await cacheAllData();
         } catch (e) {
-          print('⚠️ Sync error: $e');
+          _log('❌ Error during reconnect sync: $e');
         }
-      } else {
-        print('📴 Offline mode — sync paused');
       }
     });
   }

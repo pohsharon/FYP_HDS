@@ -37,7 +37,6 @@ class SyncTrees {
 
       // 🧹 STEP 2: Handle pending deletes
       final deletes = await TreeDB().fetchPendingDeletes();
-      print('🗑 Found ${deletes.length} pending deletes');
       for (final t in deletes) {
         try {
           // Prefer resolving the authoritative server id by UUID first to avoid using
@@ -97,7 +96,6 @@ class SyncTrees {
 
       // 📝 STEP 3: Handle pending updates
       final updates = await TreeDB().fetchPendingUpdates();
-      print('🧩 Found ${updates.length} pending updates');
       for (final t in updates) {
         try {
           // Prefer updating by numeric id when available, but fall back to uuid endpoint
@@ -183,7 +181,6 @@ class SyncTrees {
 
       // 🌱 STEP 4: Handle unsynced new trees
       final unsynced = await TreeDB().fetchUnsyncedTrees();
-      print('🌱 Found ${unsynced.length} new unsynced trees');
       for (final tree in unsynced) {
         try {
           // --- resolve speciesId ---
@@ -274,7 +271,9 @@ class SyncTrees {
                     await TreeDB().updateTreeByUuid(serverUuid, {'tree_tag': serverTag}, markPendingUpdate: false);
                     print('🔁 Updated local tree_tag for $serverUuid -> $serverTag');
                   }
-                } catch (_) {}
+                } catch (e) {
+                  print('❌ Error updating tree_tag: $e');
+                }
               }
             } catch (e) {
               print('⚠️ Failed to extract server uuid after tree create: $e');
@@ -289,7 +288,6 @@ class SyncTrees {
     } finally {
       _isRunning = false;
       _lastRun = DateTime.now();
-      print('🔁 Sync process complete.');
     }
   }
 }

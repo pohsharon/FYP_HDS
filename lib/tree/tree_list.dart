@@ -92,8 +92,7 @@ class _TreePageState extends State<TreePage> {
         });
       }
     } catch (e) {
-      // Non-fatal: log and continue (dialog will show empty if no species available)
-      print('Failed to load local species: $e');
+      // Non-fatal: silently continue (dialog will show empty if no species available)
     }
   }
 
@@ -106,7 +105,6 @@ class _TreePageState extends State<TreePage> {
         });
       }
     } catch (e) {
-      print('Failed to load diseases: $e');
     }
   }
 
@@ -119,7 +117,6 @@ class _TreePageState extends State<TreePage> {
         });
       }
     } catch (e) {
-      print('Failed to load agrochemicals: $e');
     }
   }
 

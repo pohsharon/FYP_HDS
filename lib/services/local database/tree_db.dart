@@ -135,11 +135,8 @@ class TreeDB{
     final db = await LocalDB.getDatabase();
 
     try {
-      final beforeAll = await db.query('trees');
-      print('ℹ️ cacheRemoteTrees: rows before caching=${beforeAll.length}');
-    } catch (e) {
-      print('⚠️ cacheRemoteTrees: error dumping rows before caching: $e');
-    }
+      await db.query('trees');
+    } catch (_) {}
 
     // Preserve rows that are unsynced (synced=0) OR have pending updates/deletes
     final unsyncedOrPending = await db.query(
@@ -147,16 +144,7 @@ class TreeDB{
       where: '(synced = ? OR pending_update = ? OR pending_delete = ?)',
       whereArgs: [0, 1, 1],
     );
-    print(
-      '📦 Preserving ${unsyncedOrPending.length} local rows (unsynced or pending) before caching remote data',
-    );
-    if (unsyncedOrPending.isNotEmpty) {
-      for (final u in unsyncedOrPending) {
-        print(
-          '   • preserving -> uuid=${u['uuid']}, tree_tag=${u['tree_tag']}, synced=${u['synced']}, pending_update=${u['pending_update']}, pending_delete=${u['pending_delete']}',
-        );
-      }
-    }
+    // Preserve rows that are unsynced (synced=0) OR have pending updates/deletes
 
     // Step 2: Delete only synced ones
     await db.delete('trees', where: 'synced = ?', whereArgs: [1]);
@@ -174,10 +162,6 @@ class TreeDB{
       await db.insert('trees', u, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
 
-    final total = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM trees'),
-    );
-    print('✅ Local cache updated. Total trees in DB: $total');
   }
 
   /// Reassign a tree's uuid from [oldUuid] to [newUuid]. This is used when

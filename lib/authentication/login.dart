@@ -96,6 +96,13 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (response.containsKey("token")) {
+        // Cache all data after successful login
+        try {
+          await AuthService.cacheAfterLogin();
+        } catch (_) {
+          // Continue to nav even if caching fails
+        }
+        
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const Nav()),

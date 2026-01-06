@@ -62,7 +62,6 @@ class _HealthTabPageState extends State<HealthTabPage> {
         ..clear()
         ..addAll(map));
     } catch (e) {
-      print('⚠️ Failed to load disease cache: $e');
     }
   }
 
@@ -73,7 +72,6 @@ class _HealthTabPageState extends State<HealthTabPage> {
         _diseaseList = rows.map((r) => Map<String, dynamic>.from(r)).toList();
       });
     } catch (e) {
-      print('Failed to load diseases: $e');
     }
   }
 

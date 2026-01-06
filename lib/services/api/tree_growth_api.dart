@@ -122,7 +122,6 @@ class TreeGrowthApi {
           return <Map<String, dynamic>>[];
         }
       } else {
-        print('⚠️ TreeGrowthApi.fetchAllGrowthLogs: server returned ${response.statusCode}: $data');
         return <Map<String, dynamic>>[];
       }
     } catch (e) {

@@ -53,8 +53,17 @@ class FruitModel {
       transaction_uuid: (map['transaction_uuid'] ?? map['tx_uuid'] ?? map['transactionId'])?.toString(),
   harvested_at: (map['harvested_at'] ?? map['date'] ?? map['harvestedAt'])?.toString(),
   created_at: (map['created_at'] ?? map['createdAt'] ?? map['created'])?.toString(),
-      is_spoiled: (map['is_spoiled'] == 1 || map['is_spoiled'] == true),
-      tree_uuid: map['tree_uuid']?.toString(),
+      is_spoiled: (map['is_spoiled'] == 1 ||
+          map['is_spoiled'] == true ||
+          map['isSpoiled'] == 1 ||
+          map['isSpoiled'] == true),
+      tree_uuid: (
+        map['tree_uuid'] ??
+        map['treeUuid'] ??
+        map['tree_id'] ??
+        map['treeId'] ??
+        (map['tree'] is Map ? (map['tree']['uuid'] ?? map['tree']['id']) : null)
+      )?.toString(),
       weight: (map['weight'] is num)
           ? (map['weight'] as num).toDouble()
           : double.tryParse(map['weight']?.toString() ?? '0') ?? 0,
