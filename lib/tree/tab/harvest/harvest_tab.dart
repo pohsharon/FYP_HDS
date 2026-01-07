@@ -8,13 +8,19 @@ import 'package:fyp_hbs/services/local database/local_db.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/fruit/create_fruit.dart';
 
-class HarvestTabPage extends StatelessWidget {
+class HarvestTabPage extends StatefulWidget {
   final String treeUuid;
   const HarvestTabPage({super.key, required this.treeUuid});
 
+  @override
+  State<HarvestTabPage> createState() => _HarvestTabPageState();
+}
+
+class _HarvestTabPageState extends State<HarvestTabPage> {
+
   Future<List<Map<String, dynamic>>> fetchHarvests() async {
     final online = await ConnectivityHelper.hasInternetConnection();
-    final treeLocalFruits = await FruitDB().fetchFruitsByTree(treeUuid);
+    final treeLocalFruits = await FruitDB().fetchFruitsByTree(widget.treeUuid);
     final Set<String> localHarvestUuids = treeLocalFruits
         .map((f) => (f.harvest_uuid ?? '').toString())
         .where((s) => s.isNotEmpty)
@@ -22,7 +28,7 @@ class HarvestTabPage extends StatelessWidget {
     
     if (online) {
       try {
-        final response = await TreeApi.getHarvestsByTreeId(treeUuid);
+        final response = await TreeApi.getHarvestsByTreeId(widget.treeUuid);
         final List<Map<String, dynamic>> filtered = [];
         
         for (final ev in response) {
@@ -36,7 +42,7 @@ class HarvestTabPage extends StatelessWidget {
                 try {
                   final String fTree = (f['tree_uuid'] ?? '').toString();
                   final String fHarvest = (f['harvest_uuid'] ?? '').toString();
-                  if (fTree == treeUuid) {
+                  if (fTree == widget.treeUuid) {
                     includesTree = true;
                     eventFruits.add(Map<String, dynamic>.from(f));
                   } else if (localHarvestUuids.contains(fHarvest)) {
@@ -80,7 +86,7 @@ class HarvestTabPage extends StatelessWidget {
     }
 
     try {
-      final treeFruits = await FruitDB().fetchFruitsByTree(treeUuid);
+      final treeFruits = await FruitDB().fetchFruitsByTree(widget.treeUuid);
       if (treeFruits.isEmpty) return <Map<String, dynamic>>[];
 
       final Map<String, List<Map<String, dynamic>>> grouped = {};
@@ -248,43 +254,6 @@ class HarvestTabPage extends StatelessWidget {
         }
         
         final harvests = snapshot.data ?? [];
-        
-        if (harvests.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.agriculture_outlined,
-                    size: 64,
-                    color: AppColors.gray400,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No harvest events yet',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.gray600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Harvest events will appear here once fruits are collected',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.gray500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        
         return ListView.separated(
           padding: const EdgeInsets.all(16),
           itemCount: harvests.length + 1,
@@ -318,11 +287,11 @@ if (index == 0) {
           final result = await Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const CreateFruitPage(),
+              builder: (_) => CreateFruitPage(prefilledTreeUuid: widget.treeUuid),
             ),
           );
           if (result == true) {
-            (context as Element).markNeedsBuild();
+            setState(() {});
           }
         },
         borderRadius: BorderRadius.circular(16),
@@ -427,7 +396,7 @@ if (index == 0) {
                     context,
                     MaterialPageRoute(
                       builder: (context) => FruitListPage(
-                        treeUuid: treeUuid,
+                        treeUuid: widget.treeUuid,
                         harvestUuid: harvest['uuid'] ?? harvest['harvest_uuid'] ?? '',
                       ),
                     ),

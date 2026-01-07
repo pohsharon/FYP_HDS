@@ -14,8 +14,9 @@ import 'package:fyp_hbs/services/local database/fruit_db.dart';
 
 class CreateFruitPage extends StatefulWidget {
   final Map<String, dynamic>? fruit;
+  final String? prefilledTreeUuid;
 
-  const CreateFruitPage({super.key, this.fruit});
+  const CreateFruitPage({super.key, this.fruit, this.prefilledTreeUuid});
 
   @override
   State<CreateFruitPage> createState() => _CreateFruitPageState();
@@ -59,6 +60,9 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
 
       selectedTreeUuid = f['tree']?['uuid'] ?? f['tree_uuid'] ?? f['treeId']?.toString();
       selectedHarvestUuid = f['uuid'] ?? f['harvest_uuid'];
+    } else if (widget.prefilledTreeUuid != null) {
+      // Prefill tree when coming from harvest tab
+      selectedTreeUuid = widget.prefilledTreeUuid;
     }
 
     _fetchTrees().then((_) {
