@@ -83,7 +83,7 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
                 : 'Disease created successfully.')
             : (widget.disease != null
                 ? 'Disease updated offline'
-                : 'Disease created offline'),
+                : 'Disease saved locally. Sync will occur when online'),
         icon: Icon(
           online ? Icons.check_circle : Icons.cloud_off,
           color: Colors.white,

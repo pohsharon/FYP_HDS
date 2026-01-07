@@ -339,7 +339,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
           }
 
           await Flushbar(
-            message: 'Changes saved locally',
+            message: 'Changes saved locally. Sync will occur when online',
             icon: const Icon(Icons.cloud_off, color: Colors.white),
             backgroundColor: Colors.orange.shade700,
             duration: const Duration(seconds: 2),
@@ -411,7 +411,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
           final insertedId = await TreeDB().insertTree(offlineTree);
 
           await Flushbar(
-            message: 'Tree saved locally',
+            message: 'Tree saved locally. Sync will occur when online',
             icon: const Icon(Icons.cloud_off, color: Colors.white),
             backgroundColor: Colors.orange.shade700,
             duration: const Duration(seconds: 2),
