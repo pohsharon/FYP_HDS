@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/nav.dart';
+import 'package:fyp_hbs/authentication/login.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/services/api/auth_service.dart';
 
@@ -27,6 +28,35 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   bool _hideOld = true;
   bool _hideNew = true;
   bool _hideConfirm = true;
+  
+  late String _phoneNumber;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializePhoneNumber();
+  }
+
+  Future<void> _initializePhoneNumber() async {
+    if (widget.fromSettings && (widget.phone == null || widget.phone!.isEmpty)) {
+      // Retrieve current user's phone from SharedPreferences
+      final currentPhone = await AuthService.getCurrentUserPhone();
+      if (mounted) {
+        setState(() {
+          _phoneNumber = currentPhone ?? '';
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _phoneNumber = widget.phone ?? '';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +73,11 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
         backgroundColor: AppColors.pakistanGreen,
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(),
+              )
+            : SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
           child: Form(
             key: _formKey,
@@ -105,7 +139,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
                       // Call reset password API
                       final result = await AuthService.resetPassword(
-                        widget.phone ?? '',
+                        _phoneNumber,
                         newPasswordController.text,
                         confirmPasswordController.text,
                       );
@@ -121,14 +155,26 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           margin: const EdgeInsets.all(12),
                         ).show(context);
 
-                        // Navigate to login or main page
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const Nav(),
-                          ),
-                          (route) => false,
-                        );
+                        // Navigate based on context
+                        // If fromSettings is true, user is logged in changing password -> go to home
+                        // If fromSettings is false, user is on login page (forgot password) -> go to login
+                        if (widget.fromSettings) {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const Nav(),
+                            ),
+                            (route) => false,
+                          );
+                        } else {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => LoginPage(),
+                            ),
+                            (route) => false,
+                          );
+                        }
                       } else {
                         // Show error
                         Flushbar(
@@ -162,8 +208,8 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             ),
           ),
         ),
-      ),
-    );
+            ),
+      );
   }
 
   Widget _buildPasswordField(

@@ -346,14 +346,13 @@ class _FruitPageState extends State<FruitPage> {
               }
 
               // Prefer an explicit persisted fruit_tag if available, otherwise fall
-              // back to grade, harvested date, or short harvest uuid for readability.
+              // back to harvested date or short harvest uuid for readability.
+              // Never use grade as the primary title.
               String fruitTag =
                   (f.fruit_tag != null && f.fruit_tag!.isNotEmpty)
                       ? f.fruit_tag!
                       : (() {
-                        if (f.grade != null && f.grade!.isNotEmpty) {
-                          return 'Grade ${f.grade}';
-                        } else if (f.harvested_at != null &&
+                        if (f.harvested_at != null &&
                             f.harvested_at!.isNotEmpty) {
                           return f.harvested_at!;
                         } else if (f.harvest_uuid != null &&
@@ -371,6 +370,9 @@ class _FruitPageState extends State<FruitPage> {
                 'harvested_at': f.harvested_at ?? '',
                 'weight': f.weight,
                 'grade': f.grade ?? '',
+                'synced': f.synced,
+                'pendingUpdate': f.pendingUpdate,
+                'pendingDelete': f.pendingDelete,
                 'tree': {
                   'uuid': treeUuid ?? '',
                   'tree_tag': treeTag,
@@ -1548,11 +1550,18 @@ class _FruitPageState extends State<FruitPage> {
     final String grade = fruit['grade'] ?? 'Unknown';
     final String uuid = fruit['uuid'];
 
+    final bool isUnsynced = (fruit['synced'] == 0 || 
+                             fruit['synced']?.toString() == '0' ||
+                             fruit['pendingUpdate'] == 1 ||
+                             fruit['pendingDelete'] == 1);
+
     return Card(
-      color: AppColors.white,
+      color: isUnsynced ? AppColors.warningLight : AppColors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: AppColors.gray400),
+        side: BorderSide(
+          color: isUnsynced ? AppColors.warningActive : AppColors.gray400,
+        ),
       ),
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,
@@ -1560,7 +1569,7 @@ class _FruitPageState extends State<FruitPage> {
         padding: const EdgeInsets.all(10),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => _showFruitDetailsDialog(context, fruit),
+          onTap: _isOnline ? () => _showFruitDetailsDialog(context, fruit) : null,
           child: Row(
             children: [
               SizedBox(
@@ -1593,18 +1602,18 @@ class _FruitPageState extends State<FruitPage> {
                 ),
               ),
               ElevatedButton(
-                onPressed: () {
+                onPressed: _isOnline ? () {
                   _showFruitDetailsDialog(context, fruit);
-                },
+                } : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.mossGreen,
+                  backgroundColor: _isOnline ? AppColors.mossGreen : AppColors.gray400,
                   foregroundColor: Colors.white,
                   minimumSize: const Size(60, 36),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 8,
                   ),
-                  elevation: 2,
+                  elevation: _isOnline ? 2 : 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -1623,6 +1632,17 @@ class _FruitPageState extends State<FruitPage> {
   BuildContext context,
   Map<String, dynamic> fruit,
 ) {
+  if (!_isOnline) {
+    Flushbar(
+      message: 'Cannot edit fruits while offline',
+      backgroundColor: Colors.orange.shade700,
+      duration: const Duration(seconds: 2),
+      margin: const EdgeInsets.all(12),
+      borderRadius: BorderRadius.circular(8),
+    ).show(context);
+    return;
+  }
+  
   final String uuid = fruit['uuid'] ?? '';
   final String tag = fruit['fruit_tag'] ?? 'Unknown';
   final String date = fruit['harvested_at'] ?? '';

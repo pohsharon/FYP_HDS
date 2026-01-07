@@ -218,4 +218,42 @@ class FruitDB{
     );
   }
 
+  /// Reassign a fruit's harvest_uuid from offline-generated (gen_*) to server UUID.
+  /// This is used when a fruit created offline receives an authoritative UUID from the server.
+  Future<int> reassignFruitUuid(String oldUuid, String newUuid) async {
+    final db = await LocalDB.getDatabase();
+    return await db.update(
+      'fruits',
+      {'harvest_uuid': newUuid},
+      where: 'harvest_uuid = ?',
+      whereArgs: [oldUuid],
+    );
+  }
+
+  /// Generate the next fruit tag in format FRXXXXXX (FR + 6 digits)
+  /// Scans all fruit_tags and finds the highest number, returns the next one
+  Future<String> getNextFruitTag() async {
+    final db = await LocalDB.getDatabase();
+    final result = await db.query('fruits', columns: ['fruit_tag']);
+    
+    int maxNumber = 0;
+    for (final row in result) {
+      final tag = row['fruit_tag']?.toString() ?? '';
+      // Try to extract number from FRXXXXXX format
+      if (tag.startsWith('FR') && tag.length == 8) {
+        try {
+          final numStr = tag.replaceFirst('FR', '');
+          final num = int.tryParse(numStr) ?? 0;
+          if (num > maxNumber) {
+            maxNumber = num;
+          }
+        } catch (_) {}
+      }
+    }
+    
+    // Return next number in format FRXXXXXX (6 digits padded with zeros)
+    final nextNumber = maxNumber + 1;
+    return 'FR${nextNumber.toString().padLeft(6, '0')}';
+  }
+
 }

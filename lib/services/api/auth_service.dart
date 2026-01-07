@@ -109,7 +109,6 @@ class AuthService {
   ) async {
     try {
       phone = phone.trim();
-      if (!phone.startsWith('0')) phone = '60$phone';
 
       final response = await http.post(
         Uri.parse("${Config.apiBaseUrl}/reset-password"),
@@ -197,5 +196,20 @@ class AuthService {
   static Future<void> cacheAfterLogin() async {
     await AppInitializer.cacheAllData();
     AppInitializer.enableConnectivitySync();
+  }
+
+  /// Get current logged-in user's phone number
+  static Future<String?> getCurrentUserPhone() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userJson = prefs.getString('user');
+      if (userJson != null && userJson.isNotEmpty) {
+        final userData = jsonDecode(userJson);
+        return userData['phone']?.toString();
+      }
+    } catch (e) {
+      print('Error retrieving current user phone: $e');
+    }
+    return null;
   }
 }

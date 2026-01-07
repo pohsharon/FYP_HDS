@@ -339,12 +339,12 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
       final isEdit = widget.fruit != null;
       final fruitUuid = isEdit ? (widget.fruit!['uuid']?.toString() ?? '') : '';
       
-      final fruitModel = FruitModel(
-        fruit_tag: (grade.isNotEmpty)
-            ? 'Grade $grade'
-            : (harvestedAt.isNotEmpty)
-                ? harvestedAt
-                : (harvestUuid.length > 8 ? harvestUuid.substring(0, 8) : harvestUuid),
+      // Generate fruit tag in FR0000-XX format
+      final nextFruitTag = await FruitDB().getNextFruitTag();
+      
+      late FruitModel fruitModel;
+      fruitModel = FruitModel(
+        fruit_tag: nextFruitTag,
         harvest_uuid: isEdit && fruitUuid.isNotEmpty ? fruitUuid : harvestUuid,
         transaction_uuid: null,
         harvested_at: harvestedAt,
@@ -373,7 +373,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
               is_spoiled: isSpoiled,
             );
           } else {
-            await FruitApi.createFruit(
+            final response = await FruitApi.createFruit(
               tree_uuid: treeUuid,
               harvest_uuid: harvestUuid,
               weight: weight,
@@ -381,6 +381,60 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
               harvested_at: harvestedAt,
               is_spoiled: isSpoiled,
             );
+            
+            // Extract real UUID from server response
+            try {
+              final serverData = response['data'] is Map ? response['data'] : response;
+              final serverUuid = serverData['uuid'] ?? serverData['id'];
+              if (serverUuid != null && serverUuid.toString().isNotEmpty) {
+                print('✅ Server created fruit with UUID: $serverUuid');
+                // Create new fruitModel with server UUID and synced flag
+                fruitModel = FruitModel(
+                  fruit_tag: fruitModel.fruit_tag,
+                  harvest_uuid: serverUuid.toString(),
+                  transaction_uuid: fruitModel.transaction_uuid,
+                  harvested_at: fruitModel.harvested_at,
+                  created_at: fruitModel.created_at,
+                  is_spoiled: fruitModel.is_spoiled,
+                  tree_uuid: fruitModel.tree_uuid,
+                  weight: fruitModel.weight,
+                  grade: fruitModel.grade,
+                  synced: 1, // Mark as synced
+                  pendingUpdate: 0,
+                  pendingDelete: 0,
+                );
+              }
+            } catch (e) {
+              print('⚠️ Could not extract server UUID: $e');
+            }
+          }
+          // Mark as synced after successful online save (if not already)
+          if (fruitModel.synced != 1) {
+            fruitModel = FruitModel(
+              fruit_tag: fruitModel.fruit_tag,
+              harvest_uuid: fruitModel.harvest_uuid,
+              transaction_uuid: fruitModel.transaction_uuid,
+              harvested_at: fruitModel.harvested_at,
+              created_at: fruitModel.created_at,
+              is_spoiled: fruitModel.is_spoiled,
+              tree_uuid: fruitModel.tree_uuid,
+              weight: fruitModel.weight,
+              grade: fruitModel.grade,
+              synced: 1, // Mark as synced
+              pendingUpdate: 0,
+              pendingDelete: 0,
+            );
+          }
+          
+          // Save the fruit with server UUID to local database
+          try {
+            if (isEdit && fruitUuid.isNotEmpty) {
+              await FruitDB().updateFruit(fruitModel);
+            } else {
+              await FruitDB().insertFruit(fruitModel);
+            }
+          } catch (dbErr) {
+            print('⚠️ Failed to save fruit to local DB after online success: $dbErr');
           }
         } catch (e) {
           print('⚠️ FruitApi.${isEdit ? "updateFruit" : "createFruit"} failed, saving locally: $e');

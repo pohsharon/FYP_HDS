@@ -43,35 +43,44 @@ class SyncFruits {
       final updates = await FruitDB().fetchPendingFruitUpdates();
       for (final f in updates) {
         try {
-          try {
-            await FruitApi.updateFruit(
-              uuid: f.harvest_uuid ?? '',
-              tree_uuid: f.tree_uuid ?? '',
-              harvest_uuid: f.harvest_uuid ?? '',
-              weight: f.weight ?? 0.0,
-              grade: f.grade ?? '',
-              harvested_at: f.harvested_at ?? '',
-              is_spoiled: f.is_spoiled,
-            );
-            await FruitDB().clearFruitPendingUpdate(f.harvest_uuid ?? '');
-            print('✅ Synced fruit update ${f.harvest_uuid}');
-            continue;
-          } catch (e) {
-            final msg = e.toString();
-            if (msg.contains('404') ||
-                msg.contains('Not Found') ||
-                msg.contains('No query results')) {
-              print(
-                'ℹ️ Fruit update returned 404 for ${f.harvest_uuid}; will try to create instead',
+          // Check if this fruit has an offline-generated UUID (gen_*)
+          final isOfflineUuid = (f.harvest_uuid ?? '').toString().startsWith('gen_');
+          
+          if (isOfflineUuid) {
+            // For offline-created fruits, skip update and go straight to create
+            print('📝 Fruit ${f.harvest_uuid} is offline-created (gen_*), creating instead of updating...');
+          } else {
+            // For server-synced fruits, try update first
+            try {
+              await FruitApi.updateFruit(
+                uuid: f.harvest_uuid ?? '',
+                tree_uuid: f.tree_uuid ?? '',
+                harvest_uuid: f.harvest_uuid ?? '',
+                weight: f.weight ?? 0.0,
+                grade: f.grade ?? '',
+                harvested_at: f.harvested_at ?? '',
+                is_spoiled: f.is_spoiled,
               );
-              // fallthrough to create
-            } else {
-              print('⚠️ Fruit update failed for ${f.harvest_uuid}: $e');
+              await FruitDB().clearFruitPendingUpdate(f.harvest_uuid ?? '');
+              print('✅ Synced fruit update ${f.harvest_uuid}');
               continue;
+            } catch (e) {
+              final msg = e.toString();
+              if (msg.contains('404') ||
+                  msg.contains('Not Found') ||
+                  msg.contains('No query results')) {
+                print(
+                  'ℹ️ Fruit update returned 404 for ${f.harvest_uuid}; will try to create instead',
+                );
+                // fallthrough to create
+              } else {
+                print('⚠️ Fruit update failed for ${f.harvest_uuid}: $e');
+                continue;
+              }
             }
           }
 
-          // If update wasn't possible, try creating as a fallback
+          // If update wasn't possible, try creating as a fallback (or for offline fruits)
           try {
             final resp = await FruitApi.createFruit(
               tree_uuid: f.tree_uuid ?? '',
@@ -82,6 +91,19 @@ class SyncFruits {
               is_spoiled: f.is_spoiled,
             );
             if (resp['success'] == true || resp.containsKey('data')) {
+              // If this was an offline fruit and server returned a real UUID, update local record
+              if (isOfflineUuid) {
+                try {
+                  final serverData = resp['data'] is Map ? resp['data'] : resp;
+                  final serverUuid = serverData['uuid'] ?? serverData['id'];
+                  if (serverUuid != null && serverUuid.toString().isNotEmpty) {
+                    print('🔄 Reassigning offline UUID ${f.harvest_uuid} → $serverUuid');
+                    await FruitDB().reassignFruitUuid(f.harvest_uuid ?? '', serverUuid.toString());
+                  }
+                } catch (reassignErr) {
+                  print('⚠️ Failed to reassign fruit UUID: $reassignErr');
+                }
+              }
               await FruitDB().clearFruitPendingUpdate(f.harvest_uuid ?? '');
               print('✅ Created fruit during update fallback ${f.harvest_uuid}');
             } else {
