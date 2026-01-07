@@ -141,12 +141,13 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
 
       final online = await ConnectivityHelper.hasInternetConnection();
       var savedLocally = false;
+      Map<String, dynamic>? remoteData;
 
       if (online) {
         try {
           if (widget.existingRecord != null) {
             // Attempt remote update
-            await HealthApi.updateHealthRecord(
+            remoteData = await HealthApi.updateHealthRecord(
               id: widget.existingRecord!['id'].toString(),
               treeUuid: widget.treeUuid,
               diseaseId: int.parse(selectedDiseaseId!.toString()),
@@ -157,7 +158,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
             );
           } else {
             // Attempt remote create
-            await HealthApi.createHealthRecord(
+            remoteData = await HealthApi.createHealthRecord(
               treeUuid: widget.treeUuid,
               diseaseId: int.parse(selectedDiseaseId!.toString()),
               date: dateController.text,
@@ -165,6 +166,25 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
               treatment: treatmentController.text,
               imageFile: _selectedImage,
             );
+          }
+
+          // Cache successful remote record locally so it is visible offline
+          try {
+            final rec = (remoteData != null && remoteData!['data'] is Map)
+                ? Map<String, dynamic>.from(remoteData!['data'])
+                : (remoteData ?? <String, dynamic>{});
+            final cached = healthModel.copyWith(
+              id: (rec['id'] is int)
+                  ? rec['id'] as int
+                  : int.tryParse(rec['id']?.toString() ?? '') ?? int.tryParse(widget.existingRecord?['id']?.toString() ?? ''),
+              thumbnail: rec['thumbnail']?.toString() ?? _selectedImage?.path ?? _existingThumbnail,
+              synced: 1,
+              pendingUpdate: 0,
+              pendingDelete: 0,
+            );
+            await HealthDB().insertHealth(cached);
+          } catch (cacheErr) {
+            print('⚠️ Failed to cache health locally after remote save: $cacheErr');
           }
         } catch (e) {
           // Remote call failed — save locally as pending
@@ -209,7 +229,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
         } else {
           final offlineMsg = widget.existingRecord != null
               ? 'Changes saved locally and will be synced when online'
-              : 'Health record saved locally and will be synced when online';
+              : 'Health record saved locally. Sync will occur when online';
           await Flushbar(
             message: offlineMsg,
             icon: const Icon(Icons.cloud_off, color: Colors.white),
@@ -353,7 +373,7 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                         context: context,
                         initialDate: DateTime.now(),
                         firstDate: DateTime(2000),
-                        lastDate: DateTime(2100),
+                        lastDate: DateTime.now(),
                       );
                       if (picked != null) {
                         dateController.text = DateFormat(
@@ -364,9 +384,14 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                   ),
                 ),
                 readOnly: true,
-                validator:
-                    (value) =>
-                        value == null || value.isEmpty ? 'Select date' : null,
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Select date';
+                  final parsed = DateTime.tryParse(value);
+                  if (parsed != null && parsed.isAfter(DateTime.now())) {
+                    return 'Date cannot be in the future';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
 

@@ -1,4 +1,5 @@
 class HealthModel {
+  final int? id;
   final String? tree_uuid;
   final String? diseaseId;
   final String? diseaseName;
@@ -12,6 +13,7 @@ class HealthModel {
   final int pendingDelete;
 
   HealthModel({
+    this.id,
     this.tree_uuid,
     this.diseaseId,
     this.status,
@@ -26,6 +28,7 @@ class HealthModel {
 
   /// Convert model to map for SQLite or JSON upload
   Map<String, dynamic> toMap() => {
+      if (id != null) 'id': id,
     'tree_uuid': tree_uuid,
         'diseaseId': diseaseId,
         'disease_name': diseaseName,
@@ -40,6 +43,9 @@ class HealthModel {
 
   factory HealthModel.fromMap(Map<String, dynamic> map) {
     return HealthModel(
+      id: (map['id'] is int)
+          ? map['id'] as int
+          : int.tryParse(map['id']?.toString() ?? ''),
       tree_uuid: (map['tree_uuid'] ?? map['treeUuid'] ?? map['uuid'] ?? map['id'])?.toString(),
       diseaseId: (map['diseaseId'] ?? map['disease_id'])?.toString(),
       diseaseName: (map['disease_name'] ?? map['diseaseName'] ?? (map['disease'] is Map ? (map['disease']['diseaseName'] ?? map['disease']['name']) : null))?.toString(),
@@ -55,6 +61,7 @@ class HealthModel {
 
   /// Copy model with modifications
   HealthModel copyWith({
+    int? id,
     String? tree_uuid,
     String? diseaseId,
     String? diseaseName,
@@ -67,6 +74,7 @@ class HealthModel {
     int? pendingDelete,
   }) {
     return HealthModel(
+      id: id ?? this.id,
       tree_uuid: tree_uuid ?? this.tree_uuid,
       diseaseId: diseaseId ?? this.diseaseId,
       diseaseName: diseaseName ?? this.diseaseName,
