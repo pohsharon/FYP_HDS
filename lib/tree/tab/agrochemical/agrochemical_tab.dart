@@ -127,6 +127,10 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
       final now = DateTime.now();
       final difference = now.difference(date);
 
+      // If the selected date is today (ignoring time), show 'Today'
+      final isSameDay = date.year == now.year && date.month == now.month && date.day == now.day;
+      if (isSameDay) return 'Today';
+
       if (difference.inDays > 365) {
         return '${(difference.inDays / 365).floor()}y ago';
       } else if (difference.inDays > 30) {

@@ -34,7 +34,7 @@ class SyncAgro {
 
           try {
             // Fetch remote agrochemical records for this tree and try to match by applied_at + agrochemicalId/name
-            final remote = await AgrochemicalApi.fetchAgrochemicals(treeUuid: tu);
+            final remote = await AgrochemicalApi.getAvailableAgrochemicals();
             Map<String, dynamic>? match;
             for (final r in remote) {
               final applied = (r['applied_at'] ?? r['appliedAt'])?.toString() ?? '';
@@ -82,7 +82,7 @@ class SyncAgro {
           }
 
           try {
-            final remote = await AgrochemicalApi.fetchAgrochemicals(treeUuid: tu);
+            final remote = await AgrochemicalApi.getAvailableAgrochemicals();
             Map<String, dynamic>? match;
             for (final r in remote) {
               final applied = (r['applied_at'] ?? r['appliedAt'])?.toString() ?? '';

@@ -127,6 +127,12 @@ class AgroDB {
   // Save master list of agrochemical types (from API) into `agrochemical` lookup table
   Future<void> saveAgrochemicalList(List<Map<String, dynamic>> list) async {
     final db = await LocalDB.getDatabase();
+    // Ensure offline cache only contains currently available items
+    try {
+      await db.delete('agrochemical');
+    } catch (e) {
+      print('⚠️ saveAgrochemicalList: failed to clear agrochemical table: $e');
+    }
     for (final s in list) {
       final idVal = s['id'] ?? s['uuid'] ?? s['ID'];
       final name = s['name'] ?? s['agrochemical_name'] ?? s['agrochemicalName'] ?? '';
@@ -155,7 +161,7 @@ class AgroDB {
     );
   }
 
-  // Return all agrochemical master/type rows from local DB
+  // Return all agrochemical master/type rows from local DB (already filtered by backend)
   Future<List<Map<String, dynamic>>> getAllAgrochemicals() async {
     final db = await LocalDB.getDatabase();
     try {

@@ -124,7 +124,6 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
 
     try {
       await AgroDB().insertAgrochemical(model);
-      print('✅ Saved agrochemical locally for tree=${widget.treeUuid}');
     } catch (e) {
       print('⚠️ Failed to save agrochemical locally: $e');
       rethrow;
@@ -137,7 +136,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
       context: context,
       initialDate: appliedAt ?? now,
       firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
+      lastDate: now,
     );
     if (picked != null) {
       setState(() => appliedAt = picked);
@@ -211,7 +210,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
           // fall through to local save below
           await _saveLocally(formattedDate);
           await Flushbar(
-            message: 'Saved locally — will sync when online',
+            message: 'Agrochemical record saved locally. Sync will occur when online',
             icon: const Icon(Icons.cloud_off, color: Colors.white),
             backgroundColor: Colors.orange.shade700,
             duration: const Duration(seconds: 2),
