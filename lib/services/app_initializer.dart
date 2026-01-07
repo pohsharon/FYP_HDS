@@ -114,7 +114,15 @@ class AppInitializer {
         _log('❌ Error fetching available agrochemicals: $e');
       }
 
-      // Fetch and cache trees
+      // 🔄 SYNC PENDING UPDATES FIRST before caching remote trees
+      // This ensures pending_update flags are not cleared by upsertTreeFromApi
+      try {
+        await SyncTrees().syncUnsyncedTrees();
+      } catch (e) {
+        _log('❌ Error syncing trees: $e');
+      }
+
+      // Fetch and cache trees (after pending syncs to preserve pending flags)
       final repo = TreeRepository();
       final trees = await repo.getTrees(forceRefresh: true);
       await treeDB.cacheRemoteTrees(trees);
@@ -196,9 +204,6 @@ class AppInitializer {
       } catch (e) {
         _log('❌ Error fetching harvest events: $e');
       }
-
-      // Sync any unsynced data
-      await SyncTrees().syncUnsyncedTrees();
 
       // Also attempt to sync any fruits that were created offline
       try {
@@ -289,9 +294,18 @@ class AppInitializer {
         } catch (e) {
           _log('❌ Error caching available agrochemicals: $e');
         }
-  final repo = TreeRepository();
-  // Force a fresh remote fetch during initialization
-  trees = await repo.getTrees(forceRefresh: true);
+
+        // 🔄 SYNC PENDING UPDATES FIRST before caching remote trees
+        // This ensures pending_update flags are not cleared by upsertTreeFromApi
+        try {
+          await SyncTrees().syncUnsyncedTrees();
+        } catch (e) {
+          _log('❌ Error syncing trees: $e');
+        }
+
+        final repo = TreeRepository();
+        // Force a fresh remote fetch during initialization
+        trees = await repo.getTrees(forceRefresh: true);
         await treeDB.cacheRemoteTrees(trees);
         // Fetch and cache fruits for offline use
         try {
@@ -359,7 +373,6 @@ class AppInitializer {
         } catch (e) {
           _log('❌ Error caching growth in init: $e');
         }
-        await SyncTrees().syncUnsyncedTrees();
         // Also attempt to sync any fruits that were created offline
         try {
           await SyncFruits().syncFruits();

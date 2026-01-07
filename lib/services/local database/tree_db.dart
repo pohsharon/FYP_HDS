@@ -85,6 +85,9 @@ class TreeDB{
       where: 'pending_update = ?',
       whereArgs: [1],
     );
+    try {
+      print('🧭 fetchPendingUpdates: found ${result.length} rows');
+    } catch (_) {}
     return result.map((e) => TreeModel.fromMap(e)).toList();
   }
 
@@ -113,12 +116,19 @@ class TreeDB{
     // Remove id if present to avoid trying to update primary key unintentionally
     updateMap.remove('id');
     if (markPendingUpdate) updateMap['pending_update'] = 1;
-    return await db.update(
+    final rows = await db.update(
       'trees',
       updateMap,
       where: 'uuid = ?',
       whereArgs: [uuid],
     );
+    try {
+      final count = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM trees WHERE pending_update = 1'),
+      );
+      print('📝 updateTreeByUuid: rowsUpdated=$rows, pending_update_count=$count');
+    } catch (_) {}
+    return rows;
   }
 
   Future<int> clearPendingUpdate(String uuid) async {
@@ -144,23 +154,37 @@ class TreeDB{
       where: '(synced = ? OR pending_update = ? OR pending_delete = ?)',
       whereArgs: [0, 1, 1],
     );
-    // Preserve rows that are unsynced (synced=0) OR have pending updates/deletes
+    print('🔍 cacheRemoteTrees: Found ${unsyncedOrPending.length} rows to preserve');
+    for (final row in unsyncedOrPending) {
+      print('   - UUID: ${row['uuid']}, synced: ${row['synced']}, pending_update: ${row['pending_update']}, lat: ${row['latitude']}, lng: ${row['longitude']}');
+    }
 
-    // Step 2: Delete only synced ones
-    await db.delete('trees', where: 'synced = ?', whereArgs: [1]);
+    // Step 2: Delete only synced ones WITHOUT pending updates/deletes
+    final deletedCount = await db.delete('trees', 
+      where: 'synced = ? AND pending_update = ? AND pending_delete = ?', 
+      whereArgs: [1, 0, 0]);
+    print('🗑️ cacheRemoteTrees: Deleted $deletedCount fully-synced rows');
 
     // Step 3: Insert remote trees (marked as synced)
+    // Use IGNORE so remote rows don't overwrite local pending rows
+    int remoteInserted = 0;
     for (final tree in remoteTrees) {
-      await db.insert('trees', {
+      final result = await db.insert('trees', {
         ...tree.toMap(),
         'synced': 1,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      if (result > 0) remoteInserted++;
     }
+    print('📥 cacheRemoteTrees: Inserted $remoteInserted remote trees');
 
     // Step 4: Reinsert preserved local rows (unsynced or pending)
+    // Use REPLACE to overwrite remote data with pending local changes
+    int preservedInserted = 0;
     for (final u in unsyncedOrPending) {
-      await db.insert('trees', u, conflictAlgorithm: ConflictAlgorithm.ignore);
+      final result = await db.insert('trees', u, conflictAlgorithm: ConflictAlgorithm.replace);
+      if (result > 0) preservedInserted++;
     }
+    print('💾 cacheRemoteTrees: Reinserted $preservedInserted preserved rows');
 
   }
 

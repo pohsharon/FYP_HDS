@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:fyp_hbs/services/local%20database/species_db.dart';
+import 'package:fyp_hbs/services/local%20database/tree_db.dart';
+import '../../models/tree_model.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../config.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../../utils/connectivity_helper.dart';
 
 class TreeApi {
   static Future<Map<String, dynamic>> createTree({
@@ -447,6 +450,46 @@ class TreeApi {
     required double latitude,
     required double longitude,
   }) async {
+    // Check actual internet connectivity
+    final hasInternet = await ConnectivityHelper.hasInternetConnection();
+    print('🌐 addTreeLocation - hasInternet: $hasInternet for tree: $treeUuid');
+
+    if (!hasInternet) {
+      // Save location locally with pending_update flag (upsert if row missing)
+      print('📴 Saving location offline: lat=$latitude, lng=$longitude');
+      final treeDB = TreeDB();
+      final updated = await treeDB.updateTreeByUuid(
+        treeUuid,
+        {
+          'latitude': latitude,
+          'longitude': longitude,
+        },
+        markPendingUpdate: true,
+      );
+
+      // If no existing row was updated, insert a stub row to carry the pending update
+      if (updated == 0) {
+        try {
+          final stub = TreeModel(
+            uuid: treeUuid,
+            treeTag: 'Offline Tree',
+            latitude: latitude,
+            longitude: longitude,
+            synced: 0,
+            pendingUpdate: 1,
+          );
+          await treeDB.insertTree(stub);
+          print('ℹ️ Inserted stub tree row for offline location update');
+        } catch (e) {
+          print('⚠️ Failed to insert stub tree row: $e');
+        }
+      }
+
+      print('✅ Location saved offline with pending_update flag');
+      throw Exception("Location saved offline, will sync when online");
+    }
+
+    print('🌐 Saving location online to server...');
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
@@ -461,9 +504,11 @@ class TreeApi {
     );
 
     if (response.statusCode == 200 || response.statusCode == 201) {
+      print('✅ Location saved to server successfully');
       return;
     } else {
       final data = jsonDecode(response.body);
+      print('❌ Failed to save location: ${data["message"]}');
       throw Exception(data["message"] ?? "Failed to add tree location");
     }
   }

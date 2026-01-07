@@ -402,35 +402,78 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                                                   LocationAccuracy.high,
                                             );
 
-                                            await TreeApi.addTreeLocation(
-                                              treeUuid: selectedTreeId!,
-                                              latitude: position.latitude,
-                                              longitude: position.longitude,
-                                            );
+                                            try {
+                                              await TreeApi.addTreeLocation(
+                                                treeUuid: selectedTreeId!,
+                                                latitude: position.latitude,
+                                                longitude: position.longitude,
+                                              );
 
-                                            if (mounted) {
-                                              await Flushbar(
-                                                message:
-                                                    'Tree location saved successfully!',
-                                                icon: const Icon(
-                                                    Icons.check_circle,
-                                                    color: Colors.white),
-                                                backgroundColor:
-                                                    Colors.green.shade700,
-                                                duration:
-                                                    const Duration(seconds: 2),
-                                                margin:
-                                                    const EdgeInsets.all(12),
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ).show(parentContext);
-                                              Navigator.pop(dialogContext, true);
+                                              if (mounted) {
+                                                await Flushbar(
+                                                  message:
+                                                      'Tree location saved successfully!',
+                                                  icon: const Icon(
+                                                      Icons.check_circle,
+                                                      color: Colors.white),
+                                                  backgroundColor:
+                                                      Colors.green.shade700,
+                                                  duration:
+                                                      const Duration(seconds: 2),
+                                                  margin:
+                                                      const EdgeInsets.all(12),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ).show(parentContext);
+                                                Navigator.pop(dialogContext, true);
+                                              }
+                                            } catch (apiError) {
+                                              // Check if it was saved offline
+                                              print('API Error: $apiError');
+                                              if (apiError.toString().contains('saved offline') ||
+                                                  apiError.toString().contains('will sync when online')) {
+                                                if (mounted) {
+                                                  await Flushbar(
+                                                    message:
+                                                        'Location saved locally. Will sync when online',
+                                                    icon: const Icon(
+                                                        Icons.cloud_off,
+                                                        color: Colors.white),
+                                                    backgroundColor:
+                                                        Colors.orange.shade700,
+                                                    duration:
+                                                        const Duration(seconds: 2),
+                                                    margin:
+                                                        const EdgeInsets.all(12),
+                                                    borderRadius:
+                                                        BorderRadius.circular(12),
+                                                  ).show(parentContext);
+                                                  Navigator.pop(dialogContext, true);
+                                                }
+                                              } else {
+                                                if (mounted) {
+                                                  await Flushbar(
+                                                    message:
+                                                        'Failed to save location: ${apiError.toString().split('\n').first}',
+                                                    backgroundColor:
+                                                        Colors.red.shade700,
+                                                    duration:
+                                                        const Duration(seconds: 3),
+                                                    margin:
+                                                        const EdgeInsets.all(12),
+                                                    borderRadius:
+                                                        BorderRadius.circular(12),
+                                                  ).show(parentContext);
+                                                  Navigator.pop(
+                                                      dialogContext, false);
+                                                }
+                                              }
                                             }
-                                          } catch (e) {
+                                          } catch (locationError) {
                                             if (mounted) {
                                               await Flushbar(
                                                 message:
-                                                    'Failed to save location',
+                                                    'Failed to get current location',
                                                 backgroundColor:
                                                     Colors.red.shade700,
                                                 duration:
@@ -440,8 +483,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                                                 borderRadius:
                                                     BorderRadius.circular(12),
                                               ).show(parentContext);
-                                              Navigator.pop(
-                                                  dialogContext, false);
+                                              Navigator.pop(dialogContext, false);
                                             }
                                           }
                                         },
@@ -753,54 +795,31 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           ),
         ],
       ),
-      floatingActionButton: _fabAnimation != null
-          ? ScaleTransition(
-              scale: _fabAnimation!,
-              child: FloatingActionButton.extended(
-                onPressed: () async {
-                  final result = await _showAddTreeDialog();
-                  if (result == true) {
-                    _fetchTreeMarkers();
-                  }
-                },
-                label: const Text(
-                  'Add Tree',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                icon: const Icon(Icons.add_location_alt, color: Colors.white),
-                backgroundColor: AppColors.hunterGreen,
-                elevation: 6,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            )
-          : FloatingActionButton.extended(
-              onPressed: () async {
-                final result = await _showAddTreeDialog();
-                if (result == true) {
-                  _fetchTreeMarkers();
-                }
-              },
-              label: const Text(
-                'Add Tree',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
-              ),
-              icon: const Icon(Icons.add_location_alt, color: Colors.white),
-              backgroundColor: AppColors.hunterGreen,
-              elevation: 6,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+      floatingActionButton: ScaleTransition(
+        scale: _fabAnimation!,
+        child: FloatingActionButton.extended(
+          onPressed: () async {
+            final result = await _showAddTreeDialog();
+            if (result == true) {
+              _fetchTreeMarkers();
+            }
+          },
+          label: const Text(
+            'Add Tree',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
             ),
+          ),
+          icon: const Icon(Icons.add_location_alt, color: Colors.white),
+          backgroundColor: AppColors.hunterGreen,
+          elevation: 6,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }

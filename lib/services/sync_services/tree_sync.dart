@@ -114,8 +114,33 @@ class SyncTrees {
 
       // 📝 STEP 3: Handle pending updates
       final updates = await TreeDB().fetchPendingUpdates();
+      print('🔄 Found ${updates.length} trees with pending updates');
       for (final t in updates) {
         try {
+          // Check if this is a location-only update
+          bool isLocationUpdate = (t.latitude != null || t.longitude != null);
+          print('📍 Tree ${t.uuid}: isLocationUpdate=$isLocationUpdate, lat=${t.latitude}, lng=${t.longitude}');
+          
+          // If it's a location update, use the dedicated location API endpoint
+          if (isLocationUpdate && t.latitude != null && t.longitude != null) {
+            try {
+              print('🌐 Syncing location for tree ${t.uuid}...');
+              await TreeApi.addTreeLocation(
+                treeUuid: t.uuid,
+                latitude: t.latitude!,
+                longitude: t.longitude!,
+              );
+              await TreeDB().clearPendingUpdate(t.uuid);
+              print('✅ Synced location update: ${t.uuid}');
+              continue;
+            } catch (e) {
+              print('⚠️ Location update failed for ${t.uuid}: $e');
+              // Don't fall through to general update for location-only changes
+              // Just skip and try again on next sync
+              continue;
+            }
+          }
+          
           // Prefer updating by numeric id when available, but fall back to uuid endpoint
           bool updated = false;
           if (t.id != null) {
@@ -137,8 +162,6 @@ class SyncTrees {
                 print('⚠️ Server rejected update by id for ${t.uuid}');
               }
             } catch (e) {
-              final msg = e.toString();
-
               print('⚠️ Update by id failed for ${t.uuid}: $e');
             }
           }
