@@ -24,6 +24,7 @@ import 'sync_services/fruit_sync.dart';
 import 'sync_services/health_sync.dart';
 import 'sync_services/agro_sync.dart';
 import 'sync_services/disease_sync.dart';
+import 'sync_services/growth_sync.dart';
 import '../services/local database/disease_db.dart';
 import 'package:flutter/foundation.dart';
 
@@ -105,12 +106,12 @@ class AppInitializer {
         _log('❌ Error fetching diseases: $e');
       }
 
-      // Fetch and cache agrochemical master list for offline use
+      // Fetch and cache AVAILABLE agrochemical master list for offline use
       try {
-        final agroTypes = await AgrochemicalApi.getAgrochemical();
+        final agroTypes = await AgrochemicalApi.getAvailableAgrochemicals();
         await AgroDB().saveAgrochemicalList(agroTypes);
       } catch (e) {
-        _log('❌ Error fetching agrochemicals: $e');
+        _log('❌ Error fetching available agrochemicals: $e');
       }
 
       // Fetch and cache trees
@@ -227,6 +228,13 @@ class AppInitializer {
         _log('❌ Error syncing diseases: $e');
       }
 
+      // Attempt to sync any pending growth logs created while offline
+      try {
+        await SyncGrowth().syncGrowth();
+      } catch (e) {
+        _log('❌ Error syncing growth logs: $e');
+      }
+
       final timestamp = DateTime.now().toIso8601String();
       _log('✅ Sync complete at $timestamp');
 
@@ -274,12 +282,12 @@ class AppInitializer {
         } catch (e) {
           _log('❌ Error caching diseases: $e');
         }
-        // Fetch and cache agrochemical master list for offline use
+        // Fetch and cache AVAILABLE agrochemical master list for offline use
         try {
-          final agroTypes = await AgrochemicalApi.getAgrochemical();
+          final agroTypes = await AgrochemicalApi.getAvailableAgrochemicals();
           await AgroDB().saveAgrochemicalList(agroTypes);
         } catch (e) {
-          _log('❌ Error caching agrochemicals: $e');
+          _log('❌ Error caching available agrochemicals: $e');
         }
   final repo = TreeRepository();
   // Force a fresh remote fetch during initialization
@@ -378,6 +386,14 @@ class AppInitializer {
         } catch (e) {
           _log('❌ Error syncing diseases in init: $e');
         }
+
+        // Attempt to sync any pending growth logs created while offline
+        try {
+          await SyncGrowth().syncGrowth();
+        } catch (e) {
+          _log('❌ Error syncing growth logs in init: $e');
+        }
+
         // Fetch and cache harvest events for offline use
         try {
           final harvestDB = HarvestDB();

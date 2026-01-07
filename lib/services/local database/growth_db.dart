@@ -40,6 +40,26 @@ class GrowthDB{
     return result.map((r) => TreeGrowthModel.fromMap(r)).toList();
   }
 
+  Future<List<Map<String, dynamic>>> fetchPendingDeletes() async {
+    final db = await LocalDB.getDatabase();
+    final result = await db.query(
+      'tree_growth',
+      where: 'pending_delete = ?',
+      whereArgs: [1],
+    );
+    return result;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchPendingUpdates() async {
+    final db = await LocalDB.getDatabase();
+    final result = await db.query(
+      'tree_growth',
+      where: 'pending_update = ? AND pending_delete = ?',
+      whereArgs: [1, 0],
+    );
+    return result;
+  }
+
   Future<int> markGrowthAsSynced(String uuid) async {
     final db = await LocalDB.getDatabase();
     return await db.update(

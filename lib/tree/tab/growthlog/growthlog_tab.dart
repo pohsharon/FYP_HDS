@@ -56,6 +56,8 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
       try {
         final local = await GrowthDB().fetchAllGrowths(treeUuid: widget.treeUuid);
         logs = local.map((m) => m.toMap()).toList();
+        // Reverse to show oldest first (local DB returns newest first)
+        logs = logs.reversed.toList();
       } catch (localErr) {
         print("⚠️ Failed to load local growth logs: $localErr");
       }
@@ -180,7 +182,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                 controller: heightController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
-                  labelText: "Height (cm)",
+                  labelText: "Height (m)",
                   prefixIcon: Icon(Icons.height, color: AppColors.hunterGreen),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -200,7 +202,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                 controller: diameterController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
-                  labelText: "Diameter (cm)",
+                  labelText: "Diameter (m)",
                   prefixIcon: Icon(Icons.circle_outlined, color: AppColors.hunterGreen),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -266,11 +268,33 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                         }
 
                         try {
-                          await TreeGrowthApi.addGrowthLog(
+                          final result = await TreeGrowthApi.addGrowthLog(
                             treeUuid: widget.treeUuid,
                             height: double.parse(height),
                             diameter: double.parse(diameter),
                           );
+
+                          // Cache the result locally with synced=1
+                          try {
+                            final serverUuid = result['uuid']?.toString() ?? 
+                                result['data']?['uuid']?.toString() ?? 
+                                'remote_${DateTime.now().millisecondsSinceEpoch}';
+                            final createdAt = result['created_at']?.toString() ?? 
+                                result['data']?['created_at']?.toString() ?? 
+                                DateTime.now().toIso8601String();
+                            
+                            final g = TreeGrowthModel(
+                              uuid: serverUuid,
+                              treeUuid: widget.treeUuid,
+                              height: double.tryParse(height) ?? 0.0,
+                              diameter: double.tryParse(diameter) ?? 0.0,
+                              createdAt: createdAt,
+                              synced: 1,
+                            );
+                            await GrowthDB().insertGrowth(g);
+                          } catch (cacheErr) {
+                            print('⚠️ Failed to cache growth log locally: $cacheErr');
+                          }
 
                           if (mounted) {
                             Navigator.pop(bottomSheetContext);
@@ -286,35 +310,24 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                             ).show(context);
                           }
                         } catch (e) {
-                          print("⚠️ Remote add failed, saving growth locally: $e");
-                          try {
-                            final localUuid = 'local_${DateTime.now().millisecondsSinceEpoch}';
-                            final g = TreeGrowthModel(
-                              uuid: localUuid,
-                              treeUuid: widget.treeUuid,
-                              height: double.tryParse(height) ?? 0.0,
-                              diameter: double.tryParse(diameter) ?? 0.0,
-                              createdAt: DateTime.now().toIso8601String(),
-                              synced: 0,
-                            );
-                            await GrowthDB().insertGrowth(g);
-                            if (mounted) {
-                              Navigator.pop(bottomSheetContext);
-                              await _fetchGrowthLogs();
-                              widget.onGrowthLogSaved?.call();
+                          // API already handles offline save, just show appropriate message
+                          print("⚠️ API error: $e");
+                          if (mounted) {
+                            Navigator.pop(bottomSheetContext);
+                            await _fetchGrowthLogs();
+                            widget.onGrowthLogSaved?.call();
+                            
+                            // Check if it was saved offline or actual error
+                            if (e.toString().contains('Saved offline')) {
                               await Flushbar(
-                                message: 'Saved locally, will sync when online',
+                                message: 'Growth log saved locally. Sync will occur when online',
                                 icon: const Icon(Icons.cloud_off, color: Colors.white),
                                 backgroundColor: Colors.orange.shade700,
                                 duration: const Duration(seconds: 2),
                                 margin: const EdgeInsets.all(12),
                                 borderRadius: BorderRadius.circular(8),
                               ).show(context);
-                            }
-                          } catch (localErr) {
-                            print('Failed to save growth locally: $localErr');
-                            if (mounted) {
-                              Navigator.pop(bottomSheetContext);
+                            } else {
                               await Flushbar(
                                 message: 'Failed to save growth log',
                                 backgroundColor: Colors.red.shade700,
@@ -530,7 +543,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
-                                  'Need more data points',
+                                  'Keep Tracking!',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
@@ -539,7 +552,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Add at least 2 measurements to see the growth chart',
+                                  'Add 1 more measurement to see the growth chart',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontSize: 14,
@@ -754,7 +767,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                                         getTooltipItems: (touchedSpots) {
                                           return touchedSpots.map((spot) {
                                             return LineTooltipItem(
-                                              '${spot.y.toStringAsFixed(1)} cm',
+                                              '${spot.y.toStringAsFixed(1)} m',
                                               const TextStyle(
                                                 color: Colors.white,
                                                 fontWeight: FontWeight.bold,

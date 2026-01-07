@@ -4,7 +4,7 @@ import 'package:path/path.dart';
 class LocalDB {
   static final LocalDB instance = LocalDB._init();
   static Database? _db;
-  static const int _targetDbVersion = 2;
+  static const int _targetDbVersion = 3;
 
   LocalDB._init();
 
@@ -18,7 +18,7 @@ class LocalDB {
       version: _targetDbVersion,
       onCreate: (db, version) async {
         await _createDB(db);
-      },  
+      },
     );
 
     return _db!;
@@ -120,7 +120,8 @@ class LocalDB {
     await db.execute('''
     CREATE TABLE IF NOT EXISTS agrochemical (
         id TEXT PRIMARY KEY,
-        agrochemical_name TEXT
+        agrochemical_name TEXT,
+        remaining_stock INTEGER DEFAULT 0
       )
     ''');
 
