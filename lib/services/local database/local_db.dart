@@ -4,7 +4,7 @@ import 'package:path/path.dart';
 class LocalDB {
   static final LocalDB instance = LocalDB._init();
   static Database? _db;
-  static const int _targetDbVersion = 3;
+  static const int _targetDbVersion = 5;
 
   LocalDB._init();
 
@@ -57,8 +57,9 @@ class LocalDB {
     await db.execute('''
     CREATE TABLE IF NOT EXISTS fruits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      uuid TEXT UNIQUE,
       fruit_tag TEXT,
-      harvest_uuid TEXT UNIQUE,
+      harvest_uuid TEXT,
       transaction_uuid TEXT,
       harvested_at TEXT,
       created_at TEXT,

@@ -22,10 +22,44 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fyp_hbs/services/app_initializer.dart';
 
 class FruitPage extends StatefulWidget {
-  const FruitPage({super.key});
+  const FruitPage({super.key, this.scannedFruitUuid, this.fromQR = false});
+  
+  final String? scannedFruitUuid;
+  final bool fromQR;
 
   @override
   State<FruitPage> createState() => _FruitPageState();
+}
+
+class FruitListFromQR extends StatefulWidget {
+  const FruitListFromQR({super.key, required this.fruitUuid});
+  
+  final String fruitUuid;
+
+  @override
+  State<FruitListFromQR> createState() => _FruitListFromQRState();
+}
+
+class _FruitListFromQRState extends State<FruitListFromQR> {
+  @override
+  void initState() {
+    super.initState();
+    // Navigate to FruitPage with scanned UUID and fromQR flag
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => FruitPage(scannedFruitUuid: widget.fruitUuid, fromQR: true),
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(child: CircularProgressIndicator()),
+    );
+  }
 }
 
 class _FruitPageState extends State<FruitPage> {
@@ -159,6 +193,7 @@ class _FruitPageState extends State<FruitPage> {
   }
 
   @override
+  @override
   void initState() {
     super.initState();
     _loadHarvestEvents();
@@ -176,11 +211,120 @@ class _FruitPageState extends State<FruitPage> {
 
     // Listen for sync completion and auto-refresh
     AppInitializer.syncCompleted.addListener(_onSyncCompleted);
+    
+    // If a fruit UUID was scanned, show its details after loading completes
+    if (widget.scannedFruitUuid != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showScannedFruitDetails(widget.scannedFruitUuid!);
+      });
+    }
   }
 
   void _onSyncCompleted() {
     if (mounted) {
       _loadHarvestEvents();
+    }
+  }
+
+  Future<void> _showScannedFruitDetails(String fruitUuid) async {
+    // Wait for the harvest events to load
+    int attempts = 0;
+    while (_isInitialLoading && attempts < 30) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      attempts++;
+    }
+    
+    // Find the fruit in the current list by either 'uuid' or checking both possible keys
+    Map<String, dynamic> fruit = <String, dynamic>{};
+    
+    for (final f in _filteredFruits) {
+      final fruitId = f['uuid'] ?? f['harvest_uuid'] ?? '';
+      if (fruitId == fruitUuid) {
+        fruit = f;
+        break;
+      }
+    }
+    
+    // If not found in filtered, try all fruits
+    if (fruit.isEmpty) {
+      for (final f in _allFruits) {
+        final fruitId = f['uuid'] ?? f['harvest_uuid'] ?? '';
+        if (fruitId == fruitUuid) {
+          fruit = f;
+          break;
+        }
+      }
+    }
+    
+    // If still not found, check local database (for offline support)
+    if (fruit.isEmpty) {
+      try {
+        final localFruits = await FruitDB().getAllFruits();
+        for (final localFruit in localFruits) {
+          if (localFruit.harvest_uuid == fruitUuid) {
+            // Convert FruitModel to map format matching the UI expectation
+            final speciesRows = await SpeciesDB().getAllSpecies();
+            final Map<String, String> speciesLookup = {};
+            for (final s in speciesRows) {
+              final key = s['id']?.toString();
+              final name = s['name']?.toString() ?? '';
+              if (key != null) speciesLookup[key] = name;
+            }
+
+            final localTrees = await TreeDB().fetchAllTrees();
+            final Map<String, TreeModel> treeByUuid = {};
+            for (final t in localTrees) {
+              treeByUuid[t.uuid] = t;
+            }
+
+            final treeUuid = localFruit.tree_uuid;
+            String speciesName = 'Unknown Species';
+            String treeTag = 'Offline Tree';
+            if (treeUuid != null && treeByUuid.containsKey(treeUuid)) {
+              final tm = treeByUuid[treeUuid]!;
+              final sid = tm.speciesId?.toString();
+              if (sid != null && speciesLookup.containsKey(sid)) {
+                speciesName = speciesLookup[sid]!;
+              }
+              treeTag = tm.treeTag ?? treeTag;
+            }
+
+            String fruitTag = (localFruit.fruit_tag != null && localFruit.fruit_tag!.isNotEmpty)
+                ? localFruit.fruit_tag!
+                : 'Offline Fruit';
+
+            fruit = {
+              'uuid': localFruit.harvest_uuid ?? '',
+              'fruit_tag': fruitTag,
+              'harvested_at': localFruit.harvested_at ?? '',
+              'weight': localFruit.weight,
+              'grade': localFruit.grade ?? '',
+              'synced': localFruit.synced,
+              'pendingUpdate': localFruit.pendingUpdate,
+              'pendingDelete': localFruit.pendingDelete,
+              'tree': {
+                'uuid': treeUuid ?? '',
+                'tree_tag': treeTag,
+                'species': {'name': speciesName},
+              },
+            };
+            break;
+          }
+        }
+      } catch (e) {
+        debugPrint('Error checking local database for fruit: $e');
+      }
+    }
+    
+    if (fruit.isNotEmpty && mounted) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
+        _showFruitDetailsDialog(context, fruit);
+      }
+    } else {
+      debugPrint('Fruit not found: $fruitUuid');
+      debugPrint('Filtered fruits count: ${_filteredFruits.length}');
+      debugPrint('All fruits count: ${_allFruits.length}');
     }
   }
 
@@ -1230,127 +1374,132 @@ class _FruitPageState extends State<FruitPage> {
     return Scaffold(
       appBar: PersistentAppBar(
         title: 'Fruits',
-        leading: IconButton(
-          icon: const Icon(Icons.settings),
-          onPressed: () {
-            showModalBottomSheet(
-              context: context,
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              builder: (context) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ListTile(
-                      contentPadding: const EdgeInsets.only(
-                        left: 20,
-                        right: 20,
-                        top: 10,
-                        bottom: 0,
-                      ),
-                      leading: const Icon(Icons.lock),
-                      title: const Text('Change Password'),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) =>
-                                    const ResetPasswordPage(fromSettings: true),
+        leading: widget.fromQR
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : IconButton(
+                icon: const Icon(Icons.settings),
+                onPressed: () {
+                  showModalBottomSheet(
+                    context: context,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    builder: (context) {
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            contentPadding: const EdgeInsets.only(
+                              left: 20,
+                              right: 20,
+                              top: 10,
+                              bottom: 0,
+                            ),
+                            leading: const Icon(Icons.lock),
+                            title: const Text('Change Password'),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (_) =>
+                                          const ResetPasswordPage(fromSettings: true),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
-                    ListTile(
-                      contentPadding: const EdgeInsets.only(
-                        left: 20,
-                        right: 20,
-                        top: 0,
-                        bottom: 20,
-                      ),
-                      leading: const Icon(Icons.logout),
-                      title: const Text('Logout'),
-                      onTap: () async {
-                        final shouldLogout = await showDialog<bool>(
-                          context: context,
-                          builder:
-                              (context) => AlertDialog(
-                                title: const Text('Confirm Logout'),
-                                content: const Text(
-                                  'Are you sure you want to logout?',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed:
-                                        () => Navigator.of(context).pop(false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed:
-                                        () => Navigator.of(context).pop(true),
-                                    child: const Text('Logout'),
-                                  ),
-                                ],
-                              ),
-                        );
+                          ListTile(
+                            contentPadding: const EdgeInsets.only(
+                              left: 20,
+                              right: 20,
+                              top: 0,
+                              bottom: 20,
+                            ),
+                            leading: const Icon(Icons.logout),
+                            title: const Text('Logout'),
+                            onTap: () async {
+                              final shouldLogout = await showDialog<bool>(
+                                context: context,
+                                builder:
+                                    (context) => AlertDialog(
+                                      title: const Text('Confirm Logout'),
+                                      content: const Text(
+                                        'Are you sure you want to logout?',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed:
+                                              () => Navigator.of(context).pop(false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed:
+                                              () => Navigator.of(context).pop(true),
+                                          child: const Text('Logout'),
+                                        ),
+                                      ],
+                                    ),
+                              );
 
-                        if (shouldLogout == true) {
-                          try {
-                            final ok = await AuthService.logout();
+                              if (shouldLogout == true) {
+                                try {
+                                  final ok = await AuthService.logout();
 
-                            if (ok) {
-                              await Flushbar(
-                                message: 'Logged out',
-                                icon: const Icon(
-                                  Icons.check_circle,
-                                  color: Colors.white,
-                                ),
-                                backgroundColor: Colors.green.shade700,
-                                duration: const Duration(seconds: 2),
-                                borderRadius: BorderRadius.circular(8),
-                                margin: const EdgeInsets.all(12),
-                              ).show(context);
-                            } else {
-                              await Flushbar(
-                                message: 'Logging out',
-                                icon: const Icon(
-                                  Icons.info,
-                                  color: Colors.white,
-                                ),
-                                backgroundColor: Colors.orange.shade700,
-                                duration: const Duration(seconds: 2),
-                                borderRadius: BorderRadius.circular(8),
-                                margin: const EdgeInsets.all(12),
-                              ).show(context);
-                            }
+                                  if (ok) {
+                                    await Flushbar(
+                                      message: 'Logged out',
+                                      icon: const Icon(
+                                        Icons.check_circle,
+                                        color: Colors.white,
+                                      ),
+                                      backgroundColor: Colors.green.shade700,
+                                      duration: const Duration(seconds: 2),
+                                      borderRadius: BorderRadius.circular(8),
+                                      margin: const EdgeInsets.all(12),
+                                    ).show(context);
+                                  } else {
+                                    await Flushbar(
+                                      message: 'Logging out',
+                                      icon: const Icon(
+                                        Icons.info,
+                                        color: Colors.white,
+                                      ),
+                                      backgroundColor: Colors.orange.shade700,
+                                      duration: const Duration(seconds: 2),
+                                      borderRadius: BorderRadius.circular(8),
+                                      margin: const EdgeInsets.all(12),
+                                    ).show(context);
+                                  }
 
-                            Navigator.of(context).pushAndRemoveUntil(
-                              MaterialPageRoute(builder: (_) => LoginPage()),
-                              (route) => false,
-                            );
-                          } catch (e) {
-                            await Flushbar(
-                              message: 'Logout failed: $e',
-                              icon: const Icon(
-                                Icons.error,
-                                color: Colors.white,
-                              ),
-                              backgroundColor: Colors.red.shade700,
-                              duration: const Duration(seconds: 3),
-                              borderRadius: BorderRadius.circular(8),
-                              margin: const EdgeInsets.all(12),
-                            ).show(context);
-                          }
-                        }
-                      },
-                    ),
-                  ],
-                );
-              },
-            );
-          },
-        ),
+                                  Navigator.of(context).pushAndRemoveUntil(
+                                    MaterialPageRoute(builder: (_) => LoginPage()),
+                                    (route) => false,
+                                  );
+                                } catch (e) {
+                                  await Flushbar(
+                                    message: 'Logout failed: $e',
+                                    icon: const Icon(
+                                      Icons.error,
+                                      color: Colors.white,
+                                    ),
+                                    backgroundColor: Colors.red.shade700,
+                                    duration: const Duration(seconds: 3),
+                                    borderRadius: BorderRadius.circular(8),
+                                    margin: const EdgeInsets.all(12),
+                                  ).show(context);
+                                }
+                              }
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              ),
       ),
       backgroundColor: AppColors.background,
       body: SafeArea(

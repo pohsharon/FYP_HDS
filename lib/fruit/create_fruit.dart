@@ -147,7 +147,6 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
 
         try {
           await prefs.setString('harvest_events_all', jsonEncode(eventsForTree));
-          print('📦 Cached ${eventsForTree.length} global events');
         } catch (e) {
           print('⚠️ Failed to cache global events: $e');
         }
@@ -330,7 +329,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
 
     try {
       final treeUuid = selectedTreeUuid!;
-      final harvestUuid = selectedHarvestUuid!;
+      final harvestEventUuid = selectedHarvestUuid!;  // UUID of the harvest event
       final weight = double.parse(weightController.text);
       final grade = gradeController.text;
       final harvestedAt = harvestedAtController.text;
@@ -343,9 +342,29 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
       final nextFruitTag = await FruitDB().getNextFruitTag();
       
       late FruitModel fruitModel;
+      
+      // Determine the IDs to use
+      String localFruitUuid;  // The fruit's own UUID
+      String localHarvestUuid;  // The harvest event UUID
+      
+      if (isEdit && fruitUuid.isNotEmpty) {
+        // Editing: use existing fruit UUID
+        localFruitUuid = fruitUuid;
+        localHarvestUuid = widget.fruit!['harvest_uuid']?.toString() ?? harvestEventUuid;
+      } else if (online) {
+        // Creating online: harvest_uuid is known, fruit uuid will come from server
+        localFruitUuid = '';  // Will be set after server response
+        localHarvestUuid = harvestEventUuid;
+      } else {
+        // Creating offline: generate temp fruit uuid, harvest_uuid is known
+        localFruitUuid = 'gen_${DateTime.now().millisecondsSinceEpoch}';
+        localHarvestUuid = harvestEventUuid;
+      }
+      
       fruitModel = FruitModel(
         fruit_tag: nextFruitTag,
-        harvest_uuid: isEdit && fruitUuid.isNotEmpty ? fruitUuid : harvestUuid,
+        harvest_uuid: localHarvestUuid,  // The harvest event UUID
+        uuid: localFruitUuid.isNotEmpty ? localFruitUuid : null,  // The fruit's UUID
         transaction_uuid: null,
         harvested_at: harvestedAt,
         created_at: DateTime.now().toIso8601String(),
@@ -366,7 +385,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
             await FruitApi.updateFruit(
               uuid: fruitUuid,
               tree_uuid: treeUuid,
-              harvest_uuid: harvestUuid,
+              harvest_uuid: harvestEventUuid,
               weight: weight,
               grade: grade,
               harvested_at: harvestedAt,
@@ -375,23 +394,24 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
           } else {
             final response = await FruitApi.createFruit(
               tree_uuid: treeUuid,
-              harvest_uuid: harvestUuid,
+              harvest_uuid: harvestEventUuid,
               weight: weight,
               grade: grade,
               harvested_at: harvestedAt,
               is_spoiled: isSpoiled,
             );
             
-            // Extract real UUID from server response
+            // Extract real fruit UUID from server response
             try {
               final serverData = response['data'] is Map ? response['data'] : response;
-              final serverUuid = serverData['uuid'] ?? serverData['id'];
-              if (serverUuid != null && serverUuid.toString().isNotEmpty) {
-                print('✅ Server created fruit with UUID: $serverUuid');
-                // Create new fruitModel with server UUID and synced flag
+              final serverFruitUuid = serverData['uuid'] ?? serverData['id'];
+              if (serverFruitUuid != null && serverFruitUuid.toString().isNotEmpty) {
+                print('✅ Server created fruit with UUID: $serverFruitUuid');
+                // Create new fruitModel with server fruit UUID and synced flag
                 fruitModel = FruitModel(
                   fruit_tag: fruitModel.fruit_tag,
-                  harvest_uuid: serverUuid.toString(),
+                  harvest_uuid: localHarvestUuid,  // Keep the harvest event UUID
+                  uuid: serverFruitUuid.toString(),  // Set the server fruit UUID
                   transaction_uuid: fruitModel.transaction_uuid,
                   harvested_at: fruitModel.harvested_at,
                   created_at: fruitModel.created_at,
@@ -413,6 +433,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
             fruitModel = FruitModel(
               fruit_tag: fruitModel.fruit_tag,
               harvest_uuid: fruitModel.harvest_uuid,
+              uuid: fruitModel.uuid,
               transaction_uuid: fruitModel.transaction_uuid,
               harvested_at: fruitModel.harvested_at,
               created_at: fruitModel.created_at,
@@ -426,7 +447,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
             );
           }
           
-          // Save the fruit with server UUID to local database
+          // Save the fruit to local database
           try {
             if (isEdit && fruitUuid.isNotEmpty) {
               await FruitDB().updateFruit(fruitModel);
@@ -458,7 +479,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
         }
         try {
           final unsynced = await FruitDB().getUnsyncedFruits();
-          print('🍏 Saved fruit locally (harvest_uuid=${fruitModel.harvest_uuid}). Unsynced count=${unsynced.length}');
+          print('🍏 Saved fruit locally (fruit_uuid=${fruitModel.uuid}, harvest_uuid=${fruitModel.harvest_uuid}). Unsynced count=${unsynced.length}');
         } catch (e) {
           print('⚠️ Could not read unsynced fruits after insert: $e');
         }
@@ -829,12 +850,16 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
                   labelText: 'Weight (kg)',
-                  hintText: 'Enter weight in kg',
+                  hintText: 'Enter weight in kg (e.g., 2.5)',
                   filled: true,
                   fillColor: Colors.white,
                 ),
-                keyboardType: TextInputType.number,
-                validator: (value) => value == null || value.isEmpty ? 'Enter weight' : null,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                validator: (value) {
+                  if (value == null || value.isEmpty) return 'Enter weight';
+                  if (double.tryParse(value) == null) return 'Enter a valid number';
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
 

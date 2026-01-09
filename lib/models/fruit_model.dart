@@ -1,4 +1,5 @@
 class FruitModel {
+  final String? uuid;
   final String? fruit_tag;
   final String? harvest_uuid;
   final String? transaction_uuid;
@@ -14,6 +15,7 @@ class FruitModel {
   final int pendingDelete;   // 1 if waiting for delete sync
 
   FruitModel({
+    this.uuid,
     this.fruit_tag,
     this.harvest_uuid,
     this.transaction_uuid,
@@ -30,6 +32,7 @@ class FruitModel {
 
   /// Convert model to map for SQLite or JSON upload
   Map<String, dynamic> toMap() => {
+    'uuid': uuid,
     'fruit_tag': fruit_tag,
         'harvest_uuid': harvest_uuid,
         'transaction_uuid': transaction_uuid,
@@ -47,9 +50,10 @@ class FruitModel {
   /// Create FruitModel from SQLite or API map
   factory FruitModel.fromMap(Map<String, dynamic> map) {
     return FruitModel(
+      uuid: (map['uuid'] ?? map['id'])?.toString(),
       fruit_tag: (map['fruit_tag'] ?? map['fruitTag'] ?? map['tag'])?.toString(),
       // Accept multiple key names that different APIs may return.
-      harvest_uuid: (map['harvest_uuid'] ?? map['harvestId'] ?? map['uuid'] ?? map['id'])?.toString(),
+      harvest_uuid: (map['harvest_uuid'] ?? map['harvestId'] ?? map['harvestUuid'])?.toString(),
       transaction_uuid: (map['transaction_uuid'] ?? map['tx_uuid'] ?? map['transactionId'])?.toString(),
   harvested_at: (map['harvested_at'] ?? map['date'] ?? map['harvestedAt'])?.toString(),
   created_at: (map['created_at'] ?? map['createdAt'] ?? map['created'])?.toString(),

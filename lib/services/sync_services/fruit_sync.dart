@@ -44,16 +44,16 @@ class SyncFruits {
       for (final f in updates) {
         try {
           // Check if this fruit has an offline-generated UUID (gen_*)
-          final isOfflineUuid = (f.harvest_uuid ?? '').toString().startsWith('gen_');
+          final isOfflineUuid = (f.uuid ?? '').toString().startsWith('gen_');
           
           if (isOfflineUuid) {
             // For offline-created fruits, skip update and go straight to create
-            print('📝 Fruit ${f.harvest_uuid} is offline-created (gen_*), creating instead of updating...');
+            print('📝 Fruit ${f.uuid} is offline-created (gen_*), creating instead of updating...');
           } else {
             // For server-synced fruits, try update first
             try {
               await FruitApi.updateFruit(
-                uuid: f.harvest_uuid ?? '',
+                uuid: f.uuid ?? '',
                 tree_uuid: f.tree_uuid ?? '',
                 harvest_uuid: f.harvest_uuid ?? '',
                 weight: f.weight ?? 0.0,
@@ -62,7 +62,7 @@ class SyncFruits {
                 is_spoiled: f.is_spoiled,
               );
               await FruitDB().clearFruitPendingUpdate(f.harvest_uuid ?? '');
-              print('✅ Synced fruit update ${f.harvest_uuid}');
+              print('✅ Synced fruit update ${f.uuid}');
               continue;
             } catch (e) {
               final msg = e.toString();
@@ -70,11 +70,11 @@ class SyncFruits {
                   msg.contains('Not Found') ||
                   msg.contains('No query results')) {
                 print(
-                  'ℹ️ Fruit update returned 404 for ${f.harvest_uuid}; will try to create instead',
+                  'ℹ️ Fruit update returned 404 for ${f.uuid}; will try to create instead',
                 );
                 // fallthrough to create
               } else {
-                print('⚠️ Fruit update failed for ${f.harvest_uuid}: $e');
+                print('⚠️ Fruit update failed for ${f.uuid}: $e');
                 continue;
               }
             }
@@ -95,28 +95,29 @@ class SyncFruits {
               if (isOfflineUuid) {
                 try {
                   final serverData = resp['data'] is Map ? resp['data'] : resp;
-                  final serverUuid = serverData['uuid'] ?? serverData['id'];
-                  if (serverUuid != null && serverUuid.toString().isNotEmpty) {
-                    print('🔄 Reassigning offline UUID ${f.harvest_uuid} → $serverUuid');
-                    await FruitDB().reassignFruitUuid(f.harvest_uuid ?? '', serverUuid.toString());
+                  final serverFruitUuid = serverData['uuid'] ?? serverData['id'];
+                  if (serverFruitUuid != null && serverFruitUuid.toString().isNotEmpty) {
+                    print('🔄 Reassigning offline fruit UUID ${f.uuid} → $serverFruitUuid');
+                    // Update only the uuid field (fruit's ID), keep harvest_uuid unchanged
+                    await FruitDB().updateFruitUuid(f.harvest_uuid ?? '', serverFruitUuid.toString());
                   }
                 } catch (reassignErr) {
                   print('⚠️ Failed to reassign fruit UUID: $reassignErr');
                 }
               }
               await FruitDB().clearFruitPendingUpdate(f.harvest_uuid ?? '');
-              print('✅ Created fruit during update fallback ${f.harvest_uuid}');
+              print('✅ Created fruit during update fallback ${f.uuid}');
             } else {
               print(
-                '⚠️ Create fallback for fruit ${f.harvest_uuid} returned unexpected response',
+                '⚠️ Create fallback for fruit ${f.uuid} returned unexpected response',
               );
             }
           } catch (e) {
-            print('❌ Create fallback failed for fruit ${f.harvest_uuid}: $e');
+            print('❌ Create fallback failed for fruit ${f.uuid}: $e');
           }
         } catch (e) {
           print(
-            '⚠️ Failed to process pending fruit update ${f.harvest_uuid}: $e',
+            '⚠️ Failed to process pending fruit update ${f.uuid}: $e',
           );
         }
       }
@@ -137,7 +138,7 @@ class SyncFruits {
             'harvested_at': fruit.harvested_at ?? '',
             'is_spoiled': fruit.is_spoiled,
           };
-          print('🔁 Uploading fruit ${fruit.harvest_uuid} payload=$payload');
+          print('🔁 Uploading fruit ${fruit.uuid} payload=$payload');
 
           final response = await FruitApi.createFruit(
             tree_uuid: fruit.tree_uuid ?? '',
@@ -148,18 +149,31 @@ class SyncFruits {
             is_spoiled: fruit.is_spoiled,
           );
 
-          print('📡 Server response for ${fruit.harvest_uuid}: $response');
+          print('📡 Server response for ${fruit.uuid}: $response');
 
           if (response['success'] == true || response.containsKey('data')) {
+            // Extract server fruit UUID from response and store it locally
+            try {
+              final serverData = response['data'] is Map ? response['data'] : response;
+              final serverFruitUuid = serverData['uuid'] ?? serverData['id'];
+              if (serverFruitUuid != null && serverFruitUuid.toString().isNotEmpty) {
+                final updated = await FruitDB().updateFruitUuid(fruit.harvest_uuid ?? '', serverFruitUuid.toString());
+                print('💾 Database update returned: $updated rows affected');
+                print('✅ Stored server fruit UUID ${fruit.uuid} → $serverFruitUuid');
+              }
+            } catch (e) {
+              print('⚠️ Could not extract server UUID from response: $e');
+            }
+            
             await FruitDB().markFruitAsSynced(fruit.harvest_uuid ?? '');
-            print('✅ Synced new fruit ${fruit.harvest_uuid}');
+            print('✅ Synced new fruit ${fruit.uuid}');
           } else {
             print(
-              '⚠️ Fruit create API returned unexpected response for ${fruit.harvest_uuid}: $response',
+              '⚠️ Fruit create API returned unexpected response for ${fruit.uuid}: $response',
             );
           }
         } catch (e, st) {
-          print('❌ Failed to sync fruit ${fruit.harvest_uuid}: $e');
+          print('❌ Failed to sync fruit ${fruit.uuid}: $e');
           print(st);
         }
       }

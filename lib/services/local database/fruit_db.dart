@@ -138,29 +138,42 @@ class FruitDB{
 
     // Step 2: Delete only synced ones
     await db.delete('fruits', where: 'synced = ?', whereArgs: [1]);
+    
     final seen = <String>{};
-    int genCounter = 0;
+    int insertedCount = 0;
+    
     for (var i = 0; i < remoteFruits.length; i++) {
       final fruit = remoteFruits[i];
       final fm = fruit.toMap();
-      var hid = fm['harvest_uuid'] ?? fm['uuid'] ?? fm['id'] ?? '';
-
-      // If server provides empty or duplicate harvest id, generate a stable
-      // fallback id so we don't replace previous rows.
-      hid ??= '';
-      if (hid.toString().trim().isEmpty || seen.contains(hid.toString())) {
-        genCounter++;
-        final generated =
-            'gen_${DateTime.now().millisecondsSinceEpoch}_${i}_$genCounter';
-        hid = generated;
+      
+      // The cloud database has:
+      // - uuid: the fruit's own ID
+      // - harvest_uuid: the harvest event UUID it belongs to
+      var fruitUuid = fm['uuid'] ?? fm['id'] ?? '';
+      var harvestUuid = fm['harvest_uuid'] ?? '';
+      
+      fruitUuid ??= '';
+      harvestUuid ??= '';
+      
+      if (fruitUuid.toString().trim().isEmpty) {
+        print('⚠️ Skipping fruit with no UUID at index $i');
+        continue;
       }
 
-      seen.add(hid.toString());
+      if (seen.contains(fruitUuid.toString())) {
+        print('⚠️ Skipping duplicate fruit UUID: $fruitUuid');
+        continue;
+      }
 
-      // Ensure the map contains the canonical harvest_uuid key for DB insertion
+      seen.add(fruitUuid.toString());
+
+      // Keep both uuid (fruit ID) and harvest_uuid (event ID) separate as they are in cloud
       final insertMap = Map<String, dynamic>.from(fm);
-      insertMap['harvest_uuid'] = hid;
+      insertMap['uuid'] = fruitUuid;  // Fruit's own ID
+      insertMap['harvest_uuid'] = harvestUuid;  // The harvest event UUID it belongs to
       insertMap['synced'] = 1;
+      insertMap['pending_update'] = 0;
+      insertMap['pending_delete'] = 0;
 
       // Prefer server-provided fruit_tag if present; otherwise derive a friendly tag
       if (insertMap['fruit_tag'] == null ||
@@ -173,7 +186,7 @@ class FruitDB{
             insertMap['harvested_at'].toString().isNotEmpty) {
           derived = insertMap['harvested_at'].toString();
         } else {
-          final idStr = hid.toString();
+          final idStr = fruitUuid.toString();
           derived = idStr.length > 8 ? idStr.substring(0, 8) : idStr;
         }
         insertMap['fruit_tag'] = derived;
@@ -184,25 +197,34 @@ class FruitDB{
           insertMap['created_at'].toString().trim().isEmpty) {
         insertMap['created_at'] = DateTime.now().toIso8601String();
       }
-            await db.insert(
-        'fruits',
-        insertMap,
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+      
+      try {
+        await db.insert(
+          'fruits',
+          insertMap,
+          conflictAlgorithm: ConflictAlgorithm.replace,  // Use REPLACE to ensure it goes in
+        );
+        insertedCount++;
+      } catch (e) {
+        print('❌ Failed to insert fruit $fruitUuid: $e');
+      }
     }
 
     // Step 4: Reinsert preserved local rows (unsynced or pending)
     for (final u in unsyncedOrPending) {
-      // Reinsert preserved local rows and ensure they overwrite any remote
-      // row that might have been inserted with the same harvest_uuid.
-      await db.insert(
-        'fruits',
-        u,
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      try {
+        await db.insert(
+          'fruits',
+          u,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      } catch (e) {
+        print('❌ Failed to reinsert local fruit: $e');
+      }
     }
-
-
+    
+    // Verify final count
+    final finalCount = await db.query('fruits');
   }
 
   /// Reassign tree_uuid for local fruit rows when a locally-created tree
@@ -224,9 +246,20 @@ class FruitDB{
     final db = await LocalDB.getDatabase();
     return await db.update(
       'fruits',
-      {'harvest_uuid': newUuid},
+      {'harvest_uuid': newUuid, 'uuid': newUuid},
       where: 'harvest_uuid = ?',
       whereArgs: [oldUuid],
+    );
+  }
+
+  /// Update the uuid field for a fruit (called after sync to store server UUID)
+  Future<int> updateFruitUuid(String harvestUuid, String serverUuid) async {
+    final db = await LocalDB.getDatabase();
+    return await db.update(
+      'fruits',
+      {'uuid': serverUuid},
+      where: 'harvest_uuid = ?',
+      whereArgs: [harvestUuid],
     );
   }
 
