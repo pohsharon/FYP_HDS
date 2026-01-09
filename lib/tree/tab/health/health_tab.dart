@@ -94,11 +94,9 @@ class _HealthTabPageState extends State<HealthTabPage> {
                 return const Center(child: CircularProgressIndicator());
               } else if (snapshot.hasError) {
                 return Center(child: Text("Error: ${snapshot.error}"));
-              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(child: Text("No health records found."));
               }
 
-              var filteredRecords = snapshot.data!;
+              var filteredRecords = snapshot.data ?? [];
               
               // Apply disease filter
               if (_selectedDiseaseId != null && _selectedDiseaseId!.isNotEmpty) {
@@ -137,6 +135,44 @@ class _HealthTabPageState extends State<HealthTabPage> {
               }).toList();
 
               if (filteredRecords.isEmpty) {
+                // If there are no records at all in the database, show initial message
+                if (snapshot.data == null || snapshot.data!.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: AppColors.gray200,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.health_and_safety_outlined,
+                            size: 40,
+                            color: AppColors.gray600,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No health records yet',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.gray700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Tap the Add button to create your first record',
+                          style: TextStyle(fontSize: 14, color: AppColors.gray600),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                
+                // If records exist but filters removed them all, show filter message
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 32),

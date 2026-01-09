@@ -254,6 +254,165 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
         }
         
         final harvests = snapshot.data ?? [];
+        
+        // Show empty state if no harvests
+        if (harvests.isEmpty) {
+          return SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Add Fruit button
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.hunterGreen.withOpacity(0.1),
+                          AppColors.mossGreen.withOpacity(0.05),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: AppColors.hunterGreen.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CreateFruitPage(prefilledTreeUuid: widget.treeUuid),
+                            ),
+                          );
+                          if (result == true) {
+                            setState(() {});
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(16),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              // Icon container
+                              Container(
+                                width: 56,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      AppColors.hunterGreen,
+                                      AppColors.mossGreen,
+                                    ],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.hunterGreen.withOpacity(0.3),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: const Icon(
+                                  Icons.add_circle_outline,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              
+                              // Content
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Add New Fruit',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                        color: AppColors.hunterGreen,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Record a new fruit harvest',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.gray600,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              
+                              // Arrow
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.hunterGreen.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  Icons.arrow_forward,
+                                  size: 20,
+                                  color: AppColors.hunterGreen,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  
+                  // Empty state message
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: AppColors.gray200,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.inventory_2_outlined,
+                          size: 40,
+                          color: AppColors.gray600,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No harvest events yet',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.gray700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tap the Add New Fruit button above to create your first harvest record',
+                        style: TextStyle(fontSize: 14, color: AppColors.gray600),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
         return ListView.separated(
           padding: const EdgeInsets.all(16),
           itemCount: harvests.length + 1,
