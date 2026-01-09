@@ -102,6 +102,7 @@ class OTPVerificationPage extends StatelessWidget {
                           duration: const Duration(seconds: 3),
                           borderRadius: BorderRadius.circular(8),
                           margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
                         ).show(context);
                         return;
                       }
@@ -114,6 +115,7 @@ class OTPVerificationPage extends StatelessWidget {
                         duration: const Duration(seconds: 2),
                         borderRadius: BorderRadius.circular(8),
                         margin: const EdgeInsets.all(12),
+                        flushbarPosition: FlushbarPosition.TOP,
                       ).show(context);
 
                       // Verify OTP
@@ -131,6 +133,7 @@ class OTPVerificationPage extends StatelessWidget {
                           duration: const Duration(seconds: 2),
                           borderRadius: BorderRadius.circular(8),
                           margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
                         ).show(context);
 
                         Navigator.push(
@@ -148,6 +151,7 @@ class OTPVerificationPage extends StatelessWidget {
                           duration: const Duration(seconds: 3),
                           borderRadius: BorderRadius.circular(8),
                           margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
                         ).show(context);
                       }
                     },

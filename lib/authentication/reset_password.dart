@@ -123,6 +123,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           duration: const Duration(seconds: 3),
                           borderRadius: BorderRadius.circular(8),
                           margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
                         ).show(context);
                         return;
                       }
@@ -135,6 +136,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                         duration: const Duration(seconds: 2),
                         borderRadius: BorderRadius.circular(8),
                         margin: const EdgeInsets.all(12),
+                        flushbarPosition: FlushbarPosition.TOP,
                       ).show(context);
 
                       // Call reset password API
@@ -146,34 +148,40 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
                       if (result['success'] == true) {
                         // Password reset successfully
-                        Flushbar(
+                        await Flushbar(
                           message: result['message'] ?? 'Password reset successfully',
                           icon: const Icon(Icons.check_circle, color: Colors.white),
                           backgroundColor: Colors.green.shade700,
                           duration: const Duration(seconds: 2),
                           borderRadius: BorderRadius.circular(8),
                           margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
                         ).show(context);
+
+                        // Wait for Flushbar to display before navigating
+                        await Future.delayed(const Duration(milliseconds: 500));
 
                         // Navigate based on context
                         // If fromSettings is true, user is logged in changing password -> go to home
                         // If fromSettings is false, user is on login page (forgot password) -> go to login
-                        if (widget.fromSettings) {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const Nav(),
-                            ),
-                            (route) => false,
-                          );
-                        } else {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => LoginPage(),
-                            ),
-                            (route) => false,
-                          );
+                        if (mounted) {
+                          if (widget.fromSettings) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const Nav(),
+                              ),
+                              (route) => false,
+                            );
+                          } else {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => LoginPage(),
+                              ),
+                              (route) => false,
+                            );
+                          }
                         }
                       } else {
                         // Show error
@@ -184,6 +192,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           duration: const Duration(seconds: 3),
                           borderRadius: BorderRadius.circular(8),
                           margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
                         ).show(context);
                       }
                     },

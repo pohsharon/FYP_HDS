@@ -40,7 +40,13 @@ class AuthService {
   static Future<Map<String, dynamic>> checkPhone(String phone) async {
   try {
     phone = phone.trim();
-    if (!phone.startsWith('0')) phone = '60$phone';
+    // Normalize phone: if it starts with 0, replace with 60; if already has 60, keep it
+    if (phone.startsWith('0')) {
+      phone = '6${phone.substring(1)}'; // 01234567 -> 601234567
+    } else if (!phone.startsWith('60')) {
+      phone = '60$phone'; // 1234567 -> 601234567
+    }
+    // else: already starts with 60, keep as is
 
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
@@ -69,7 +75,13 @@ class AuthService {
   static Future<Map<String, dynamic>> verifyOTP(String phone, String otp) async {
     try {
       phone = phone.trim();
-      if (!phone.startsWith('0')) phone = '60$phone';
+      // Normalize phone: if it starts with 0, replace with 60; if already has 60, keep it
+      if (phone.startsWith('0')) {
+        phone = '6${phone.substring(1)}'; // 01234567 -> 601234567
+      } else if (!phone.startsWith('60')) {
+        phone = '60$phone'; // 1234567 -> 601234567
+      }
+      // else: already starts with 60, keep as is
 
       final response = await http.post(
         Uri.parse("${Config.apiBaseUrl}/verify-otp"),
@@ -109,6 +121,13 @@ class AuthService {
   ) async {
     try {
       phone = phone.trim();
+      // Normalize phone: if it starts with 0, replace with 60; if already has 60, keep it
+      if (phone.startsWith('0')) {
+        phone = '6${phone.substring(1)}'; // 01234567 -> 601234567
+      } else if (!phone.startsWith('60')) {
+        phone = '60$phone'; // 1234567 -> 601234567
+      }
+      // else: already starts with 60, keep as is
 
       final response = await http.post(
         Uri.parse("${Config.apiBaseUrl}/reset-password"),
