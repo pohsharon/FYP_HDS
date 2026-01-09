@@ -842,7 +842,7 @@ Widget _buildEnhancedDropdown({
         final menuWidth = constraints.maxWidth;
         return DropdownMenu<String>(
           width: menuWidth,
-          menuHeight: 300,
+          menuHeight: 150,
           controller: controller,
           requestFocusOnTap: true,
           initialSelection: initialSelection ?? '',
