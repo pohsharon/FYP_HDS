@@ -32,14 +32,21 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
   bool _isSaving = false; // ✅ track saving state
 
   final LatLngBounds farmBounds = LatLngBounds(
-    const LatLng(3.110831, 101.626978),
-    const LatLng(3.130831, 101.646978),
+    // const LatLng(3.110831, 101.626978),
+    // const LatLng(3.130831, 101.646978),
+    const LatLng(6.36800, 100.38200), // Southwest corner
+    const LatLng(6.39000, 100.42000), // Northeast corner
   );
 
   @override
   void initState() {
     super.initState();
     _getCurrentLocation();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   Future<void> _getCurrentLocation() async {
@@ -76,6 +83,22 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
         });
       }
     });
+  }
+
+  void _centerToCurrentLocation() {
+    if (_currentLocation != null) {
+      _mapController.move(_currentLocation!, 18);
+    }
+  }
+
+  void _zoomIn() {
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(_mapController.camera.center, currentZoom + 1);
+  }
+
+  void _zoomOut() {
+    final currentZoom = _mapController.camera.zoom;
+    _mapController.move(_mapController.camera.center, currentZoom - 1);
   }
 
   Future<void> _saveTreeLocation() async {
@@ -141,11 +164,29 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Tree Location",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.location_on, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              widget.treeTag,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                fontSize: 20,
+              ),
+            ),
+          ],
         ),
         backgroundColor: AppColors.pakistanGreen,
+        elevation: 0,
       ),
       body: Stack(
         children: [
@@ -205,19 +246,32 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
               child: Center(
                 child: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.orange.shade700,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
                   ),
-                  child: const Text(
-                    "⚠️ Tree location not saved yet. Showing your current location.",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                    textAlign: TextAlign.center,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.info, color: Colors.white, size: 18),
+                      const SizedBox(width: 8),
+                      const Text(
+                        "Tree location not saved yet.",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -226,7 +280,7 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
           // 💾 Save Tree Location button
           if (_locationNotSaved)
             Positioned(
-              bottom: 80,
+              bottom: 100,
               left: 20,
               right: 20,
               child: ElevatedButton(
@@ -234,20 +288,63 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
                   if (_isSaving) return;
                   _saveTreeLocation();
                 },
-                child: Text(
-                  _isSaving ? "Saving..." : "Save Tree Location",
-                  style: const TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold),
-                ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.pakistanGreen,
+                  backgroundColor: AppColors.hunterGreen,
+                  foregroundColor: Colors.white,
                   padding:
-                      const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                      const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                   ),
+                  elevation: 6,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _isSaving ? Icons.hourglass_bottom : Icons.save_alt,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isSaving ? "Saving..." : "Save Tree Location",
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
+
+          // Map Controls
+          Positioned(
+            right: 16,
+            top: 16,
+            child: Column(
+              children: [
+                _buildMapControlButton(
+                  icon: Icons.add,
+                  onPressed: _zoomIn,
+                  tooltip: 'Zoom In',
+                ),
+                const SizedBox(height: 8),
+                _buildMapControlButton(
+                  icon: Icons.remove,
+                  onPressed: _zoomOut,
+                  tooltip: 'Zoom Out',
+                ),
+                const SizedBox(height: 8),
+                _buildMapControlButton(
+                  icon: Icons.my_location,
+                  onPressed: _centerToCurrentLocation,
+                  tooltip: 'My Location',
+                ),
+              ],
+            ),
+          ),
 
           // Copyright
           Positioned(
@@ -258,17 +355,75 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
                 launchUrl(Uri.parse('https://www.openstreetmap.org/copyright'));
               },
               child: Container(
-                color: Colors.white70,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: const Text(
-                  '© OpenStreetMap contributors',
-                  style: TextStyle(fontSize: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.copyright, size: 12, color: Colors.black54),
+                    SizedBox(width: 4),
+                    Text(
+                      'OpenStreetMap',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMapControlButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      waitDuration: const Duration(milliseconds: 500),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        elevation: 4,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.grey.shade200,
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              icon,
+              color: AppColors.pakistanGreen,
+              size: 24,
+            ),
+          ),
+        ),
       ),
     );
   }
