@@ -6,6 +6,9 @@ import 'package:torch_light/torch_light.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:qr_code_tools/qr_code_tools.dart'; 
 import 'package:another_flushbar/flushbar.dart';
+import 'package:fyp_hbs/services/local database/fruit_db.dart';
+import 'package:fyp_hbs/services/local database/tree_db.dart';
+import 'package:fyp_hbs/fruit/fruit_list.dart';
 
 class QRScannerPage extends StatefulWidget {
   const QRScannerPage({super.key});
@@ -34,15 +37,108 @@ class _QRScannerPageState extends State<QRScannerPage> {
     controller.scannedDataStream.listen((scanData) {
       controller.pauseCamera();
       final uuid = scanData.code;
-
       if (uuid != null && mounted) {
+        _handleScannedUUID(uuid);
+      }
+    });
+  }
+
+  Future<void> _handleScannedUUID(String uuid) async {
+    final scanTime = DateTime.now();
+    // print('🔍 [QR SCAN] Scanned at ${scanTime.toIso8601String()} - UUID: $uuid');
+    
+    try {
+      // First, check if this UUID is a tree (local database)
+      final validationStartTime = DateTime.now();
+      // print('🔎 [VALIDATION START] Tree database search started at ${validationStartTime.toIso8601String()}');
+      
+      final trees = await TreeDB().fetchAllTrees();
+      final treeIndex = trees.indexWhere((t) => t.uuid == uuid);
+
+      if (treeIndex >= 0 && mounted) {
+        // Found in tree database - navigate to tree details
+        final foundTime = DateTime.now();
+        final searchDuration = foundTime.difference(validationStartTime).inMilliseconds;
+        // print('✅ [TREE FOUND] Found in tree database after ${searchDuration}ms at ${foundTime.toIso8601String()}');
+        
+        final navigationTime = DateTime.now();
+        // print('🚀 [NAVIGATION START] Navigating to TreeDetailsPage at ${navigationTime.toIso8601String()}');
+        
         Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: uuid)),
         );
+        
+        final navigationCompleteTime = DateTime.now();
+        final navigationDuration = navigationCompleteTime.difference(navigationTime).inMilliseconds;
+        // print('✅ [NAVIGATION COMPLETE] Directed to tree details in ${navigationDuration}ms at ${navigationCompleteTime.toIso8601String()}');
+        // print('📊 [TOTAL TIME] From scan to navigation: ${navigationCompleteTime.difference(scanTime).inMilliseconds}ms');
+        return;
       }
-    });
+
+      // Second, check if this UUID is a fruit (by uuid only)
+      final fruitSearchStart = DateTime.now();
+      // print('🔎 [VALIDATION CONTINUE] Fruit database search started at ${fruitSearchStart.toIso8601String()}');
+      
+      final fruits = await FruitDB().getAllFruits();
+      
+      // Check only the fruit's own uuid field
+      final fruitIndex = fruits.indexWhere((f) => f.uuid == uuid);
+
+      if (fruitIndex >= 0 && mounted) {
+        // Found in fruit database - navigate to FruitList and show details
+        final foundTime = DateTime.now();
+        final searchDuration = foundTime.difference(fruitSearchStart).inMilliseconds;
+        // print('✅ [FRUIT FOUND] Found in fruit database after ${searchDuration}ms at ${foundTime.toIso8601String()}');
+        
+        final foundFruit = fruits[fruitIndex];
+        final navigationTime = DateTime.now();
+        // print('🚀 [NAVIGATION START] Navigating to FruitListFromQR at ${navigationTime.toIso8601String()}');
+        
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => FruitListFromQR(fruitUuid: foundFruit.uuid ?? uuid),
+          ),
+        );
+        
+        final navigationCompleteTime = DateTime.now();
+        final navigationDuration = navigationCompleteTime.difference(navigationTime).inMilliseconds;
+        // print('✅ [NAVIGATION COMPLETE] Directed to fruit details in ${navigationDuration}ms at ${navigationCompleteTime.toIso8601String()}');
+        // print('📊 [TOTAL TIME] From scan to navigation: ${navigationCompleteTime.difference(scanTime).inMilliseconds}ms');
+        return;
+      }
+
+      // UUID not found in either database
+      final notFoundTime = DateTime.now();
+      final totalValidationTime = notFoundTime.difference(validationStartTime).inMilliseconds;
+      // print('❌ [NOT FOUND] UUID not found in any database after ${totalValidationTime}ms at ${notFoundTime.toIso8601String()}');
+      
+      if (mounted) {
+        await Flushbar(
+          message: '❌ QR code not found in database',
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+        ).show(context);
+      }
+    } catch (e) {
+      final errorTime = DateTime.now();
+      print('❌ [ERROR] Exception at ${errorTime.toIso8601String()}: $e');
+      debugPrint('Error handling scanned UUID: $e');
+      if (mounted) {
+        await Flushbar(
+          message: '❌ Error scanning QR code: ${e.toString().split('\n').first}',
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+        ).show(context);
+      }
+    }
   }
+  
 
   Future<void> _toggleFlashlight() async {
     try {
@@ -76,14 +172,9 @@ Future<void> _pickImageFromGallery() async {
     }
 
     String? result = await QrCodeToolsPlugin.decodeFrom(pickedImage.path);
-
+  
     if (result != null && result.isNotEmpty) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => TreeDetailsPage(treeID: result),
-        ),
-      );
+      await _handleScannedUUID(result);
     } else {
       await Flushbar(
         message: 'No QR code found in image.',
