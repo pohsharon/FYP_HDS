@@ -28,8 +28,10 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   Animation<double>? _fabAnimation;
 
   final LatLngBounds farmBounds = LatLngBounds(
-    const LatLng(3.110831, 101.626978),
-    const LatLng(3.130831, 101.646978),
+    // const LatLng(3.110831, 101.626978),
+    // const LatLng(3.130831, 101.646978),
+    const LatLng(6.36800, 100.38200), // Southwest corner
+    const LatLng(6.39000, 100.42000), // Northeast corner
   );
 
   @override
@@ -60,58 +62,77 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     setState(() => _isLoading = true);
     
     try {
+      print('🗺️ [MAP] Starting to fetch tree markers from API...');
+      final startTime = DateTime.now();
+      
       final response = await TreeApi.fetchAllTrees();
       final treeList = response['data']['data'] as List<dynamic>;
+      
+      final fetchTime = DateTime.now().difference(startTime).inMilliseconds;
+      print('🗺️ [MAP] API returned ${treeList.length} trees in ${fetchTime}ms');
 
       final markers = treeList.map<Map<String, dynamic>>((tree) {
         final treeMap = tree as Map<String, dynamic>;
+        final lat = treeMap['latitude'] != null ? double.tryParse(treeMap['latitude'].toString()) : null;
+        final lng = treeMap['longitude'] != null ? double.tryParse(treeMap['longitude'].toString()) : null;
+        
         return {
           ...treeMap,
-          'latitude': treeMap['latitude'] ?? 0.0,
-          'longitude': treeMap['longitude'] ?? 0.0,
+          'latitude': lat ?? 0.0,
+          'longitude': lng ?? 0.0,
+          'has_valid_coords': lat != null && lng != null && lat != 0.0 && lng != 0.0,
         };
       }).toList();
+      
+      // Filter to only show trees with valid coordinates
+      final validMarkers = markers.where((m) => m['has_valid_coords'] as bool).toList();
+      print('🗺️ [MAP] Valid markers with coordinates: ${validMarkers.length}/${markers.length}');
 
       if (mounted) {
         setState(() {
-          treesWithLocation = markers;
+          treesWithLocation = validMarkers;
           _isLoading = false;
         });
+        print('✅ [MAP] Markers rendered: ${validMarkers.length} trees shown on map');
       }
     } catch (e) {
+      print('⚠️ [MAP] API fetch failed: $e, falling back to local database');
       try {
         final local = await TreeDB().fetchAllTrees();
+        print('🗺️ [MAP] Found ${local.length} trees in local database');
+        
         final markers = local.map<Map<String, dynamic>>((t) {
+          final lat = t.latitude;
+          final lng = t.longitude;
           return {
             'uuid': t.uuid,
             'tree_tag': t.treeTag ?? 'Offline Tree',
-            'latitude': t.latitude ?? 0.0,
-            'longitude': t.longitude ?? 0.0,
+            'latitude': lat ?? 0.0,
+            'longitude': lng ?? 0.0,
+            'has_valid_coords': lat != null && lng != null && lat != 0.0 && lng != 0.0,
           };
         }).toList();
+        
+        final validMarkers = markers.where((m) => m['has_valid_coords'] as bool).toList();
+        print('🗺️ [MAP] Valid local markers: ${validMarkers.length}/${markers.length}');
 
         if (mounted) {
           setState(() {
-            treesWithLocation = markers;
+            treesWithLocation = validMarkers;
             _isLoading = false;
           });
+          print('✅ [MAP] Markers rendered from local: ${validMarkers.length} trees shown');
         }
       } catch (localErr) {
+        print('❌ [MAP] Local database also failed: $localErr');
         if (mounted) {
           setState(() => _isLoading = false);
           await Flushbar(
-            message: "Failed to load tree markers",
+            message: 'Failed to load tree markers',
             backgroundColor: Colors.red.shade700,
             duration: const Duration(seconds: 3),
             margin: const EdgeInsets.all(12),
-            borderRadius: BorderRadius.circular(12),
-            boxShadows: [
-              BoxShadow(
-                color: Colors.black26,
-                blurRadius: 8,
-                offset: Offset(0, 4),
-              ),
-            ],
+            borderRadius: BorderRadius.circular(8),
           ).show(context);
         }
       }
@@ -266,7 +287,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                             child: const Icon(
                               Icons.forest,
                               color: Colors.white,
-                              size: 28,
+                              size: 22,
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -274,7 +295,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                             child: Text(
                               'Add Tree Location',
                               style: TextStyle(
-                                fontSize: 22,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
@@ -304,57 +325,64 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                           const SizedBox(height: 16),
                           
                           // Dropdown with custom styling
-                          Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: selectedTreeId == null
-                                    ? Colors.grey.shade300
-                                    : AppColors.pakistanGreen,
-                                width: 2,
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: DropdownMenu<String>(
-                              width: dialogWidth - 48,
-                              menuHeight: 300,
-                              controller: treeController,
-                              requestFocusOnTap: true,
-                              initialSelection: selectedTreeId,
-                              label: const Text('Select Tree Tag'),
-                              trailingIcon: const Icon(Icons.arrow_drop_down),
-                              selectedTrailingIcon: const Icon(Icons.arrow_drop_up),
-                              inputDecorationTheme: InputDecorationTheme(
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 16,
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: selectedTreeId == null
+                                      ? Colors.grey.shade300
+                                      : AppColors.pakistanGreen,
+                                  width: 2,
                                 ),
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              dropdownMenuEntries: treeList
-                                  .map<DropdownMenuEntry<String>>(
-                                    (tree) => DropdownMenuEntry(
-                                      value: tree['uuid'].toString(),
-                                      label: tree['tree_tag'] ?? 'Unnamed',
-                                      leadingIcon: const Icon(
-                                        Icons.park,
-                                        color: Colors.green,
-                                        size: 20,
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  return DropdownMenu<String>(
+                                    width: constraints.maxWidth,
+                                    menuHeight: 200,
+                                    controller: treeController,
+                                    requestFocusOnTap: true,
+                                    initialSelection: selectedTreeId,
+                                    label: const Text('Select Tree Tag'),
+                                    trailingIcon: const Icon(Icons.arrow_drop_down),
+                                    selectedTrailingIcon: const Icon(Icons.arrow_drop_up),
+                                    inputDecorationTheme: InputDecorationTheme(
+                                      border: InputBorder.none,
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 16,
                                       ),
                                     ),
-                                  )
-                                  .toList(),
-                              onSelected: (value) {
-                                if (value == null) return;
-                                setState(() => selectedTreeId = value);
-                                try {
-                                  final found = treeList.firstWhere(
-                                      (t) => t['uuid'].toString() == value);
-                                  treeController.text =
-                                      found['tree_tag']?.toString() ?? '';
-                                } catch (_) {
-                                  treeController.text = '';
-                                }
-                              },
+                                    dropdownMenuEntries: treeList
+                                        .map<DropdownMenuEntry<String>>(
+                                          (tree) => DropdownMenuEntry(
+                                            value: tree['uuid'].toString(),
+                                            label: tree['tree_tag'] ?? 'Unnamed',
+                                            leadingIcon: const Icon(
+                                              Icons.park,
+                                              color: Colors.green,
+                                              size: 20,
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onSelected: (value) {
+                                      if (value == null) return;
+                                      setState(() => selectedTreeId = value);
+                                      try {
+                                        final found = treeList.firstWhere(
+                                            (t) => t['uuid'].toString() == value);
+                                        treeController.text =
+                                            found['tree_tag']?.toString() ?? '';
+                                      } catch (_) {
+                                        treeController.text = '';
+                                      }
+                                    },
+                                  );
+                                },
+                              ),
                             ),
                           ),
 
@@ -694,33 +722,41 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                           ],
                         ),
                       ),
-                    // Tree Markers
-                    ...treesWithLocation.map((tree) {
-                      final lat = double.tryParse(tree['latitude'].toString());
-                      final lng =
-                          double.tryParse(tree['longitude'].toString());
-                      if (lat == null || lng == null) return null;
-
-                      return Marker(
-                        point: LatLng(lat, lng),
-                        width: 100,
-                        height: 80,
-                        child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    TreeDetailsPage(treeID: tree['uuid']),
-                              ),
-                            );
-                          },
-                          child: _buildCustomMarker(tree),
-                        ),
-                      );
-                    }).whereType<Marker>(),
                   ],
                 ),
+              // Tree Markers Layer - Always visible
+              MarkerLayer(
+                markers: [
+                  ...treesWithLocation.map((tree) {
+                    final lat = double.tryParse(tree['latitude'].toString());
+                    final lng = double.tryParse(tree['longitude'].toString());
+                    
+                    // Skip if coordinates are invalid or 0
+                    if (lat == null || lng == null || (lat == 0.0 && lng == 0.0)) {
+                      print('⚠️ [MAP] Skipping tree ${tree['uuid']} - invalid coords: ($lat, $lng)');
+                      return null;
+                    }
+
+                    return Marker(
+                      point: LatLng(lat, lng),
+                      width: 100,
+                      height: 80,
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  TreeDetailsPage(treeID: tree['uuid']),
+                            ),
+                          );
+                        },
+                        child: _buildCustomMarker(tree),
+                      ),
+                    );
+                  }).whereType<Marker>(),
+                ],
+              ),
             ],
           ),
 
@@ -793,6 +829,52 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
               ),
             ),
           ),
+          
+          // Loading Overlay
+          if (_isLoading)
+            Container(
+              color: Colors.black26,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(
+                        width: 50,
+                        height: 50,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 3,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            AppColors.hunterGreen,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Loading tree markers...',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
       floatingActionButton: ScaleTransition(
