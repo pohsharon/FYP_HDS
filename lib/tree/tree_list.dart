@@ -213,7 +213,7 @@ class _TreePageState extends State<TreePage> {
       }
     }
     try {
-      final response = await TreeApi.fetchTrees(page: page);
+      final response = await TreeApi.fetchAllTrees();
 
       final pagination = response['data'] as Map<String, dynamic>;
       final List<dynamic> treeList = pagination['data'] ?? [];

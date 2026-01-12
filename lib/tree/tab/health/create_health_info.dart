@@ -12,6 +12,7 @@ import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/models/health_model.dart';
 import 'package:fyp_hbs/services/local database/health_db.dart';
 import 'package:fyp_hbs/tree/tab/health/create_disease.dart';
+import 'package:fyp_hbs/services/app_initializer.dart';
 import '../../../config.dart';
 
 class CreateHealthInfoPage extends StatefulWidget {
@@ -87,7 +88,12 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
     }
 
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 40);
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 75,
+      maxWidth: 1024,
+      maxHeight: 1024,
+    );
     if (picked != null) {
       setState(() {
         _selectedImage = File(picked.path);
@@ -239,6 +245,9 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
             margin: const EdgeInsets.all(12),
             flushbarPosition: FlushbarPosition.TOP,
           ).show(context);
+
+          // Print pending sync counts
+          await AppInitializer.printPendingSyncCounts();
         }
         Navigator.pop(context, true);
       }

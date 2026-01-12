@@ -7,6 +7,7 @@ import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/services/local database/agro_db.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/models/agrochemical_model.dart';
+import 'package:fyp_hbs/services/app_initializer.dart';
 
 class CreateAgrochemicalPage extends StatefulWidget {
   final Map<String, dynamic>? agrochemicalRecord;
@@ -58,6 +59,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
   }
 
   Future<void> _fetchAgrochemicalOptions() async {
+    if (!mounted) return;
     setState(() => _isDropdownLoading = true);
     try {
       final online = await ConnectivityHelper.hasInternetConnection();
@@ -69,6 +71,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
         } catch (e) {
           print('⚠️ Failed to save agrochemical master list locally: $e');
         }
+        if (!mounted) return;
         setState(() {
           _agrochemicalOptions = options;
           _isDropdownLoading = false;
@@ -88,11 +91,13 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
           'name': row['agrochemical_name'] ?? 'Unknown',
         };
       }).toList();
+      if (!mounted) return;
       setState(() {
         _agrochemicalOptions = mapped;
         _isDropdownLoading = false;
       });
       } catch (e) {
+      if (!mounted) return;
       setState(() => _isDropdownLoading = false);
       await Flushbar(
         message: 'Error loading agrochemicals (offline): $e',
@@ -106,7 +111,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
     }
   }
 
-  Future<void> _saveLocally(String formattedDate) async {
+  Future<void> _saveLocally(String formattedDate, {int synced = 0}) async {
     final selectedName = _agrochemicalOptions.firstWhere(
       (e) => (e['uuid'] ?? e['id'] ?? '') == selectedAgrochemicalUuid,
       orElse: () => {'name': 'Unknown'},
@@ -118,7 +123,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
       agrochemicalName: selectedName,
       applied_at: formattedDate,
       description: descriptionController.text,
-      synced: 0,
+      synced: synced,
       pendingUpdate: widget.agrochemicalRecord != null ? 1 : 0,
     );
 
@@ -177,6 +182,8 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
               applied_at: formattedDate,
               description: descriptionController.text,
             );
+            // Save locally with synced=1 since it was just created on server
+            await _saveLocally(formattedDate, synced: 1);
             await Flushbar(
               message: 'Agrochemical record created successfully',
               icon: const Icon(Icons.check_circle, color: Colors.white),
@@ -195,6 +202,8 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
               applied_at: formattedDate,
               description: descriptionController.text,
             );
+            // Save locally with synced=1 since it was just updated on server
+            await _saveLocally(formattedDate, synced: 1);
             await Flushbar(
               message: 'Agrochemical record updated successfully',
               icon: const Icon(Icons.check_circle, color: Colors.white),
@@ -207,8 +216,8 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
           }
         } catch (e) {
           print('⚠️ Remote agrochemical save failed, saving locally instead: $e');
-          // fall through to local save below
-          await _saveLocally(formattedDate);
+          // fall through to local save below - save with synced=0 since it needs to sync
+          await _saveLocally(formattedDate, synced: 0);
           await Flushbar(
             message: 'Agrochemical record saved locally. Sync will occur when online',
             icon: const Icon(Icons.cloud_off, color: Colors.white),
@@ -218,10 +227,13 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
             margin: const EdgeInsets.all(12),
             flushbarPosition: FlushbarPosition.TOP,
           ).show(context);
+
+          // Print pending sync counts
+          await AppInitializer.printPendingSyncCounts();
         }
       } else {
-        // Offline: save locally and mark as unsynced
-        await _saveLocally(formattedDate);
+        // Offline: save locally with synced=0 (needs syncing)
+        await _saveLocally(formattedDate, synced: 0);
         await Flushbar(
           message: 'Saved locally — will sync when online',
           icon: const Icon(Icons.cloud_off, color: Colors.white),
@@ -231,6 +243,9 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
           margin: const EdgeInsets.all(12),
           flushbarPosition: FlushbarPosition.TOP,
         ).show(context);
+
+        // Print pending sync counts
+        await AppInitializer.printPendingSyncCounts();
       }
 
       Navigator.pop(context, true);

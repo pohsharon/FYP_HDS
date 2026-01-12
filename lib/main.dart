@@ -29,6 +29,7 @@ class MainApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: "Hosba Durian System",
+      navigatorKey: AppInitializer.navigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.pakistanGreen,
@@ -63,7 +64,29 @@ class MainApp extends StatelessWidget {
           border: OutlineInputBorder(),
         ),
       ),
-      home: const LoginPage(),
+      home: const GlobalKeyboardDismissal(
+        child: LoginPage(),
+      ),
+    );
+  }
+}
+
+/// Custom widget that wraps the entire app to dismiss keyboard on tap anywhere
+class GlobalKeyboardDismissal extends StatelessWidget {
+  final Widget child;
+
+  const GlobalKeyboardDismissal({
+    super.key,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        FocusScope.of(context).unfocus();
+      },
+      child: child,
     );
   }
 }

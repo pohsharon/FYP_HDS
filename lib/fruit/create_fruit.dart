@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fyp_hbs/services/local database/tree_db.dart';
 import 'package:fyp_hbs/services/local database/fruit_db.dart';
+import 'package:fyp_hbs/services/app_initializer.dart';
 
 class CreateFruitPage extends StatefulWidget {
   final Map<String, dynamic>? fruit;
@@ -511,6 +512,9 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
               margin: const EdgeInsets.all(12),
               flushbarPosition: FlushbarPosition.TOP,
             ).show(context);
+
+            // Print pending sync counts
+            await AppInitializer.printPendingSyncCounts();
           }
         } catch (_) {}
         Navigator.pop(context, true);
@@ -617,6 +621,28 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
           key: _formKey,
           child: ListView(
             children: [
+              // Show fruit tag when editing
+              if (widget.fruit != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextFormField(
+                      initialValue: widget.fruit!['fruit_tag']?.toString() ?? 'Unknown',
+                      readOnly: true,
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
+                        labelText: 'Fruit',
+                        filled: true,
+                        fillColor: AppColors.gray100,
+                      ),
+                      style: TextStyle(
+                        color: AppColors.gray700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
               FormField<String>(
                 validator: (value) =>
                     selectedTreeUuid == null || selectedTreeUuid!.isEmpty

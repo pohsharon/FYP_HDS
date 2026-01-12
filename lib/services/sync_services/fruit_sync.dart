@@ -166,7 +166,6 @@ class SyncFruits {
             }
             
             await FruitDB().markFruitAsSynced(fruit.harvest_uuid ?? '');
-            print('✅ Synced new fruit ${fruit.uuid}');
           } else {
             print(
               '⚠️ Fruit create API returned unexpected response for ${fruit.uuid}: $response',

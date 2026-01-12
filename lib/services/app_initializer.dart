@@ -1,4 +1,6 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:another_flushbar/flushbar.dart';
+import 'package:flutter/material.dart';
 import '../models/tree_model.dart';
 import '../models/fruit_model.dart';
 import '../repositories/tree_repository.dart';
@@ -49,12 +51,18 @@ class AppInitializer {
   static final ValueNotifier<bool> syncInProgress = ValueNotifier<bool>(false);
   // Notify listeners when sync completes so they can refresh
   static final ValueNotifier<int> syncCompleted = ValueNotifier<int>(0);
+  // Global navigator key for showing Flushbars from anywhere
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  // Track sync notifications
+  static Flushbar<dynamic>? _syncStartedFlushbar;
+  static Flushbar<dynamic>? _syncCompletedFlushbar;
 
   static bool _beginSync() {
     if (syncInProgress.value) {
       return false;
     }
     syncInProgress.value = true;
+    _showSyncStartedFlushbar();
     return true;
   }
 
@@ -62,6 +70,125 @@ class AppInitializer {
     syncInProgress.value = false;
     // Increment counter to notify all listeners that sync completed
     syncCompleted.value++;
+    // Print pending sync counts for each type
+    printPendingSyncCounts();
+    _showSyncCompletedFlushbar();
+  }
+
+  /// Count and print pending syncs for each record type separately
+  static Future<void> printPendingSyncCounts() async {
+    try {
+      print('🔍 Checking pending syncs...');
+
+      // Count unsynced trees
+      try {
+        final treeDB = TreeDB();
+        final unsyncedTrees = await treeDB.fetchUnsyncedTrees();
+        // print('🌳 Unsynced Trees: ${unsyncedTrees.length}');
+      } catch (e) {
+        print('⚠️ Error counting pending trees: $e');
+      }
+
+      // Count unsynced fruits
+      try {
+        final fruitDB = FruitDB();
+        final unsyncedFruits = await fruitDB.getUnsyncedFruits();
+        // print('🍎 Unsynced Fruits: ${unsyncedFruits.length}');
+      } catch (e) {
+        print('⚠️ Error counting pending fruits: $e');
+      }
+
+      // Count unsynced health records
+      try {
+        final healthDB = HealthDB();
+        final unsyncedHealth = await healthDB.fetchUnsyncedHealths();
+        // print('❤️ Unsynced Health Records: ${unsyncedHealth.length}');
+      } catch (e) {
+        print('⚠️ Error counting pending health records: $e');
+      }
+
+      // Count unsynced agrochemical records
+      try {
+        final agroDB = AgroDB();
+        final unsyncedAgro = await agroDB.fetchUnsyncedAgrochemicals();
+        print('🧪 Unsynced Agrochemical Records: ${unsyncedAgro.length}');
+      } catch (e) {
+        print('⚠️ Error counting pending agrochemical records: $e');
+      }
+
+      // Count unsynced growth records
+      try {
+        final growthDB = GrowthDB();
+        final unsyncedGrowth = await growthDB.fetchUnsyncedGrowths();
+        // print('📈 Unsynced Growth Records: ${unsyncedGrowth.length}');
+      } catch (e) {
+        print('⚠️ Error counting pending growth records: $e');
+      }
+
+      // Count unsynced disease records
+      try {
+        final diseaseDB = DiseaseDB();
+        final unsyncedDisease = await diseaseDB.fetchUnsyncedDiseases();
+        // print('🦠 Unsynced Disease Records: ${unsyncedDisease.length}');
+      } catch (e) {
+        print('⚠️ Error counting pending disease records: $e');
+      }
+
+      print('✅ Pending sync check completed');
+    } catch (e) {
+      print('❌ Error checking pending syncs: $e');
+    }
+  }
+
+  static void _showSyncStartedFlushbar() {
+    try {
+      final context = navigatorKey.currentContext;
+      if (context == null) return;
+      
+      // Dismiss previous flushbars
+      _syncStartedFlushbar?.dismiss();
+      _syncCompletedFlushbar?.dismiss();
+      
+      _syncStartedFlushbar = Flushbar(
+        message: '🌐 Syncing in progress...',
+        backgroundColor: Colors.blue.shade700,
+        duration: const Duration(days: 1), // Long duration, will be dismissed manually
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+        flushbarPosition: FlushbarPosition.TOP,
+      );
+      
+      _syncStartedFlushbar?.show(context);
+    } catch (e) {
+      _log('⚠️ Error showing sync started notification: $e');
+    }
+  }
+
+  static void _showSyncCompletedFlushbar() {
+    try {
+      final context = navigatorKey.currentContext;
+      if (context == null) return;
+      
+      // Dismiss the started flushbar
+      _syncStartedFlushbar?.dismiss();
+      
+      // Get current timestamp
+      final now = DateTime.now();
+      final timestamp = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}';
+      
+      _syncCompletedFlushbar = Flushbar(
+        message: 'Sync completed at $timestamp',
+        backgroundColor: Colors.green.shade700,
+        duration: const Duration(seconds: 4),
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+        flushbarPosition: FlushbarPosition.TOP,
+      );
+      
+      _syncCompletedFlushbar?.show(context);
+    } catch (e) {
+      _log('⚠️ Error showing sync completed notification: $e');
+    }
   }
 
   static void enableConnectivitySync() {
@@ -432,6 +559,9 @@ class AppInitializer {
       return;
     }
     _connectivityListenerInitialized = true;
+
+    // Print initial pending sync counts at startup
+    printPendingSyncCounts();
 
     // Initialize last known state so we only fire on true offline -> online transitions
     ConnectivityHelper.hasInternetConnection().then((online) {

@@ -122,7 +122,6 @@ class SyncHealth {
 
           if (resp['success'] == true || resp.containsKey('data')) {
             await db.markAsSynced(h.tree_uuid ?? '');
-            print('✅ Synced new health record for tree ${h.tree_uuid}');
           } else {
             print('⚠️ Create health API returned unexpected response: $resp');
           }

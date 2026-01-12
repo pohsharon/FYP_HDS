@@ -55,7 +55,6 @@ class SyncDiseases {
           if (uuid.isNotEmpty) {
             await db.markAsSynced(uuid);
           }
-          print('✅ Synced new disease: ${d['disease_name']}');
         } catch (e) {
           print('⚠️ Failed to sync new disease: $e');
         }

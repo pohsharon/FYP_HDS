@@ -3,6 +3,7 @@ import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/disease_api.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:fyp_hbs/services/app_initializer.dart';
 
 class CreateDiseasePage extends StatefulWidget {
   final Map<String, dynamic>? disease;
@@ -94,6 +95,11 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
         margin: const EdgeInsets.all(12),
         flushbarPosition: FlushbarPosition.TOP,
       ).show(context);
+
+      // Print pending sync counts if saved offline
+      if (!online) {
+        await AppInitializer.printPendingSyncCounts();
+      }
 
       if (!mounted) return;
       Navigator.pop(context, true);

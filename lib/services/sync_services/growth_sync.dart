@@ -58,7 +58,6 @@ class SyncGrowth {
           
           // Mark as synced
           await db.markGrowthAsSynced(g.uuid);
-          print('✅ Synced new growth log for tree: ${g.treeUuid}');
         } catch (e) {
           print('⚠️ Failed to sync new growth log: $e');
         }

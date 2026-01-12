@@ -114,7 +114,6 @@ class SyncTrees {
 
       // 📝 STEP 3: Handle pending updates
       final updates = await TreeDB().fetchPendingUpdates();
-      print('🔄 Found ${updates.length} trees with pending updates');
       for (final t in updates) {
         try {
           // Check if this is a location-only update

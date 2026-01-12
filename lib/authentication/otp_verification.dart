@@ -29,20 +29,23 @@ class OTPVerificationPage extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const SizedBox(height: 30),
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                const SizedBox(height: 20),
                 // OTP Illustration
                 SizedBox(
-                  height: 140,
+                  height: 120,
                   child: Image.asset('assets/images/OTP.png'),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
                 const Text(
                   "OTP Verification",
                   style: TextStyle(
@@ -62,7 +65,7 @@ class OTPVerificationPage extends StatelessWidget {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
                 // OTP Field (6 boxes)
                 PinCodeTextField(
                   appContext: context,
@@ -87,7 +90,7 @@ class OTPVerificationPage extends StatelessWidget {
                   enableActiveFill: true,
                   onChanged: (value) {},
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 28),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -95,28 +98,32 @@ class OTPVerificationPage extends StatelessWidget {
                       // Validate OTP
                       if (otpController.text.isEmpty ||
                           otpController.text.length < 6) {
+                        final overlayContext =
+                            Navigator.of(context, rootNavigator: true).overlay!.context;
                         Flushbar(
                           message: 'Please enter OTP',
                           icon: const Icon(Icons.error, color: Colors.white),
                           backgroundColor: Colors.red.shade700,
                           duration: const Duration(seconds: 3),
                           borderRadius: BorderRadius.circular(8),
-                          margin: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(top: 50, left: 12, right: 12),
                           flushbarPosition: FlushbarPosition.TOP,
-                        ).show(context);
+                        ).show(overlayContext);
                         return;
                       }
 
                       // Show loading
+                      final overlayContext =
+                          Navigator.of(context, rootNavigator: true).overlay!.context;
                       Flushbar(
                         message: 'Verifying OTP...',
                         icon: const Icon(Icons.sync, color: Colors.white),
                         backgroundColor: AppColors.hunterGreen,
                         duration: const Duration(seconds: 2),
                         borderRadius: BorderRadius.circular(8),
-                        margin: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(top: 50, left: 12, right: 12),
                         flushbarPosition: FlushbarPosition.TOP,
-                      ).show(context);
+                      ).show(overlayContext);
 
                       // Verify OTP
                       final result = await AuthService.verifyOTP(
@@ -126,15 +133,17 @@ class OTPVerificationPage extends StatelessWidget {
 
                       if (result['success'] == true) {
                         // OTP verified successfully
+                        final overlayContext =
+                            Navigator.of(context, rootNavigator: true).overlay!.context;
                         Flushbar(
                           message: 'OTP verified successfully',
                           icon: const Icon(Icons.check_circle, color: Colors.white),
                           backgroundColor: Colors.green.shade700,
                           duration: const Duration(seconds: 2),
                           borderRadius: BorderRadius.circular(8),
-                          margin: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(top: 50, left: 12, right: 12),
                           flushbarPosition: FlushbarPosition.TOP,
-                        ).show(context);
+                        ).show(overlayContext);
 
                         Navigator.push(
                           context,
@@ -144,15 +153,17 @@ class OTPVerificationPage extends StatelessWidget {
                         );
                       } else {
                         // Show error
+                        final overlayContext =
+                            Navigator.of(context, rootNavigator: true).overlay!.context;
                         Flushbar(
                           message: result['message'] ?? 'OTP verification failed',
                           icon: const Icon(Icons.error, color: Colors.white),
                           backgroundColor: Colors.red.shade700,
                           duration: const Duration(seconds: 3),
                           borderRadius: BorderRadius.circular(8),
-                          margin: const EdgeInsets.all(12),
+                          margin: const EdgeInsets.only(top: 50, left: 12, right: 12),
                           flushbarPosition: FlushbarPosition.TOP,
-                        ).show(context);
+                        ).show(overlayContext);
                       }
                     },
                     style: ElevatedButton.styleFrom(
@@ -175,6 +186,7 @@ class OTPVerificationPage extends StatelessWidget {
               ],
             ),
           ),
+        ),
         ),
       ),
     );

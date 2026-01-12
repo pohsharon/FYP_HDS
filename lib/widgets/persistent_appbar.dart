@@ -9,7 +9,7 @@ import 'package:fyp_hbs/services/app_initializer.dart';
 
 /// A small reusable AppBar widget used across the app.
 /// Keeps a consistent look and exposes a sync action by default.
-class PersistentAppBar extends StatelessWidget implements PreferredSizeWidget {
+class PersistentAppBar extends StatefulWidget implements PreferredSizeWidget {
   final String title;
   final Widget? leading;
   final List<Widget>? extraActions;
@@ -21,6 +21,14 @@ class PersistentAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.extraActions,
   });
 
+  @override
+  State<PersistentAppBar> createState() => _PersistentAppBarState();
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+}
+
+class _PersistentAppBarState extends State<PersistentAppBar> {
   Future<void> _handleSync(BuildContext context) async {
     // Use the root overlay's context for showing Flushbar so the
     // context remains valid even if this widget gets disposed while
@@ -78,22 +86,19 @@ class PersistentAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      title: Text(title),
+      title: Text(widget.title),
       titleTextStyle: TextStyle(
         color: Colors.white,
         fontSize: 20,
         fontWeight: FontWeight.w600,
       ),
-      leading: leading,
+      leading: widget.leading,
       actions: [
         _ConnectionBadge(onTap: () => _handleSync(context)),
-        ...?extraActions,
+        ...?widget.extraActions,
       ],
     );
   }
-
-  @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
 class _ConnectionBadge extends StatefulWidget {
@@ -106,8 +111,6 @@ class _ConnectionBadge extends StatefulWidget {
 }
 
 class _ConnectionBadgeState extends State<_ConnectionBadge> {
-  bool? _lastOnlineStatus;
-
   Future<bool> _hasInternet() async {
     try {
       final result = await InternetAddress.lookup('example.com')
@@ -180,7 +183,8 @@ class _ConnectionBadgeState extends State<_ConnectionBadge> {
 
     try {
       await AppInitializer.initializeApp();
-      print('✅ Auto-sync completed successfully');
+      final timestamp = DateTime.now().toIso8601String();
+      print('✅ Auto-sync completed successfully at $timestamp');
     } catch (e) {
       print('❌ Auto-sync failed: $e');
     }

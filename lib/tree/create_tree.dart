@@ -12,10 +12,10 @@ import 'package:uuid/uuid.dart';
 import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:fyp_hbs/models/tree_growth_model.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
-import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/services/local%20database/tree_db.dart';
 import 'package:fyp_hbs/services/local%20database/growth_db.dart';
 import 'package:fyp_hbs/services/local%20database/local_db.dart';
+import 'package:fyp_hbs/services/app_initializer.dart';
 import 'package:sqflite/sqflite.dart';
 
 // Formatter that allows decimals and limits fractional digits
@@ -167,7 +167,9 @@ class _CreateTreePageState extends State<CreateTreePage> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 20,
+      imageQuality: 75,
+      maxWidth: 1024,
+      maxHeight: 1024,
     );
 
     if (pickedFile != null) {
@@ -272,15 +274,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
         if (widget.tree == null) {
           final createdId = _extractCreatedId(createResp);
           if (createdId != null && createdId.isNotEmpty) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TreeDetailsPage(
-                  treeID: createdId,
-                  refreshOnPop: true,
-                ),
-              ),
-            );
+            // Pop back to tree list with refresh flag, then tree list will navigate to details
+            Navigator.pop(context, {'refreshList': true, 'createdUuid': createdId});
           } else {
             Navigator.pop(context, {'refreshList': true});
           }
@@ -315,7 +310,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
             // Do not clear thumbnail here; imageFile is stored separately in TreeModel.imageFile
           };
 
-          final updatedRows = await TreeDB().updateTreeByUuid(
+          await TreeDB().updateTreeByUuid(
             uuidExisting,
             changes,
             markPendingUpdate: true,
@@ -347,6 +342,9 @@ class _CreateTreePageState extends State<CreateTreePage> {
             margin: const EdgeInsets.all(12),
             flushbarPosition: FlushbarPosition.TOP,
           ).show(context);
+
+          // Print pending sync counts
+          await AppInitializer.printPendingSyncCounts();
 
           if (!mounted) return;
           Navigator.pop(
@@ -408,7 +406,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
             imageFile: _selectedImage,
           );
 
-          final insertedId = await TreeDB().insertTree(offlineTree);
+          await TreeDB().insertTree(offlineTree);
 
           await Flushbar(
             message: 'Tree saved locally. Sync will occur when online',
@@ -420,16 +418,14 @@ class _CreateTreePageState extends State<CreateTreePage> {
             flushbarPosition: FlushbarPosition.TOP,
           ).show(context);
 
-          // Navigate directly to tree details for the newly created offline tree
+          // Print pending sync counts
+          await AppInitializer.printPendingSyncCounts();
+
+          // Navigate back to tree list with refresh flag so it shows the new tree
           if (!mounted) return;
-          Navigator.pushReplacement(
+          Navigator.pop(
             context,
-            MaterialPageRoute(
-              builder: (_) => TreeDetailsPage(
-                treeID: uuid,
-                refreshOnPop: true,
-              ),
-            ),
+            {'refreshList': true, 'createdUuid': uuid},
           );
           return;
         }
@@ -678,6 +674,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
                       enabled: !isEditing,
                       initialSelection: selectedSpeciesId,
                       label: const Text('Species'),
+                      menuHeight: 300,
                       dropdownMenuEntries: speciesList
                           .map<DropdownMenuEntry<String>>(
                             (species) => DropdownMenuEntry(
@@ -757,7 +754,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 controller: widthController,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  labelText: 'Initial Width (m)',
+                  labelText: 'Initial Diameter (m)',
                   hintText: 'e.g. 1.6',
                   filled: true,
                   fillColor: Colors.white,

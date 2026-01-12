@@ -197,7 +197,6 @@ class SyncAgro {
           // createAgrochemicalRecord returns a Map on success (or throws)
           if (resp['success'] == true || resp.containsKey('data')) {
             await db.markAsSynced(h.tree_uuid ?? '');
-            print('✅ Synced new agrochemical record for tree ${h.tree_uuid}');
           } else {
             print('⚠️ Create agrochemical API returned unexpected response: $resp');
           }
