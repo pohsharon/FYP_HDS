@@ -438,22 +438,6 @@ class _HealthTabPageState extends State<HealthTabPage> {
         const SizedBox(width: 8),
         ElevatedButton.icon(
           onPressed: () async {
-            final hasInternet = await ConnectivityHelper.hasInternetConnection();
-            if (!hasInternet) {
-              if (mounted) {
-                await Flushbar(
-                  message: 'Editing is disabled while offline',
-                  icon: const Icon(Icons.cloud_off, color: Colors.white),
-                  backgroundColor: Colors.orange.shade700,
-                  duration: const Duration(seconds: 2),
-                  borderRadius: BorderRadius.circular(12),
-                  margin: const EdgeInsets.all(12),
-                  flushbarPosition: FlushbarPosition.TOP,
-                ).show(context);
-              }
-              return;
-            }
-            
             final result = await Navigator.push(
               context,
               MaterialPageRoute(

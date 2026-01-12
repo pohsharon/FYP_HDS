@@ -1347,18 +1347,38 @@ Widget _buildActiveFilters() {
                         top: 10,
                         bottom: 0,
                       ),
-                      leading: const Icon(Icons.lock),
-                      title: const Text('Change Password'),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) =>
-                                    const ResetPasswordPage(fromSettings: true),
-                          ),
-                        );
-                      },
+                      leading: Icon(
+                        Icons.lock,
+                        color: _isOnline ? null : AppColors.gray400,
+                      ),
+                      title: Text(
+                        'Change Password',
+                        style: TextStyle(
+                          color: _isOnline ? null : AppColors.gray400,
+                        ),
+                      ),
+                      onTap: _isOnline
+                          ? () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (_) =>
+                                          const ResetPasswordPage(fromSettings: true),
+                                ),
+                              );
+                            }
+                          : () {
+                              Flushbar(
+                                message: 'Changing password requires internet connection',
+                                icon: const Icon(Icons.cloud_off, color: Colors.white),
+                                backgroundColor: Colors.orange.shade700,
+                                duration: const Duration(seconds: 2),
+                                borderRadius: BorderRadius.circular(12),
+                                margin: const EdgeInsets.all(12),
+                                flushbarPosition: FlushbarPosition.TOP,
+                              ).show(context);
+                            },
                     ),
                     ListTile(
                       contentPadding: const EdgeInsets.only(
