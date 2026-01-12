@@ -22,6 +22,25 @@ class _QRScannerPageState extends State<QRScannerPage> {
   qr.QRViewController? controller;
   bool isTorchOn = false;
   bool _isProcessingQR = false;  // Prevent duplicate scans
+  late List<dynamic> _cachedTrees;
+  late List<dynamic> _cachedFruits;
+
+  @override
+  void initState() {
+    super.initState();
+    _preloadDatabases();
+  }
+
+  Future<void> _preloadDatabases() async {
+    try {
+      // Preload databases to avoid slow first scan
+      _cachedTrees = await TreeDB().fetchAllTrees();
+      _cachedFruits = await FruitDB().getAllFruits();
+      // print('✅ [DB PRELOAD] Databases preloaded: ${_cachedTrees.length} trees, ${_cachedFruits.length} fruits');
+    } catch (e) {
+      print('⚠️ [DB PRELOAD ERROR] Failed to preload databases: $e');
+    }
+  }
 
   @override
   void reassemble() {
@@ -81,12 +100,11 @@ class _QRScannerPageState extends State<QRScannerPage> {
     // print('🔍 [QR SCAN] Scanned at ${scanTime.toIso8601String()} - UUID: $uuid');
     
     try {
-      // First, check if this UUID is a tree (local database)
+      // First, check if this UUID is a tree (using cached database)
       final validationStartTime = DateTime.now();
       // print('🔎 [VALIDATION START] Tree database search started at ${validationStartTime.toIso8601String()}');
       
-      final trees = await TreeDB().fetchAllTrees();
-      final treeIndex = trees.indexWhere((t) => t.uuid == uuid);
+      final treeIndex = _cachedTrees.indexWhere((t) => t.uuid == uuid);
 
       if (treeIndex >= 0 && mounted) {
         // Found in tree database - navigate to tree details
@@ -111,14 +129,12 @@ class _QRScannerPageState extends State<QRScannerPage> {
         return;
       }
 
-      // Second, check if this UUID is a fruit (by uuid only)
+      // Second, check if this UUID is a fruit (using cached database)
       final fruitSearchStart = DateTime.now();
       // print('🔎 [VALIDATION CONTINUE] Fruit database search started at ${fruitSearchStart.toIso8601String()}');
       
-      final fruits = await FruitDB().getAllFruits();
-      
       // Check only the fruit's own uuid field
-      final fruitIndex = fruits.indexWhere((f) => f.uuid == uuid);
+      final fruitIndex = _cachedFruits.indexWhere((f) => f.uuid == uuid);
 
       if (fruitIndex >= 0 && mounted) {
         // Found in fruit database - navigate to FruitList and show details
@@ -126,7 +142,7 @@ class _QRScannerPageState extends State<QRScannerPage> {
         final searchDuration = foundTime.difference(fruitSearchStart).inMilliseconds;
         // print('✅ [FRUIT FOUND] Found in fruit database after ${searchDuration}ms at ${foundTime.toIso8601String()}');
         
-        final foundFruit = fruits[fruitIndex];
+        final foundFruit = _cachedFruits[fruitIndex];
         final navigationTime = DateTime.now();
         // print('🚀 [NAVIGATION START] Navigating to FruitListFromQR at ${navigationTime.toIso8601String()}');
         

@@ -7,6 +7,10 @@ import 'package:another_flushbar/flushbar.dart';
 import 'package:intl/intl.dart';
 import 'package:fyp_hbs/fruit/create_fruit.dart';
 
+const String _productBaseUrl = 'https://app-hosbaduriansystem-dev-001-g5dwg4gpeqbfgqgy.southeastasia-01.azurewebsites.net/product-details';
+
+String _getProductQrUrl(String uuid) => '$_productBaseUrl/$uuid';
+
 class FruitListPage extends StatefulWidget {
   final String treeUuid;
   final String? harvestUuid;
@@ -448,7 +452,7 @@ class _FruitPageState extends State<FruitListPage> {
                   ),
                 ),
                 child: uuid.isNotEmpty
-                    ? QrImageView(data: uuid, version: QrVersions.auto)
+                    ? QrImageView(data: _getProductQrUrl(uuid), version: QrVersions.auto)
                     : Icon(Icons.local_florist, color: AppColors.hunterGreen),
               ),
               const SizedBox(width: 12),
@@ -655,7 +659,7 @@ class _FruitPageState extends State<FruitListPage> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       QrImageView(
-                                        data: uuid,
+                                        data: _getProductQrUrl(uuid),
                                         version: QrVersions.auto,
                                         size: 300,
                                         gapless: true,
@@ -685,7 +689,7 @@ class _FruitPageState extends State<FruitListPage> {
                             child: Column(
                               children: [
                                 QrImageView(
-                                  data: uuid,
+                                  data: _getProductQrUrl(uuid),
                                   version: QrVersions.auto,
                                   size: 140,
                                   gapless: true,

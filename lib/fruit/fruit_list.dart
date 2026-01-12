@@ -21,6 +21,10 @@ import 'package:fyp_hbs/authentication/login.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:fyp_hbs/services/app_initializer.dart';
 
+const String _productBaseUrl = 'https://app-hosbaduriansystem-dev-001-g5dwg4gpeqbfgqgy.southeastasia-01.azurewebsites.net/product-details';
+
+String _getProductQrUrl(String uuid) => '$_productBaseUrl/$uuid';
+
 class FruitPage extends StatefulWidget {
   const FruitPage({super.key, this.scannedFruitUuid, this.fromQR = false});
   
@@ -1746,7 +1750,7 @@ class _FruitPageState extends State<FruitPage> {
               SizedBox(
                 width: 70,
                 height: 70,
-                child: QrImageView(data: uuid, version: QrVersions.auto),
+                child: QrImageView(data: _getProductQrUrl(uuid), version: QrVersions.auto),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1939,7 +1943,7 @@ class _FruitPageState extends State<FruitPage> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     QrImageView(
-                                      data: uuid,
+                                      data: _getProductQrUrl(uuid),
                                       version: QrVersions.auto,
                                       size: 300,
                                       gapless: true,
@@ -1972,7 +1976,7 @@ class _FruitPageState extends State<FruitPage> {
                           child: Column(
                             children: [
                               QrImageView(
-                                data: uuid,
+                                data: _getProductQrUrl(uuid),
                                 version: QrVersions.auto,
                                 size: 100,
                                 gapless: true,
