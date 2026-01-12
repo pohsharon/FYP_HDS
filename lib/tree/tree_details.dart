@@ -16,6 +16,7 @@ import 'package:fyp_hbs/services/local%20database/species_db.dart';
 import 'package:fyp_hbs/services/local%20database/growth_db.dart';
 import 'package:another_flushbar/flushbar.dart';
 import '../utils/connectivity_helper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 
 class TreeDetailsPage extends StatefulWidget {
@@ -37,6 +38,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   Map<String, dynamic>? tree;
   bool _shouldRefresh = false;
   bool _isOnline = true;
+  String _floweringPeriod = '-';
 
   Map<String, dynamic> _normalizeTree(Map<String, dynamic> src) {
     final normalized = Map<String, dynamic>.from(src);
@@ -119,6 +121,10 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
         tree = _normalizeTree(data);
         isLoading = false;
       });
+      
+      // Fetch flowering period from dedicated endpoint
+      _fetchFloweringPeriod(data['uuid'] ?? widget.treeID);
+      
       // Merge any cached growth measurements (offline cache) to show latest values
       try {
         final treeUuid = data['uuid'] ?? widget.treeID;
@@ -140,6 +146,10 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
           tree = _normalizeTree(data);
           isLoading = false;
         });
+        
+        // Fetch flowering period from dedicated endpoint
+        _fetchFloweringPeriod(data['uuid'] ?? widget.treeID);
+        
         // Merge cached growth measurements (if any) after loading by numeric id
         try {
           final treeUuid = data['uuid'] ?? widget.treeID;
@@ -195,6 +205,10 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
               tree = _normalizeTree(localMap);
               isLoading = false;
             });
+            
+            // Fetch flowering period from dedicated endpoint
+            _fetchFloweringPeriod((localMap['uuid'] as String?) ?? widget.treeID);
+            
             // Merge cached growth measurements for this offline tree
             try {
               final treeUuid = localMap['uuid'] ?? widget.treeID;
@@ -215,6 +229,64 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
             margin: const EdgeInsets.all(12),
             borderRadius: BorderRadius.circular(8),
           ).show(context);
+        }
+      }
+    }
+  }
+
+  Future<void> _fetchFloweringPeriod(String uuid) async {
+    try {
+      final result = await TreeApi.getTreeFloweringPeriod(uuid);
+      
+      if (mounted) {
+        String period = '-';
+        
+        // Extract flowering_period from the response
+        if (result is Map) {
+          // Check if response has 'data' wrapper
+          if (result.containsKey('data') && result['data'] is Map) {
+            period = result['data']['flowering_period']?.toString() ?? '-';
+          } else {
+            // Direct response format
+            period = result['flowering_period']?.toString() ?? '-';
+          }
+        }
+        
+        // Cache the flowering period to SharedPreferences
+        if (period != '-') {
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('flowering_period_$uuid', period);
+          } catch (e) {
+            print('⚠️ Failed to cache flowering period: $e');
+          }
+        }
+        
+        setState(() => _floweringPeriod = period);
+      }
+    } catch (e) {
+      print('⚠️ Failed to fetch flowering period: $e');
+      
+      // Try to load from cache when API fails (offline mode)
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedPeriod = prefs.getString('flowering_period_$uuid');
+        
+        if (cachedPeriod != null && mounted) {
+          setState(() => _floweringPeriod = cachedPeriod);
+          print('📦 Loaded flowering period from cache: $cachedPeriod');
+          return;
+        }
+      } catch (cacheErr) {
+        print('⚠️ Failed to load flowering period from cache: $cacheErr');
+      }
+      
+      // Fall back to tree's stored flowering_period if available
+      if (mounted && tree != null) {
+        final fallback = tree!['flowering_period']?.toString() ?? '-';
+        if (fallback != '-') {
+          setState(() => _floweringPeriod = fallback);
+          print('📦 Using fallback flowering period from tree data: $fallback');
         }
       }
     }
@@ -353,7 +425,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
       : rawPlanted.toString());
     final String treeImage = tree!['thumbnail'] ?? '';
     final String uuid = tree!['uuid'] ?? 'Unknown UUID';
-    final String floweringPeriod = tree!['flowering_period']?.toString() ?? '-';
+    final String floweringPeriod = _floweringPeriod;
     final double height = double.tryParse(tree!['height'].toString()) ?? 0;
     final double width = double.tryParse(tree!['width'].toString()) ?? 0;
     final double latitude = double.tryParse(tree!['latitude'].toString()) ?? 0;
