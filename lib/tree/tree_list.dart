@@ -688,6 +688,8 @@ class _TreePageState extends State<TreePage> {
                                   label: 'From',
                                   icon: Icons.calendar_today,
                                   setStateDialog: setStateDialog,
+                                  minDate: DateTime(2000),
+                                  maxDate: DateTime.now(),
                                 ),
                               ),
                               const SizedBox(width: 12),
@@ -698,6 +700,10 @@ class _TreePageState extends State<TreePage> {
                                   label: 'To',
                                   icon: Icons.event,
                                   setStateDialog: setStateDialog,
+                                  minDate: plantingFrom.text.isNotEmpty
+                                      ? DateTime.tryParse(plantingFrom.text) ?? DateTime(2000)
+                                      : DateTime(2000),
+                                  maxDate: DateTime.now(),
                                 ),
                               ),
                             ],
@@ -878,6 +884,8 @@ Widget _buildEnhancedDateField({
   required String label,
   required IconData icon,
   required Function(void Function()) setStateDialog,
+  required DateTime minDate,
+  required DateTime maxDate,
 }) {
   return Container(
     decoration: BoxDecoration(
@@ -897,7 +905,7 @@ Widget _buildEnhancedDateField({
       readOnly: true,
       style: const TextStyle(fontSize: 14),
       decoration: InputDecoration(
-        labelText: label,
+        hintText: label,
         labelStyle: TextStyle(
           color: AppColors.gray600,
           fontSize: 13,
@@ -930,9 +938,9 @@ Widget _buildEnhancedDateField({
       onTap: () async {
         final picked = await showDatePicker(
           context: context,
-          initialDate: DateTime.now(),
-          firstDate: DateTime(2000),
-          lastDate: DateTime.now(),
+          initialDate: DateTime.now().isAfter(maxDate) ? maxDate : DateTime.now(),
+          firstDate: minDate,
+          lastDate: maxDate,
           builder: (context, child) {
             return Theme(
               data: Theme.of(context).copyWith(
@@ -948,7 +956,7 @@ Widget _buildEnhancedDateField({
         );
         if (picked != null) {
           setStateDialog(
-            () => controller.text = DateFormat('yyyy-MM-dd').format(picked),
+            () => controller.text = DateFormat('dd/MM/yyyy').format(picked),
           );
         }
       },
@@ -1033,7 +1041,12 @@ Widget _buildEnhancedDateField({
     // Apply planting date range if provided
     DateTime? parseDate(String? s) {
       if (s == null || s.trim().isEmpty) return null;
-      return DateTime.tryParse(s);
+      // Support both dd/MM/yyyy and yyyy-MM-dd formats
+      try {
+        return DateFormat('dd/MM/yyyy').parse(s);
+      } catch (_) {
+        return DateTime.tryParse(s);
+      }
     }
 
     final pFrom = parseDate(plantingFrom);
@@ -1044,8 +1057,17 @@ Widget _buildEnhancedDateField({
             final s = tree['planted_at']?.toString() ?? '';
             final dt = DateTime.tryParse(s);
             if (dt == null) return false;
-            if (pFrom != null && dt.isBefore(pFrom)) return false;
-            if (pTo != null && dt.isAfter(pTo)) return false;
+            // Compare dates only (ignore time)
+            final dtDateOnly = DateTime(dt.year, dt.month, dt.day);
+            if (pFrom != null) {
+              final fromDateOnly = DateTime(pFrom.year, pFrom.month, pFrom.day);
+              if (dtDateOnly.isBefore(fromDateOnly)) return false;
+            }
+            if (pTo != null) {
+              // Include entire end date by checking against next day
+              final toDateOnly = DateTime(pTo.year, pTo.month, pTo.day);
+              if (dtDateOnly.isAfter(toDateOnly)) return false;
+            }
             return true;
           }).toList();
     }
