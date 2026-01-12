@@ -4,6 +4,7 @@ import 'package:fyp_hbs/services/api/disease_api.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/services/app_initializer.dart';
+import 'package:fyp_hbs/services/local database/disease_db.dart';
 
 class CreateDiseasePage extends StatefulWidget {
   final Map<String, dynamic>? disease;
@@ -160,6 +161,9 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
                           widget.disease!['id']?.toString() ?? '';
         
         await DiseaseApi.deleteDisease(diseaseId);
+        
+        // Remove from local cache after successful deletion
+        await DiseaseDB().deleteDisease(diseaseId);
         
         await Flushbar(
           message: online
