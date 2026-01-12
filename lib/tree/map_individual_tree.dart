@@ -28,20 +28,28 @@ class MapIndividualTreePage extends StatefulWidget {
 class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
   final MapController _mapController = MapController();
   LatLng? _currentLocation;
+  double _heading = 0.0; // Current device heading in degrees
   bool _locationNotSaved = false;
   bool _isSaving = false; // ✅ track saving state
 
   final LatLngBounds farmBounds = LatLngBounds(
-    // const LatLng(3.110831, 101.626978),
-    // const LatLng(3.130831, 101.646978),
-    const LatLng(6.36800, 100.38200), // Southwest corner
-    const LatLng(6.39000, 100.42000), // Northeast corner
+    const LatLng(3.126, 101.646),
+    const LatLng(3.133, 101.654),
   );
 
   @override
   void initState() {
     super.initState();
+    // Check if tree location is not saved
+    if (widget.treeLatitude == 0.0 && widget.treeLongitude == 0.0) {
+      _locationNotSaved = true;
+    }
     _getCurrentLocation();
+    
+    // Set fallback location after first frame to avoid MapController errors
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setFallbackLocation();
+    });
   }
 
   @override
@@ -63,31 +71,77 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
       }
     }
 
-    Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.best,
-        distanceFilter: 5,
-      ),
-    ).listen((Position position) {
-      final LatLng newLocation = LatLng(position.latitude, position.longitude);
+    try {
+      // Get current position immediately (one-time high accuracy)
+      final Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      
+      final LatLng realLocation = LatLng(
+        position.latitude,
+        position.longitude,
+      );
 
       if (mounted) {
         setState(() {
-          _currentLocation = newLocation;
-
-          // 🌱 If tree location is not saved, mark it and center on user
-          if (widget.treeLatitude == 0.0 && widget.treeLongitude == 0.0) {
-            _locationNotSaved = true;
-            _mapController.move(newLocation, 18);
-          }
+          _currentLocation = realLocation;
         });
+        _mapController.move(realLocation, _mapController.camera.zoom);
       }
-    });
+
+      // Then start listening for continuous updates
+      Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: 1, // Update every 1 meter for smooth tracking
+        ),
+      ).listen((Position position) {
+        final LatLng newLocation = LatLng(
+          position.latitude,
+          position.longitude,
+        );
+
+        // Extract heading/bearing from GPS movement
+        if (position.heading >= 0) {
+          if (mounted) {
+            setState(() {
+              _heading = position.heading;
+            });
+          }
+        }
+
+        // Update location marker only, don't move the camera
+        if (mounted) {
+          setState(() => _currentLocation = newLocation);
+        }
+      }, onError: (e) {
+        debugPrint('❌ Location stream error: $e');
+      });
+    } catch (e) {
+      debugPrint("❌ Error getting location: $e");
+    }
+  }
+
+  void _setFallbackLocation() {
+    final fallbackLocation = LatLng(3.120821, 101.636978);
+    if (mounted) {
+      setState(() => _currentLocation = fallbackLocation);
+      _mapController.move(fallbackLocation, _mapController.camera.zoom);
+    }
   }
 
   void _centerToCurrentLocation() {
     if (_currentLocation != null) {
       _mapController.move(_currentLocation!, 18);
+    }
+  }
+
+  void _centerToTreeLocation() {
+    if (widget.treeLatitude != 0.0 && widget.treeLongitude != 0.0) {
+      _mapController.move(
+        LatLng(widget.treeLatitude, widget.treeLongitude),
+        18,
+      );
     }
   }
 
@@ -195,7 +249,12 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
             options: MapOptions(
               initialCenter: initialLocation,
               initialZoom: 18,
-              cameraConstraint: CameraConstraint.contain(bounds: farmBounds),
+              cameraConstraint: CameraConstraint.contain(
+                bounds: LatLngBounds(
+                  const LatLng(0.85, 99.5), // Southwest corner of Malaysia
+                  const LatLng(7.0, 119.0), // Northeast corner of Malaysia
+                ),
+              ),
             ),
             children: [
               TileLayer(
@@ -204,21 +263,65 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
               ),
               MarkerLayer(
                 markers: [
-                  // 🧭 Current user location marker
+                  // 🧭 Current user location marker with direction indicator
                   if (_currentLocation != null)
                     Marker(
                       point: _currentLocation!,
-                      width: 50,
-                      height: 50,
-                      child: const Icon(
-                        Icons.my_location,
-                        color: Colors.blue,
-                        size: 40,
+                      width: 80,
+                      height: 80,
+                      child: Transform.rotate(
+                        angle: _heading * 3.14159265359 / 180,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // Outer circle (pulsing background)
+                            Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.blue.withOpacity(0.2),
+                                border: Border.all(
+                                  color: Colors.blue.withOpacity(0.4),
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                            // Inner circle (solid)
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.blue,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.blue,
+                                    blurRadius: 8,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Direction arrow (pointing forward)
+                            Positioned(
+                              top: 5,
+                              child: Container(
+                                width: 4,
+                                height: 12,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
 
                   // 🌳 Tree marker (only if saved)
-                  if (treeHasLocation)
+                  if (widget.treeLatitude != 0.0 && widget.treeLongitude != 0.0)
                     Marker(
                       point: LatLng(widget.treeLatitude, widget.treeLongitude),
                       width: 50,
@@ -302,7 +405,7 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      _isSaving ? Icons.hourglass_bottom : Icons.save_alt,
+                      _isSaving ? Icons.hourglass_bottom : Icons.save,
                       color: Colors.white,
                       size: 20,
                     ),
@@ -342,6 +445,13 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
                   onPressed: _centerToCurrentLocation,
                   tooltip: 'My Location',
                 ),
+                const SizedBox(height: 8),
+                if (widget.treeLatitude != 0.0 && widget.treeLongitude != 0.0)
+                  _buildMapControlButton(
+                    icon: Icons.forest,
+                    onPressed: _centerToTreeLocation,
+                    tooltip: 'Tree Location',
+                  ),
               ],
             ),
           ),
