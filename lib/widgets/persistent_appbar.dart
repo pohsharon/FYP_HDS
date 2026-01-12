@@ -157,17 +157,13 @@ class _ConnectionBadgeState extends State<_ConnectionBadge> {
       }
 
       // Initial status
-      emitStatus();
+      unawaited(emitStatus());
 
       // Realtime changes
-      final sub = Connectivity().onConnectivityChanged.listen((_) => emitStatus());
-
-      // Short periodic poll to catch cases where connectivity events don't fire
-      final timer = Timer.periodic(const Duration(seconds: 4), (_) => emitStatus());
+      final sub = Connectivity().onConnectivityChanged.listen((_) => unawaited(emitStatus()));
 
       controller.onCancel = () {
         sub.cancel();
-        timer.cancel();
       };
     });
   }
