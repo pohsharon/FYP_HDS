@@ -231,4 +231,39 @@ class AuthService {
     }
     return null;
   }
+
+  /// Check if the provided old password is correct
+  static Future<Map<String, dynamic>> checkOldPassword(String oldPassword) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      if (token == null) {
+        return {'valid': false, 'message': 'User not authenticated'};
+      }
+
+      final response = await http.post(
+        Uri.parse("${Config.apiBaseUrl}/check-old-password"),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({'old_password': oldPassword}),
+      );
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return data;
+      } else if (response.statusCode == 422) {
+        return {'valid': false, 'message': data['message'] ?? 'Invalid password'};
+      } else {
+        return {'valid': false, 'message': 'Failed to verify password'};
+      }
+    } catch (e) {
+      print('Error checking old password: $e');
+      return {'valid': false, 'message': 'Network error. Please try again later.'};
+    }
+  }
 }

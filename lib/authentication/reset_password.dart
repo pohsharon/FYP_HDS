@@ -128,6 +128,36 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                         return;
                       }
 
+                      // If user is logged in (fromSettings), verify old password first
+                      if (widget.fromSettings) {
+                        Flushbar(
+                          message: 'Verifying old password...',
+                          icon: const Icon(Icons.lock, color: Colors.white),
+                          backgroundColor: AppColors.hunterGreen,
+                          duration: const Duration(seconds: 2),
+                          borderRadius: BorderRadius.circular(8),
+                          margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
+                        ).show(context);
+
+                        final passwordCheck = await AuthService.checkOldPassword(
+                          oldPasswordController.text,
+                        );
+
+                        if (passwordCheck['valid'] != true) {
+                          Flushbar(
+                            message: passwordCheck['message'] ?? 'Old password is incorrect',
+                            icon: const Icon(Icons.error, color: Colors.white),
+                            backgroundColor: Colors.red.shade700,
+                            duration: const Duration(seconds: 3),
+                            borderRadius: BorderRadius.circular(8),
+                            margin: const EdgeInsets.all(12),
+                            flushbarPosition: FlushbarPosition.TOP,
+                          ).show(context);
+                          return;
+                        }
+                      }
+
                       // Show loading
                       Flushbar(
                         message: 'Resetting password...',
