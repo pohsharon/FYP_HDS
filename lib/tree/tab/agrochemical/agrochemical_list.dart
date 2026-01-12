@@ -5,6 +5,7 @@ import 'package:fyp_hbs/services/api/agrochemical_api.dart';
 import 'package:fyp_hbs/widgets/persistent_appbar.dart';
 import 'package:intl/intl.dart';
 import 'package:another_flushbar/flushbar.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
 
 class AgrochemicalListPage extends StatefulWidget {
   const AgrochemicalListPage({super.key});
@@ -303,7 +304,24 @@ class _AgrochemicalListPageState extends State<AgrochemicalListPage> {
               bottom: 0,
               right: 0,
               child: IconButton(
-                onPressed: () => _showUseAgrochemicalDialog(agrochemical, stock),
+                onPressed: () async {
+                  final hasInternet = await ConnectivityHelper.hasInternetConnection();
+                  if (!hasInternet) {
+                    if (context.mounted) {
+                      await Flushbar(
+                        message: 'Recording stock usage requires internet',
+                        icon: const Icon(Icons.cloud_off, color: Colors.white),
+                        backgroundColor: Colors.orange.shade700,
+                        duration: const Duration(seconds: 2),
+                        borderRadius: BorderRadius.circular(12),
+                        margin: const EdgeInsets.all(12),
+                        flushbarPosition: FlushbarPosition.TOP,
+                      ).show(context);
+                    }
+                    return;
+                  }
+                  _showUseAgrochemicalDialog(agrochemical, stock);
+                },
                 icon: const Icon(Icons.remove_circle_outline),
                 color: AppColors.hunterGreen,
                 iconSize: 28,

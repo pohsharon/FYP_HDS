@@ -226,11 +226,35 @@ class AgrochemicalApi {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decoded = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(decoded['data']);
+        final agrochemicals = List<Map<String, dynamic>>.from(decoded['data']);
+        
+        // Cache to SharedPreferences for offline use
+        try {
+          await prefs.setString(
+            'available_agrochemicals_cache',
+            jsonEncode(agrochemicals),
+          );
+          print('✅ Cached ${agrochemicals.length} agrochemicals');
+        } catch (e) {
+          print('⚠️ Failed to cache agrochemicals: $e');
+        }
+        
+        return agrochemicals;
       } else {
         throw Exception("Failed to fetch available agrochemicals");
       }
     } catch (e) {
+      // Try to load from cache on error
+      try {
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        final cached = prefs.getString('available_agrochemicals_cache');
+        if (cached != null && cached.isNotEmpty) {
+          print('📦 Loaded ${jsonDecode(cached).length} agrochemicals from cache');
+          return List<Map<String, dynamic>>.from(jsonDecode(cached));
+        }
+      } catch (cacheErr) {
+        print('⚠️ Failed to load from cache: $cacheErr');
+      }
       throw Exception("Error: ${e.toString()}");
     }
   }
