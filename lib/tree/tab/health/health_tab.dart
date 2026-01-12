@@ -9,6 +9,8 @@ import '../../../services/local database/health_db.dart';
 import '../../../services/local database/disease_db.dart';
 import '../../../config.dart';
 import 'package:intl/intl.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class HealthTabPage extends StatefulWidget {
   final String treeTag;
@@ -436,6 +438,22 @@ class _HealthTabPageState extends State<HealthTabPage> {
         const SizedBox(width: 8),
         ElevatedButton.icon(
           onPressed: () async {
+            final hasInternet = await ConnectivityHelper.hasInternetConnection();
+            if (!hasInternet) {
+              if (mounted) {
+                await Flushbar(
+                  message: 'Editing is disabled while offline',
+                  icon: const Icon(Icons.cloud_off, color: Colors.white),
+                  backgroundColor: Colors.orange.shade700,
+                  duration: const Duration(seconds: 2),
+                  borderRadius: BorderRadius.circular(12),
+                  margin: const EdgeInsets.all(12),
+                  flushbarPosition: FlushbarPosition.TOP,
+                ).show(context);
+              }
+              return;
+            }
+            
             final result = await Navigator.push(
               context,
               MaterialPageRoute(
@@ -506,6 +524,22 @@ class _HealthTabPageState extends State<HealthTabPage> {
 
     return GestureDetector(
       onTap: () async {
+        final hasInternet = await ConnectivityHelper.hasInternetConnection();
+        if (!hasInternet) {
+          if (mounted) {
+            await Flushbar(
+              message: 'Editing is disabled while offline',
+              icon: const Icon(Icons.cloud_off, color: Colors.white),
+              backgroundColor: Colors.orange.shade700,
+              duration: const Duration(seconds: 2),
+              borderRadius: BorderRadius.circular(12),
+              margin: const EdgeInsets.all(12),
+              flushbarPosition: FlushbarPosition.TOP,
+            ).show(context);
+          }
+          return;
+        }
+        
         final result = await Navigator.push(
           context,
           MaterialPageRoute(

@@ -7,6 +7,7 @@ import 'package:fyp_hbs/services/local database/fruit_db.dart';
 import 'package:fyp_hbs/services/local database/local_db.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/fruit/create_fruit.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class HarvestTabPage extends StatefulWidget {
   final String treeUuid;
@@ -283,6 +284,22 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
                       color: Colors.transparent,
                       child: InkWell(
                         onTap: () async {
+                          final hasInternet = await ConnectivityHelper.hasInternetConnection();
+                          if (!hasInternet) {
+                            if (mounted) {
+                              await Flushbar(
+                                message: 'Editing is disabled while offline',
+                                icon: const Icon(Icons.cloud_off, color: Colors.white),
+                                backgroundColor: Colors.orange.shade700,
+                                duration: const Duration(seconds: 2),
+                                borderRadius: BorderRadius.circular(12),
+                                margin: const EdgeInsets.all(12),
+                                flushbarPosition: FlushbarPosition.TOP,
+                              ).show(context);
+                            }
+                            return;
+                          }
+                          
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -443,6 +460,22 @@ if (index == 0) {
       color: Colors.transparent,
       child: InkWell(
         onTap: () async {
+          final hasInternet = await ConnectivityHelper.hasInternetConnection();
+          if (!hasInternet) {
+            if (mounted) {
+              await Flushbar(
+                message: 'Editing is disabled while offline',
+                icon: const Icon(Icons.cloud_off, color: Colors.white),
+                backgroundColor: Colors.orange.shade700,
+                duration: const Duration(seconds: 2),
+                borderRadius: BorderRadius.circular(12),
+                margin: const EdgeInsets.all(12),
+                flushbarPosition: FlushbarPosition.TOP,
+              ).show(context);
+            }
+            return;
+          }
+          
           final result = await Navigator.push(
             context,
             MaterialPageRoute(

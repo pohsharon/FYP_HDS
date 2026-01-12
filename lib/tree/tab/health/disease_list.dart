@@ -108,13 +108,14 @@ class _DiseaseListPageState extends State<DiseaseListPage> {
                     final hasInternet = await ConnectivityHelper.hasInternetConnection();
                     if (!hasInternet) {
                       if (context.mounted) {
-                        Flushbar(
-                          message: "Cannot edit disease while offline",
-                          duration: const Duration(seconds: 3),
-                          backgroundColor: Colors.red,
+                        await Flushbar(
+                          message: 'Editing is disabled while offline',
+                          icon: const Icon(Icons.cloud_off, color: Colors.white),
+                          backgroundColor: Colors.orange.shade700,
+                          duration: const Duration(seconds: 2),
+                          borderRadius: BorderRadius.circular(12),
+                          margin: const EdgeInsets.all(12),
                           flushbarPosition: FlushbarPosition.TOP,
-                          margin: const EdgeInsets.all(8),
-                          borderRadius: BorderRadius.circular(8),
                         ).show(context);
                       }
                       return;

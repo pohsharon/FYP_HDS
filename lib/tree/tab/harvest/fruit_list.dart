@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:intl/intl.dart';
 import 'package:fyp_hbs/fruit/create_fruit.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
 
 const String _productBaseUrl = 'https://app-hosbaduriansystem-dev-001-g5dwg4gpeqbfgqgy.southeastasia-01.azurewebsites.net/product-details';
 
@@ -616,6 +617,22 @@ class _FruitPageState extends State<FruitListPage> {
                       IconButton(
                         icon: const Icon(Icons.edit, color: Colors.white),
                         onPressed: () async {
+                          final hasInternet = await ConnectivityHelper.hasInternetConnection();
+                          if (!hasInternet) {
+                            if (context.mounted) {
+                              await Flushbar(
+                                message: 'Editing is disabled while offline',
+                                icon: const Icon(Icons.cloud_off, color: Colors.white),
+                                backgroundColor: Colors.orange.shade700,
+                                duration: const Duration(seconds: 2),
+                                borderRadius: BorderRadius.circular(12),
+                                margin: const EdgeInsets.all(12),
+                                flushbarPosition: FlushbarPosition.TOP,
+                              ).show(context);
+                            }
+                            return;
+                          }
+                          
                           Navigator.of(context).pop();
                           final result = await Navigator.push(
                             context,

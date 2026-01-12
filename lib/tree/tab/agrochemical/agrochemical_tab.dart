@@ -3,12 +3,13 @@ import 'package:fyp_hbs/config.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/agrochemical_api.dart';
 import 'package:fyp_hbs/tree/tab/agrochemical/create_agrochemical.dart';
-import 'package:fyp_hbs/tree/tab/agrochemical/agrochemical_list.dart'; // TODO: Create agrochemical_list.dart page
+import 'package:fyp_hbs/tree/tab/agrochemical/agrochemical_list.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/services/local database/agro_db.dart';
 import 'package:fyp_hbs/models/agrochemical_model.dart';
 import 'package:intl/intl.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class AgrochemicalTabPage extends StatefulWidget {
   final String treeUuid;
@@ -220,6 +221,22 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
               const SizedBox(width: 8),
               ElevatedButton.icon(
                 onPressed: () async {
+                  final hasInternet = await ConnectivityHelper.hasInternetConnection();
+                  if (!hasInternet) {
+                    if (mounted) {
+                      await Flushbar(
+                        message: 'Editing is disabled while offline',
+                        icon: const Icon(Icons.cloud_off, color: Colors.white),
+                        backgroundColor: Colors.orange.shade700,
+                        duration: const Duration(seconds: 2),
+                        borderRadius: BorderRadius.circular(12),
+                        margin: const EdgeInsets.all(12),
+                        flushbarPosition: FlushbarPosition.TOP,
+                      ).show(context);
+                    }
+                    return;
+                  }
+                  
                   final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -414,6 +431,22 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
 
                   return GestureDetector(
                     onTap: () async {
+                      final hasInternet = await ConnectivityHelper.hasInternetConnection();
+                      if (!hasInternet) {
+                        if (mounted) {
+                          await Flushbar(
+                            message: 'Editing is disabled while offline',
+                            icon: const Icon(Icons.cloud_off, color: Colors.white),
+                            backgroundColor: Colors.orange.shade700,
+                            duration: const Duration(seconds: 2),
+                            borderRadius: BorderRadius.circular(12),
+                            margin: const EdgeInsets.all(12),
+                            flushbarPosition: FlushbarPosition.TOP,
+                          ).show(context);
+                        }
+                        return;
+                      }
+                      
                       final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
