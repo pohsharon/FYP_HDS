@@ -55,7 +55,7 @@ class TreeApi {
         throw Exception(data['message'] ?? 'Failed to create tree');
       }
     } catch (e) {
-      print(response.body);
+      // print(response.body);
       throw Exception('Failed to create tree: ${response.body}');
     }
   }
@@ -71,7 +71,7 @@ class TreeApi {
     if (isOffline) {
       final cachedSpecies = prefs.getString('cached_species');
       if (cachedSpecies != null) {
-        print("📦 Loaded species from cache (offline)");
+        // print("📦 Loaded species from cache (offline)");
         final List<dynamic> decodedList = jsonDecode(cachedSpecies);
         return decodedList.map<Map<String, dynamic>>((item) {
           return Map<String, dynamic>.from(item);
@@ -452,11 +452,11 @@ class TreeApi {
   }) async {
     // Check actual internet connectivity
     final hasInternet = await ConnectivityHelper.hasInternetConnection();
-    print('🌐 addTreeLocation - hasInternet: $hasInternet for tree: $treeUuid');
+    // print('🌐 addTreeLocation - hasInternet: $hasInternet for tree: $treeUuid');
 
     if (!hasInternet) {
       // Save location locally with pending_update flag (upsert if row missing)
-      print('📴 Saving location offline: lat=$latitude, lng=$longitude');
+      // print('📴 Saving location offline: lat=$latitude, lng=$longitude');
       final treeDB = TreeDB();
       final updated = await treeDB.updateTreeByUuid(
         treeUuid,
@@ -479,17 +479,17 @@ class TreeApi {
             pendingUpdate: 1,
           );
           await treeDB.insertTree(stub);
-          print('ℹ️ Inserted stub tree row for offline location update');
+          // print('ℹ️ Inserted stub tree row for offline location update');
         } catch (e) {
           print('⚠️ Failed to insert stub tree row: $e');
         }
       }
 
-      print('✅ Location saved offline with pending_update flag');
+      // print('✅ Location saved offline with pending_update flag');
       throw Exception("Location saved offline, will sync when online");
     }
 
-    print('🌐 Saving location online to server...');
+    // print('🌐 Saving location online to server...');
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
@@ -504,7 +504,7 @@ class TreeApi {
     );
 
     if (response.statusCode == 200 || response.statusCode == 201) {
-      print('✅ Location saved to server successfully');
+      // print('✅ Location saved to server successfully');
       return;
     } else {
       final data = jsonDecode(response.body);
