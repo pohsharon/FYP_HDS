@@ -412,218 +412,225 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
           ],
         ),
           backgroundColor: AppColors.background,
-          body: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GestureDetector(
-                onTap: () {
-                  if (_isOnline && treeImage.isNotEmpty) {
-                    showDialog(
-                      context: context,
-                      builder:
-                          (_) => Dialog(
-                            backgroundColor: Colors.white,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.network(
-                                '${Config.supabaseBaseUrl}$treeImage',
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return const Center(
-                                    child: Text('Image failed to load'),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                    );
-                  }
-                },
-                child: _buildTreeImage(treeImage),
-              ),
-              Container(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+          body: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) => [
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     GestureDetector(
                       onTap: () {
-                        showDialog(
-                          context: context,
-                          builder:
-                              (_) => Dialog(
-                                backgroundColor: Colors.transparent,
-                                insetPadding: const EdgeInsets.symmetric(
-                                  horizontal: 30,
-                                  vertical: 100,
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.all(20),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.15),
-                                        blurRadius: 10,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
+                        if (_isOnline && treeImage.isNotEmpty) {
+                          showDialog(
+                            context: context,
+                            builder:
+                                (_) => Dialog(
+                                  backgroundColor: Colors.white,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.network(
+                                      '${Config.supabaseBaseUrl}$treeImage',
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return const Center(
+                                          child: Text('Image failed to load'),
+                                        );
+                                      },
+                                    ),
                                   ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      QrImageView(
-                                        data: uuid,
-                                        version: QrVersions.auto,
-                                        size: 300,
-                                        gapless: true,
+                                ),
+                          );
+                        }
+                      },
+                      child: _buildTreeImage(treeImage),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder:
+                                    (_) => Dialog(
+                                      backgroundColor: Colors.transparent,
+                                      insetPadding: const EdgeInsets.symmetric(
+                                        horizontal: 30,
+                                        vertical: 100,
                                       ),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        uuid,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                          fontWeight: FontWeight.w500,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(20),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(16),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black.withOpacity(0.15),
+                                              blurRadius: 10,
+                                              offset: const Offset(0, 4),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            QrImageView(
+                                              data: uuid,
+                                              version: QrVersions.auto,
+                                              size: 300,
+                                              gapless: true,
+                                            ),
+                                            const SizedBox(height: 12),
+                                            Text(
+                                              uuid,
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                color: Colors.black,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                        );
-                      },
-                      child: QrImageView(
-                        data: uuid,
-                        version: QrVersions.auto,
-                        size: 80,
-                        gapless: true,
-                      ),
-                    ),
-
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            treeTag,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                                    ),
+                              );
+                            },
+                            child: QrImageView(
+                              data: uuid,
+                              version: QrVersions.auto,
+                              size: 80,
+                              gapless: true,
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            treeType,
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.pin_drop,
-                                size: 14,
-                                color: Colors.grey,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Lat: ${latitude.toStringAsFixed(5)}, Lon: ${longitude.toStringAsFixed(5)}',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey,
+
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  treeTag,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 4),
+                                Text(
+                                  treeType,
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.pin_drop,
+                                      size: 14,
+                                      color: Colors.grey,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Lat: ${latitude.toStringAsFixed(5)}, Lon: ${longitude.toStringAsFixed(5)}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () async {
+                                final updated = await Navigator.push<bool?>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder:
+                                        (context) => MapIndividualTreePage(
+                                          treeLatitude: latitude,
+                                          treeLongitude: longitude,
+                                          treeTag: treeTag,
+                                          treeUuid: uuid,
+                                        ),
+                                  ),
+                                );
+                                if (updated == true) {
+                                  // Refresh details after possible location update
+                                  _loadTreeDetails();
+                                }
+                              },
+                            child: const Icon(
+                              Icons.location_on,
+                              color: AppColors.pakistanGreen,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () async {
-                          final updated = await Navigator.push<bool?>(
-                            context,
-                            MaterialPageRoute(
-                              builder:
-                                  (context) => MapIndividualTreePage(
-                                    treeLatitude: latitude,
-                                    treeLongitude: longitude,
-                                    treeTag: treeTag,
-                                    treeUuid: uuid,
-                                  ),
-                            ),
-                          );
-                          if (updated == true) {
-                            // Refresh details after possible location update
-                            _loadTreeDetails();
-                          }
-                        },
-                      child: const Icon(
-                        Icons.location_on,
-                        color: AppColors.pakistanGreen,
+
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Wrap(
+                        spacing: 16,
+                        runSpacing: 16,
+                        children: [
+                          _InfoCard(label: "Planting Date", value: treeDate),
+                          _InfoCard(
+                            label: "Flowering Period",
+                            value: floweringPeriod,
+                          ),
+                          _InfoCard(label: "Height", value: "$height m"),
+                          _InfoCard(label: "Diameter", value: "$width m"),
+                        ],
                       ),
                     ),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
-
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Wrap(
-                  spacing: 16,
-                  runSpacing: 16,
-                  children: [
-                    _InfoCard(label: "Planting Date", value: treeDate),
-                    _InfoCard(
-                      label: "Flowering Period",
-                      value: floweringPeriod,
+              SliverAppBar(
+                pinned: true,
+                backgroundColor: AppColors.background,
+                toolbarHeight: 0,
+                bottom: PreferredSize(
+                  preferredSize: const Size.fromHeight(50),
+                  child: TabBar(
+                    labelColor: AppColors.hunterGreen,
+                    unselectedLabelColor: AppColors.hunterGreen,
+                    tabs: const [
+                      Tab(text: "Health"),
+                      Tab(text: "Agrochemical"),
+                      Tab(text: "Growth Log"),
+                      Tab(text: "Harvest"),
+                    ],
+                    labelStyle: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
                     ),
-                    _InfoCard(label: "Height", value: "$height m"),
-                    _InfoCard(label: "Diameter", value: "$width m"),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              const TabBar(
-                labelColor: AppColors.hunterGreen,
-                unselectedLabelColor: AppColors.hunterGreen,
-                tabs: [
-                  Tab(text: "Health"),
-                  Tab(text: "Agrochemical"),
-                  Tab(text: "Growth Log"),
-                  Tab(text: "Harvest"),
-                ],
-                labelStyle: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11,
-                ),
-                unselectedLabelStyle: TextStyle(fontSize: 11),
-                indicatorColor: AppColors.hunterGreen,
-                indicatorWeight: 3,
-              ),
-              SizedBox(
-                height:
-                    MediaQuery.of(context).size.height *
-                    0.35, // adjust as needed
-                child: TabBarView(
-                  children: [
-                    HealthTabPage(treeTag: treeTag, treeUuid: uuid),
-                    AgrochemicalTabPage(treeUuid: uuid, treeTag: treeTag),
-                    GrowthLogTabPage(
-                      treeUuid: uuid,
-                      onGrowthLogSaved: () {
-                        _markShouldRefresh();
-                        _loadTreeDetails();
-                      },
-                    ),
-                    HarvestTabPage(treeUuid: uuid),
-                  ],
+                    unselectedLabelStyle: const TextStyle(fontSize: 11),
+                    indicatorColor: AppColors.hunterGreen,
+                    indicatorWeight: 3,
+                  ),
                 ),
               ),
             ],
-          ),
+            body: TabBarView(
+              children: [
+                HealthTabPage(treeTag: treeTag, treeUuid: uuid),
+                AgrochemicalTabPage(treeUuid: uuid, treeTag: treeTag),
+                GrowthLogTabPage(
+                  treeUuid: uuid,
+                  onGrowthLogSaved: () {
+                    _markShouldRefresh();
+                    _loadTreeDetails();
+                  },
+                ),
+                HarvestTabPage(treeUuid: uuid),
+              ],
+            ),
           ),
         ),
       ),
