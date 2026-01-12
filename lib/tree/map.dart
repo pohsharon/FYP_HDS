@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:fyp_hbs/utils/tile_cache.dart';
 import 'package:another_flushbar/flushbar.dart';
+import 'dart:async';
 
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -21,6 +22,7 @@ class MapPage extends StatefulWidget {
 class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
   LatLng? _currentLocation;
+  double _heading = 0.0; // Current device heading in degrees
   List<Map<String, dynamic>> treesWithLocation = [];
   final TextEditingController treeController = TextEditingController();
   bool _isLoading = true;
@@ -28,10 +30,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   Animation<double>? _fabAnimation;
 
   final LatLngBounds farmBounds = LatLngBounds(
-    // const LatLng(3.110831, 101.626978),
-    // const LatLng(3.130831, 101.646978),
-    const LatLng(6.36800, 100.38200), // Southwest corner
-    const LatLng(6.39000, 100.42000), // Northeast corner
+    const LatLng(3.126, 101.646),
+    const LatLng(3.133, 101.654),
+    // const LatLng(3.110831, 101.626978), //299
+    // const LatLng(3.130831, 101.646978), //299
+    // const LatLng(6.36800, 100.38200), // Farm
+    // const LatLng(6.39000, 100.42000), // Farm
   );
 
   @override
@@ -47,8 +51,15 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     );
     _fabAnimationController.forward();
     
+    // Fetch real location and tree markers asynchronously
     _getCurrentLocation();
     _fetchTreeMarkers();
+    _startHeadingListener();
+    
+    // Set fallback location after first frame to avoid MapController errors
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setFallbackLocation();
+    });
   }
 
   @override
@@ -58,18 +69,24 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  void _startHeadingListener() {
+    // Heading is now obtained from GPS bearing in location stream
+    // No magnetometer needed
+    // debugPrint('ℹ️ Using GPS-based heading from location updates');
+  }
+
   Future<void> _fetchTreeMarkers() async {
     setState(() => _isLoading = true);
     
     try {
-      print('🗺️ [MAP] Starting to fetch tree markers from API...');
+      // print('🗺️ [MAP] Starting to fetch tree markers from API...');
       final startTime = DateTime.now();
       
       final response = await TreeApi.fetchAllTrees();
       final treeList = response['data']['data'] as List<dynamic>;
       
       final fetchTime = DateTime.now().difference(startTime).inMilliseconds;
-      print('🗺️ [MAP] API returned ${treeList.length} trees in ${fetchTime}ms');
+      // print('🗺️ [MAP] API returned ${treeList.length} trees in ${fetchTime}ms');
 
       final markers = treeList.map<Map<String, dynamic>>((tree) {
         final treeMap = tree as Map<String, dynamic>;
@@ -86,20 +103,20 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       
       // Filter to only show trees with valid coordinates
       final validMarkers = markers.where((m) => m['has_valid_coords'] as bool).toList();
-      print('🗺️ [MAP] Valid markers with coordinates: ${validMarkers.length}/${markers.length}');
+      // print('🗺️ [MAP] Valid markers with coordinates: ${validMarkers.length}/${markers.length}');
 
       if (mounted) {
         setState(() {
           treesWithLocation = validMarkers;
           _isLoading = false;
         });
-        print('✅ [MAP] Markers rendered: ${validMarkers.length} trees shown on map');
+        // print('✅ [MAP] Markers rendered: ${validMarkers.length} trees shown on map');
       }
     } catch (e) {
-      print('⚠️ [MAP] API fetch failed: $e, falling back to local database');
+      // print('⚠️ [MAP] API fetch failed: $e, falling back to local database');
       try {
         final local = await TreeDB().fetchAllTrees();
-        print('🗺️ [MAP] Found ${local.length} trees in local database');
+        // print('🗺️ [MAP] Found ${local.length} trees in local database');
         
         final markers = local.map<Map<String, dynamic>>((t) {
           final lat = t.latitude;
@@ -114,14 +131,14 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         }).toList();
         
         final validMarkers = markers.where((m) => m['has_valid_coords'] as bool).toList();
-        print('🗺️ [MAP] Valid local markers: ${validMarkers.length}/${markers.length}');
+        // print('🗺️ [MAP] Valid local markers: ${validMarkers.length}/${markers.length}');
 
         if (mounted) {
           setState(() {
             treesWithLocation = validMarkers;
             _isLoading = false;
           });
-          print('✅ [MAP] Markers rendered from local: ${validMarkers.length} trees shown');
+          // print('✅ [MAP] Markers rendered from local: ${validMarkers.length} trees shown');
         }
       } catch (localErr) {
         print('❌ [MAP] Local database also failed: $localErr');
@@ -142,7 +159,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   Future<void> _getCurrentLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      _setFallbackLocation();
+      debugPrint('❌ Location service is disabled');
       return;
     }
 
@@ -152,16 +169,35 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       permission = await Geolocator.requestPermission();
       if (permission != LocationPermission.always &&
           permission != LocationPermission.whileInUse) {
-        _setFallbackLocation();
+        debugPrint('❌ Location permission denied');
         return;
       }
     }
 
     try {
+      // Get current position immediately (one-time high accuracy)
+      final Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      
+      final LatLng realLocation = LatLng(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (mounted) {
+        setState(() {
+          _currentLocation = realLocation;
+        });
+        _mapController.move(realLocation, _mapController.camera.zoom);
+        // debugPrint('✅ Real location obtained: ${realLocation.latitude}, ${realLocation.longitude}');
+      }
+
+      // Then start listening for continuous updates
       Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.best,
-          distanceFilter: 5,
+          distanceFilter: 1, // Update every 1 meter for smooth tracking
         ),
       ).listen((Position position) {
         final LatLng newLocation = LatLng(
@@ -169,14 +205,26 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
           position.longitude,
         );
 
+        // Extract heading/bearing from GPS movement
+        if (position.heading >= 0) {
+          if (mounted) {
+            setState(() {
+              _heading = position.heading;
+            });
+            // debugPrint('🧭 GPS Heading: ${position.heading.toStringAsFixed(1)}°');
+          }
+        }
+
+        // Update location marker only, don't move the camera
         if (mounted) {
           setState(() => _currentLocation = newLocation);
-          _mapController.move(newLocation, _mapController.camera.zoom);
+          // debugPrint('📍 Location updated: ${newLocation.latitude}, ${newLocation.longitude}');
         }
+      }, onError: (e) {
+        debugPrint('❌ Location stream error: $e');
       });
     } catch (e) {
-      debugPrint("❌ Error getting location stream: $e");
-      _setFallbackLocation();
+      debugPrint("❌ Error getting location: $e");
     }
   }
 
@@ -457,7 +505,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                                               }
                                             } catch (apiError) {
                                               // Check if it was saved offline
-                                              print('API Error: $apiError');
+                                              // print('API Error: $apiError');
                                               if (apiError.toString().contains('saved offline') ||
                                                   apiError.toString().contains('will sync when online')) {
                                                 if (mounted) {
@@ -655,7 +703,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             options: MapOptions(
               initialCenter: initialLocation,
               initialZoom: 16,
-              cameraConstraint: CameraConstraint.contain(bounds: farmBounds),
+              cameraConstraint: CameraConstraint.contain(
+                bounds: LatLngBounds(
+                  const LatLng(0.85, 99.5), // Southwest corner of Malaysia
+                  const LatLng(7.0, 119.0), // Northeast corner of Malaysia
+                ),
+              ),
             ),
             children: [
               TileLayer(
@@ -666,60 +719,60 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
               if (_currentLocation != null)
                 MarkerLayer(
                   markers: [
-                    // Current Location Marker with pulse effect
+                    // Current Location Marker with direction indicator
                     if (_currentLocation != null)
                       Marker(
                         point: _currentLocation!,
-                        width: 60,
-                        height: 60,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.blue.withOpacity(0.2),
-                              ),
-                            ),
-                            Container(
-                              width: 20,
-                              height: 20,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.blue,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 8,
-                                    spreadRadius: 2,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Positioned(
-                              top: 0,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 6,
-                                  vertical: 2,
-                                ),
+                        width: 80,
+                        height: 80,
+                        child: Transform.rotate(
+                          angle: _heading * pi / 180,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              // Outer circle (pulsing background)
+                              Container(
+                                width: 50,
+                                height: 50,
                                 decoration: BoxDecoration(
-                                  color: Colors.blue,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'You',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
+                                  shape: BoxShape.circle,
+                                  color: Colors.blue.withOpacity(0.15),
+                                  border: Border.all(
+                                    color: Colors.blue.withOpacity(0.3),
+                                    width: 2,
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                              // Inner circle (solid)
+                              Container(
+                                width: 28,
+                                height: 28,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.blue,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black26,
+                                      blurRadius: 8,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Direction arrow (pointing forward)
+                              Positioned(
+                                top: 5,
+                                child: Container(
+                                  width: 8,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                   ],
@@ -733,7 +786,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                     
                     // Skip if coordinates are invalid or 0
                     if (lat == null || lng == null || (lat == 0.0 && lng == 0.0)) {
-                      print('⚠️ [MAP] Skipping tree ${tree['uuid']} - invalid coords: ($lat, $lng)');
+                      // print('⚠️ [MAP] Skipping tree ${tree['uuid']} - invalid coords: ($lat, $lng)');
                       return null;
                     }
 
@@ -759,6 +812,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
               ),
             ],
           ),
+  
 
           // Map Controls
           Positioned(
@@ -787,6 +841,53 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             ),
           ),
 
+          // Heading Display
+          Positioned(
+            left: 16,
+            bottom: 16,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.compass_calibration,
+                    color: Colors.blue,
+                    size: 20,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_heading.toStringAsFixed(0)}°',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _getCompassDirection(_heading),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
           // Attribution
           Positioned(
             right: 10,
@@ -904,6 +1005,17 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
+  }
+
+  String _getCompassDirection(double heading) {
+    if (heading < 22.5 || heading >= 337.5) return 'N';
+    if (heading < 67.5) return 'NE';
+    if (heading < 112.5) return 'E';
+    if (heading < 157.5) return 'SE';
+    if (heading < 202.5) return 'S';
+    if (heading < 247.5) return 'SW';
+    if (heading < 292.5) return 'W';
+    return 'NW';
   }
 
   Widget _buildMapControlButton({
