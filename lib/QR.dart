@@ -21,6 +21,7 @@ class _QRScannerPageState extends State<QRScannerPage> {
   final GlobalKey qrKey = GlobalKey(debugLabel: 'QR');
   qr.QRViewController? controller;
   bool isTorchOn = false;
+  bool _isProcessingQR = false;  // Prevent duplicate scans
 
   @override
   void reassemble() {
@@ -35,16 +36,48 @@ class _QRScannerPageState extends State<QRScannerPage> {
   void _onQRViewCreated(qr.QRViewController controller) {
     this.controller = controller;
     controller.scannedDataStream.listen((scanData) {
-      controller.pauseCamera();
+      // Prevent processing multiple scans of the same QR code
+      if (_isProcessingQR) return;
+      
       final uuid = scanData.code;
-      if (uuid != null && mounted) {
+      if (uuid != null && uuid.isNotEmpty) {
+        _isProcessingQR = true;
+        controller.pauseCamera();
         _handleScannedUUID(uuid);
       }
     });
   }
 
-  Future<void> _handleScannedUUID(String uuid) async {
+  Future<void> _handleScannedUUID(String scannedData) async {
     final scanTime = DateTime.now();
+    
+    // Extract UUID from URL if scanned data contains domain
+    String uuid = scannedData;
+    if (scannedData.contains('http://') || scannedData.contains('https://')) {
+      // Extract UUID from URL (last segment)
+      // Format: https://domain.com/product-details/uuid
+      try {
+        final uri = Uri.parse(scannedData);
+        final pathSegments = uri.pathSegments;
+        if (pathSegments.isNotEmpty) {
+          uuid = pathSegments.last;
+          print('🔗 [URL PARSED] Extracted UUID: $uuid from URL: $scannedData');
+        }
+      } catch (e) {
+        print('⚠️ [URL PARSE ERROR] Could not parse URL: $e');
+        if (mounted) {
+          await Flushbar(
+            message: '❌ Invalid QR code format',
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 3),
+            margin: const EdgeInsets.all(12),
+            borderRadius: BorderRadius.circular(8),
+          ).show(context);
+        }
+        return;
+      }
+    }
+    
     // print('🔍 [QR SCAN] Scanned at ${scanTime.toIso8601String()} - UUID: $uuid');
     
     try {
@@ -64,10 +97,12 @@ class _QRScannerPageState extends State<QRScannerPage> {
         final navigationTime = DateTime.now();
         // print('🚀 [NAVIGATION START] Navigating to TreeDetailsPage at ${navigationTime.toIso8601String()}');
         
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: uuid)),
-        );
+        if (mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: uuid)),
+          );
+        }
         
         final navigationCompleteTime = DateTime.now();
         final navigationDuration = navigationCompleteTime.difference(navigationTime).inMilliseconds;
@@ -95,12 +130,14 @@ class _QRScannerPageState extends State<QRScannerPage> {
         final navigationTime = DateTime.now();
         // print('🚀 [NAVIGATION START] Navigating to FruitListFromQR at ${navigationTime.toIso8601String()}');
         
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => FruitListFromQR(fruitUuid: foundFruit.uuid ?? uuid),
-          ),
-        );
+        if (mounted) {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => FruitListFromQR(fruitUuid: foundFruit.uuid ?? uuid),
+            ),
+          );
+        }
         
         final navigationCompleteTime = DateTime.now();
         final navigationDuration = navigationCompleteTime.difference(navigationTime).inMilliseconds;
@@ -135,6 +172,15 @@ class _QRScannerPageState extends State<QRScannerPage> {
           margin: const EdgeInsets.all(12),
           borderRadius: BorderRadius.circular(8),
         ).show(context);
+      }
+    } finally {
+      // Keep the flag locked for a longer duration to prevent duplicate navigations
+      // especially when navigation happens
+      await Future.delayed(const Duration(milliseconds: 800));
+      _isProcessingQR = false;
+      // Resume camera for next scan
+      if (mounted && controller != null) {
+        controller!.resumeCamera();
       }
     }
   }
