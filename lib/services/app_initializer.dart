@@ -78,7 +78,7 @@ class AppInitializer {
   /// Count and print pending syncs for each record type separately
   static Future<void> printPendingSyncCounts() async {
     try {
-      print('🔍 Checking pending syncs...');
+      // print('🔍 Checking pending syncs...');
 
       // Count unsynced trees
       try {
@@ -111,7 +111,7 @@ class AppInitializer {
       try {
         final agroDB = AgroDB();
         final unsyncedAgro = await agroDB.fetchUnsyncedAgrochemicals();
-        print('🧪 Unsynced Agrochemical Records: ${unsyncedAgro.length}');
+        // print('🧪 Unsynced Agrochemical Records: ${unsyncedAgro.length}');
       } catch (e) {
         print('⚠️ Error counting pending agrochemical records: $e');
       }
@@ -134,7 +134,7 @@ class AppInitializer {
         print('⚠️ Error counting pending disease records: $e');
       }
 
-      print('✅ Pending sync check completed');
+      // print('✅ Pending sync check completed');
     } catch (e) {
       print('❌ Error checking pending syncs: $e');
     }
