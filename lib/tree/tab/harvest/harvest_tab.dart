@@ -137,8 +137,9 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
       final db = await LocalDB.getDatabase();
       for (final harvestUuid in grouped.keys.toList()) {
         final items = grouped[harvestUuid]!;
-        String displayName = 'Cached harvest ${harvestUuid.substring(0, harvestUuid.length > 8 ? 8 : harvestUuid.length)}';
+        String displayName = '';
 
+        // Try to get event_name from harvest_events table first
         if (harvestUuid != 'unknown' && !harvestUuid.toString().startsWith('gen_')) {
           try {
             final rows = await db.query(
@@ -157,6 +158,20 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
           } catch (e) {
             print('⚠️ harvest_tab: failed to read harvest_events for $harvestUuid: $e');
           }
+        }
+
+        // If still empty and have fruits with event info, use that
+        if (displayName.isEmpty && items.isNotEmpty) {
+          final firstFruit = items.first;
+          if (firstFruit['event_name'] != null && firstFruit['event_name'].toString().trim().isNotEmpty) {
+            displayName = firstFruit['event_name'].toString();
+          }
+        }
+
+        // Fallback to generic name if still empty
+        if (displayName.isEmpty) {
+          displayName = 'Cached harvest ${harvestUuid.substring(0, harvestUuid.length > 8 ? 8 : harvestUuid.length)}';
+          print('⚠️ harvest_tab: using generic name for $harvestUuid');
         }
 
         events.add({
@@ -590,6 +605,7 @@ if (index == 0) {
                       builder: (context) => FruitListPage(
                         treeUuid: widget.treeUuid,
                         harvestUuid: harvest['uuid'] ?? harvest['harvest_uuid'] ?? '',
+                        eventName: harvest['event_name'],
                       ),
                     ),
                   );

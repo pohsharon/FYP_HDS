@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
 import 'package:fyp_hbs/services/local database/fruit_db.dart';
+import 'package:fyp_hbs/services/local database/local_db.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:intl/intl.dart';
@@ -15,8 +16,9 @@ String _getProductQrUrl(String uuid) => '$_productBaseUrl/$uuid';
 class FruitListPage extends StatefulWidget {
   final String treeUuid;
   final String? harvestUuid;
+  final String? eventName;
 
-  const FruitListPage({super.key, required this.treeUuid, this.harvestUuid});
+  const FruitListPage({super.key, required this.treeUuid, this.harvestUuid, this.eventName});
 
   @override
   State<FruitListPage> createState() => _FruitPageState();
@@ -92,11 +94,13 @@ class _FruitPageState extends State<FruitListPage> {
         final local = await FruitDB().getAllFruits();
         final localMatches = local.where((f) => (f.harvest_uuid ?? '') == widget.harvestUuid && (f.tree_uuid ?? '') == widget.treeUuid).toList();
         if (localMatches.isNotEmpty && mounted) {
+          // Use event_name passed from harvest_tab if available
+          String eventName = "Test";
           setState(() {
             _harvestEvents = [
               {
                 'uuid': widget.harvestUuid,
-                'event_name': 'Cached harvest ${widget.harvestUuid?.substring(0, widget.harvestUuid!.length > 8 ? 8 : widget.harvestUuid!.length) ?? ''}',
+                'event_name': eventName,
                 'start_date': localMatches.first.harvested_at ?? '',
                 'end_date': localMatches.first.harvested_at ?? '',
                 'fruits': localMatches.map((f) => f.toMap()).toList(),
@@ -124,7 +128,8 @@ class _FruitPageState extends State<FruitListPage> {
               _harvestEvents = [
                 {
                   'uuid': widget.harvestUuid,
-                  'event_name': 'Cached harvest ${widget.harvestUuid?.substring(0, widget.harvestUuid!.length > 8 ? 8 : widget.harvestUuid!.length) ?? ''}',
+                  'event_name': widget.eventName,
+                  // 'event_name': _harvestEvents.first['event_name'] ?? 'Cached harvest ${widget.harvestUuid?.substring(0, widget.harvestUuid!.length > 8 ? 8 : widget.harvestUuid!.length) ?? ''}',
                   'start_date': localMatches.first.harvested_at ?? '',
                   'end_date': localMatches.first.harvested_at ?? '',
                   'fruits': localMatches.map((f) => f.toMap()).toList(),
@@ -161,15 +166,41 @@ class _FruitPageState extends State<FruitListPage> {
         }
 
         final events = <Map<String, dynamic>>[];
-        grouped.forEach((harvestUuid, items) {
+        final db = await LocalDB.getDatabase();
+        
+        for (final harvestUuid in grouped.keys) {
+          final items = grouped[harvestUuid]!;
+          String eventName = 'Cached harvest ${harvestUuid.substring(0, harvestUuid.length > 8 ? 8 : harvestUuid.length)}';
+          
+          // Try to get event_name from harvest_events table
+          if (harvestUuid != 'unknown' && !harvestUuid.toString().startsWith('gen_')) {
+            try {
+              final rows = await db.query(
+                'harvest_events',
+                columns: ['event_name'],
+                where: 'uuid = ?',
+                whereArgs: [harvestUuid],
+                limit: 1,
+              );
+              if (rows.isNotEmpty && rows.first['event_name'] != null) {
+                final name = rows.first['event_name'].toString().trim();
+                if (name.isNotEmpty) {
+                  eventName = name;
+                }
+              }
+            } catch (e) {
+              print('⚠️ fruit_list: failed to read harvest_events for $harvestUuid: $e');
+            }
+          }
+          
           events.add({
             'uuid': harvestUuid,
-            'event_name': 'Cached harvest ${harvestUuid.substring(0, harvestUuid.length > 8 ? 8 : harvestUuid.length)}',
+            'event_name': eventName,
             'start_date': items.first['harvested_at'] ?? '',
             'end_date': items.first['harvested_at'] ?? '',
             'fruits': items,
           });
-        });
+        }
 
         if (mounted) {
           setState(() {
