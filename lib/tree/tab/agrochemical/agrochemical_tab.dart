@@ -60,8 +60,8 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
       if (list.isEmpty) {
         final local = await AgroDB().getAllAgrochemicals();
         list = local.map((m) => {
-          'uuid': m['uuid'] ?? m['id'],
-          'id': m['id'],
+          'uuid': m['agrochemicalId'] ?? m['uuid'] ?? m['id'],
+          'id': m['agrochemicalId'] ?? m['uuid'] ?? m['id'],
           'name': m['name'] ?? m['agrochemical_name'] ?? 'Unknown',
           'agrochemical_name': m['name'] ?? m['agrochemical_name'],
         }).toList();
@@ -95,6 +95,8 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
           'agrochemical': {
             'name': m.agrochemicalName ?? 'Unknown Agrochemical',
             'thumbnail': null,
+            'uuid': m.agrochemicalId,
+            'id': m.agrochemicalId,
           },
           'applied_at': m.applied_at ?? '',
           'description': m.description ?? '',
@@ -249,9 +251,12 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
         ),
 
         // Filter chips
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _buildActiveFilters(),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: 60),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildActiveFilters(),
+          ),
         ),
 
         // 📋 Agrochemical Records
@@ -296,7 +301,14 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
               // Apply agrochemical filter
               if (_selectedAgrochemicalId != null && _selectedAgrochemicalId!.isNotEmpty) {
                 items = items.where((item) {
-                  final agroId = (item['agrochemical']?['uuid'] ?? item['agrochemical']?['id'] ?? '').toString();
+                  // Check multiple possible locations for the agrochemical ID
+                  final agroId = (
+                    item['agrochemical']?['uuid'] ?? 
+                    item['agrochemical']?['id'] ?? 
+                    item['agrochemical_id'] ??  // Top-level field
+                    item['agrochemical_uuid'] ?? // Alternative top-level field
+                    ''
+                  ).toString();
                   return agroId == _selectedAgrochemicalId;
                 }).toList();
               }
@@ -304,7 +316,11 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
               // Apply date range filter
               DateTime? parseDate(String? s) {
                 if (s == null || s.trim().isEmpty) return null;
-                return DateTime.tryParse(s);
+                try {
+                  return DateFormat('dd-MM-yyyy').parse(s);
+                } catch (e) {
+                  return null;
+                }
               }
               
               final appliedFrom = parseDate(_currentAppliedFrom);
@@ -322,7 +338,7 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
               }
               
               final filtered = items.where((item) {
-                final name = item['agrochemical']?['name']?.toString().toLowerCase() ?? '';
+                final name = item['agrochemical_name']?['name']?.toString().toLowerCase() ?? '';
                 return name.contains(searchQuery.toLowerCase());
               }).toList();
 
@@ -367,29 +383,30 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                 // If records exist but filters removed them all, show filter message
                 return Center(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.search_off,
-                          size: 48,
+                          size: 36,
                           color: AppColors.gray400,
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 8),
                         Text(
                           'No records found',
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: AppColors.gray600,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 4),
                         Text(
                           'Try adjusting your filters or search',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 12,
                             color: AppColors.gray500,
                           ),
                         ),
@@ -699,10 +716,11 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
+          Flexible(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: chips.map((chip) {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
@@ -920,6 +938,9 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                                     label: 'To',
                                     icon: Icons.event,
                                     setStateDialog: setStateDialog,
+                                    minDate: appliedFrom.text.isNotEmpty
+                                        ? DateTime.tryParse(appliedFrom.text)
+                                        : null,
                                   ),
                                 ),
                               ],
@@ -1110,6 +1131,7 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
     required String label,
     required IconData icon,
     required Function(void Function()) setStateDialog,
+    DateTime? minDate,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1129,7 +1151,7 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
         readOnly: true,
         style: const TextStyle(fontSize: 14),
         decoration: InputDecoration(
-          labelText: label,
+          hintText: label,
           labelStyle: TextStyle(
             color: AppColors.gray600,
             fontSize: 13,
@@ -1163,7 +1185,7 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
           final picked = await showDatePicker(
             context: context,
             initialDate: DateTime.now(),
-            firstDate: DateTime(2000),
+            firstDate: minDate ?? DateTime(2000),
             lastDate: DateTime.now(),
             builder: (context, child) {
               return Theme(
@@ -1180,7 +1202,7 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
           );
           if (picked != null) {
             setStateDialog(
-              () => controller.text = DateFormat('yyyy-MM-dd').format(picked),
+              () => controller.text = DateFormat('dd-MM-yyyy').format(picked),
             );
           }
         },
