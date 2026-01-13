@@ -4,14 +4,28 @@ import 'local_db.dart';
 class DiseaseDB{
   Future<void> saveDiseaseList(List<Map<String, dynamic>> diseaseList) async {
     final db = await LocalDB.getDatabase();
-    for (var s in diseaseList) {
+    // Replace previously cached remote diseases (synced=1) with the
+    // freshly fetched server list. Keep local unsynced or pending rows.
+    await db.transaction((txn) async {
+      try {
+        await txn.delete(
+          'diseases',
+          where: 'synced = ? AND pending_update = ? AND pending_delete = ?',
+          whereArgs: [1, 0, 0],
+        );
+      } catch (e) {
+        // ignore delete errors and continue inserting
+        print('⚠️ saveDiseaseList: failed to prune old cached diseases: $e');
+      }
+
+      for (var s in diseaseList) {
       // Normalize possible key names from different API shapes (camelCase vs snake_case)
       final idVal = s['id'] ?? s['uuid'] ?? s['ID'];
       final diseaseName = s['diseaseName'] ?? s['disease_name'] ?? s['name'] ?? '';
       final symptoms = s['symptoms'] ?? s['symptom'] ?? '';
       final remarks = s['remarks'] ?? s['note'] ?? s['notes'] ?? '';
 
-      final entry = <String, dynamic>{
+        final entry = <String, dynamic>{
         'id': idVal,
         'uuid': s['uuid']?.toString(),
         'disease_name': diseaseName,
@@ -21,18 +35,18 @@ class DiseaseDB{
         'pending_update': 0,
         'pending_delete': 0,
       };
-
-      try {
-        await db.insert(
-          'diseases',
-          entry,
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      } catch (e) {
-        print('⚠️ saveDiseaseList: failed to insert disease row $entry: $e');
+        try {
+          await txn.insert(
+            'diseases',
+            entry,
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        } catch (e) {
+          print('⚠️ saveDiseaseList: failed to insert disease row $entry: $e');
+        }
       }
+    });
     }
-  }
 
   Future<List<Map<String, dynamic>>> getAllDiseases() async {
     final db = await LocalDB.getDatabase();
@@ -53,32 +67,32 @@ class DiseaseDB{
     );
   }
 
-  Future<int> updateDisease(String uuid, Map<String, dynamic> changes) async {
+  Future<int> updateDisease(String idOrUuid, Map<String, dynamic> changes) async {
     final db = await LocalDB.getDatabase();
     return await db.update(
       'diseases',
       changes,
-      where: 'uuid = ?',
-      whereArgs: [uuid],
+      where: 'uuid = ? OR id = ?',
+      whereArgs: [idOrUuid, idOrUuid],
     );
   }
 
-  Future<int> deleteDisease(String uuid) async {
+  Future<int> deleteDisease(String idOrUuid) async {
     final db = await LocalDB.getDatabase();
     return await db.delete(
       'diseases',
-      where: 'uuid = ?',
-      whereArgs: [uuid],
+      where: 'uuid = ? OR id = ?',
+      whereArgs: [idOrUuid, idOrUuid],
     );
   }
 
-  Future<int> markAsPendingDelete(String uuid) async {
+  Future<int> markAsPendingDelete(String idOrUuid) async {
     final db = await LocalDB.getDatabase();
     return await db.update(
       'diseases',
       {'pending_delete': 1},
-      where: 'uuid = ?',
-      whereArgs: [uuid],
+      where: 'uuid = ? OR id = ?',
+      whereArgs: [idOrUuid, idOrUuid],
     );
   }
 
@@ -109,13 +123,13 @@ class DiseaseDB{
     );
   }
 
-  Future<int> markAsSynced(String uuid) async {
+  Future<int> markAsSynced(String idOrUuid) async {
     final db = await LocalDB.getDatabase();
     return await db.update(
       'diseases',
       {'synced': 1, 'pending_update': 0},
-      where: 'uuid = ?',
-      whereArgs: [uuid],
+      where: 'uuid = ? OR id = ?',
+      whereArgs: [idOrUuid, idOrUuid],
     );
   }
 }

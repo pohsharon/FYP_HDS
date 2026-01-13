@@ -99,6 +99,14 @@ class SyncDiseases {
           print('⚠️ Failed to sync new disease: $e');
         }
       }
+      // Refresh remote disease list into local cache to ensure deletes/updates reflect
+      try {
+        final remoteDiseases = await DiseaseApi.fetchDiseases();
+        await db.saveDiseaseList(remoteDiseases);
+        print('🔁 Refreshed local disease cache after sync (${remoteDiseases.length} items)');
+      } catch (e) {
+        print('⚠️ Failed to refresh disease cache after sync: $e');
+      }
     } catch (e) {
       print('⚠️ Disease sync error: $e');
     }
