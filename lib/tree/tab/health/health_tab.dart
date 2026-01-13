@@ -111,7 +111,11 @@ class _HealthTabPageState extends State<HealthTabPage> {
               // Apply date range filter
               DateTime? parseDate(String? s) {
                 if (s == null || s.trim().isEmpty) return null;
-                return DateTime.tryParse(s);
+                try {
+                  return DateFormat('dd-MM-yyyy').parse(s);
+                } catch (e) {
+                  return null;
+                }
               }
               
               final recordedFrom = parseDate(_currentRecordedFrom);
@@ -892,6 +896,9 @@ class _HealthTabPageState extends State<HealthTabPage> {
                                     label: 'To',
                                     icon: Icons.event,
                                     setStateDialog: setStateDialog,
+                                    minDate: recordedFrom.text.isNotEmpty
+                                        ? DateTime.tryParse(recordedFrom.text)
+                                        : null,
                                   ),
                                 ),
                               ],
@@ -1082,6 +1089,7 @@ class _HealthTabPageState extends State<HealthTabPage> {
     required String label,
     required IconData icon,
     required Function(void Function()) setStateDialog,
+    DateTime? minDate,
   }) {
     return Container(
       decoration: BoxDecoration(
@@ -1101,7 +1109,7 @@ class _HealthTabPageState extends State<HealthTabPage> {
         readOnly: true,
         style: const TextStyle(fontSize: 14),
         decoration: InputDecoration(
-          labelText: label,
+          hintText: label,
           labelStyle: TextStyle(
             color: AppColors.gray600,
             fontSize: 13,
@@ -1135,7 +1143,7 @@ class _HealthTabPageState extends State<HealthTabPage> {
           final picked = await showDatePicker(
             context: context,
             initialDate: DateTime.now(),
-            firstDate: DateTime(2000),
+            firstDate: minDate ?? DateTime(2000),
             lastDate: DateTime.now(),
             builder: (context, child) {
               return Theme(
@@ -1152,7 +1160,7 @@ class _HealthTabPageState extends State<HealthTabPage> {
           );
           if (picked != null) {
             setStateDialog(
-              () => controller.text = DateFormat('yyyy-MM-dd').format(picked),
+              () => controller.text = DateFormat('dd-MM-yyyy').format(picked),
             );
           }
         },
