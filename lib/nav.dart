@@ -19,7 +19,7 @@ class _NavState extends State<Nav> {
     FruitPage()
   ];
 
-  final Color activeColor = AppColors.hunterGreen;
+  final Color activeColor = AppColors.mossGreen;
   final Color inactiveColor = AppColors.black;
 
   void _onItemTapped(int index) {
@@ -38,7 +38,7 @@ class _NavState extends State<Nav> {
       body: _pages[_selectedIndex],
       backgroundColor: AppColors.background,
       floatingActionButton: FloatingActionButton(
-        backgroundColor: activeColor,
+        backgroundColor: AppColors.gray500,
         onPressed: _onFabPressed,
         tooltip: 'Scan QR',
         child: const Icon(Icons.qr_code_scanner, color: Colors.white),
@@ -57,7 +57,6 @@ class _NavState extends State<Nav> {
               _buildTabIcon(Icons.nature, 'Tree', 0),
               const SizedBox(width: 48), 
               _buildTabIcon(Icons.bar_chart, 'Fruit', 1),
-              // _buildTabIcon(Icons.settings, 'Settings', 3),
             ],
           ),
         ),

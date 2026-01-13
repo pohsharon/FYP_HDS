@@ -65,22 +65,20 @@ class HealthApi {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return data;
       } else {
-        throw Exception(data['message'] ?? 'Failed to create health record');
+        throw Exception(data['message'] ?? 'Failed to create tree');
       }
     } catch (e) {
-      print(response.body);
-      throw Exception('Failed to create health record');
+      throw Exception('Failed to create tree: ${response.body}');
     }
   }
 
   static Future<List<Map<String, dynamic>>> fetchHealthRecords(
-    String treeUuid,
   ) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
     final response = await http.get(
-      Uri.parse("${Config.apiBaseUrl}/trees/$treeUuid/health-records"),
+      Uri.parse("${Config.apiBaseUrl}/health-records"),
       headers: {
         "Accept": "application/json",
         if (token != null) "Authorization": "Bearer $token",
@@ -169,20 +167,25 @@ class HealthApi {
     }
   }
 
-  static Future<void> deleteHealthRecord(String id) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
+  static Future<void> deleteHealthRecord({required String id}) async {
+    final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
 
     final response = await http.delete(
       Uri.parse("${Config.apiBaseUrl}/health-records/$id"),
       headers: {
         "Accept": "application/json",
-        if (token != null) "Authorization": "Bearer $token",
+        if (token != null) 'Authorization': 'Bearer $token',
       },
     );
 
-    if (response.statusCode != 200) {
-      throw Exception("Failed to delete health record: ${response.body}");
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      try {
+        final decoded = jsonDecode(response.body);
+        throw Exception(decoded['message'] ?? 'Failed to delete health record');
+      } catch (_) {
+        throw Exception('Failed to delete health record: ${response.body}');
+      }
     }
   }
 }

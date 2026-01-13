@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/nav.dart';
 import 'package:fyp_hbs/authentication/forgot_password.dart';
-import 'package:fyp_hbs/services/auth_service.dart';
+import 'package:fyp_hbs/services/api/auth_service.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -21,6 +22,33 @@ class _LoginPageState extends State<LoginPage> {
   String? phoneError;
   String? passwordError;
   String? globalError; // For credential / server errors
+
+  String? _sanitizeError(String? err) {
+    if (err == null) return null;
+    final lower = err.toLowerCase();
+    // Common noisy technical patterns we don't want to show to users.
+    final technical = [
+      'sqlstate',
+      'could not translate',
+      'could not resolve host',
+      'connection:',
+      'pg:',
+      'psql',
+      'nodename',
+      'servname',
+      'supabase',
+      'socket',
+    ];
+    for (final t in technical) {
+      if (lower.contains(t)) return 'No internet connection — please try again later.';
+    }
+    // Keep generic network messages as-is, but shorten long server traces.
+    if (lower.contains('network error') || lower.contains('failed') || lower.contains('timeout')) {
+      return 'Network error — please try again later.';
+    }
+    // Otherwise return original user-facing message
+    return err;
+  }
 
   void _validateFields() {
     setState(() {
@@ -43,6 +71,24 @@ class _LoginPageState extends State<LoginPage> {
       globalError = null;
     });
 
+    // If there's no internet, show a friendly message instead of a raw
+    // network/SQL error. This prevents exposing internal error details to
+    // the user (see screenshot) and provides a clear action.
+    try {
+      final conn = await Connectivity().checkConnectivity();
+      if (conn == ConnectivityResult.none) {
+        setState(() {
+          _isLoading = false;
+          globalError = 'No internet connection — please try again later.';
+        });
+        return;
+      }
+    } catch (_) {
+      // If connectivity check itself fails, continue and let the login
+      // call surface errors. We still protect against the common offline case
+      // above.
+    }
+
     try {
       final response = await AuthService.login(
         phoneController.text.trim(),
@@ -50,6 +96,13 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (response.containsKey("token")) {
+        // Cache all data after successful login
+        try {
+          await AuthService.cacheAfterLogin();
+        } catch (_) {
+          // Continue to nav even if caching fails
+        }
+        
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const Nav()),
@@ -57,12 +110,12 @@ class _LoginPageState extends State<LoginPage> {
         );
       } else {
         setState(() {
-          globalError = response["message"] ?? "Invalid credentials";
+          globalError = _sanitizeError(response["message"] ?? "Invalid credentials");
         });
       }
     } catch (e) {
       setState(() {
-        globalError = "Something went wrong. Please try again later.";
+        globalError = _sanitizeError("Something went wrong. Please try again later.");
       });
     } finally {
       setState(() => _isLoading = false);

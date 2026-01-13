@@ -1,9 +1,16 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'create_health_info.dart';
 import 'package:fyp_hbs/services/health_api.dart';
 import 'disease_list.dart';
-import 'package:fyp_hbs/config.dart'; // for building image URL
+import 'package:connectivity_plus/connectivity_plus.dart';
+import '../../../services/local database/health_db.dart';
+import '../../../services/local database/disease_db.dart';
+import '../../../config.dart';
+import 'package:intl/intl.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class HealthTabPage extends StatefulWidget {
   final String treeTag;
@@ -20,8 +27,55 @@ class HealthTabPage extends StatefulWidget {
 
 class _HealthTabPageState extends State<HealthTabPage> {
   String searchQuery = '';
-  int? _filterDiseaseId;
-  String? _filterDiseaseName;
+  final Map<String, String> _diseaseCache = {};
+  List<Map<String, dynamic>> _diseaseList = [];
+  String? _selectedDiseaseId;
+  String _currentRecordedFrom = '';
+  String _currentRecordedTo = '';
+  final TextEditingController _diseaseFilterController = TextEditingController();
+  final TextEditingController _recordedFromController = TextEditingController();
+  final TextEditingController _recordedToController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDiseaseCache();
+    _loadDiseases();
+  }
+
+  @override
+  void dispose() {
+    _diseaseFilterController.dispose();
+    _recordedFromController.dispose();
+    _recordedToController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadDiseaseCache() async {
+    try {
+      final rows = await DiseaseDB().getAllDiseases();
+      final Map<String, String> map = {};
+      for (final r in rows) {
+        final id = (r['id'] ?? '').toString();
+        final name = (r['disease_name'] ?? r['diseaseName'] ?? '').toString();
+        if (id.isNotEmpty && name.isNotEmpty) map[id] = name;
+      }
+      if (mounted) setState(() => _diseaseCache
+        ..clear()
+        ..addAll(map));
+    } catch (e) {
+    }
+  }
+
+  Future<void> _loadDiseases() async {
+    try {
+      final rows = await DiseaseDB().getAllDiseases();
+      setState(() {
+        _diseaseList = rows.map((r) => Map<String, dynamic>.from(r)).toList();
+      });
+    } catch (e) {
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,41 +86,137 @@ class _HealthTabPageState extends State<HealthTabPage> {
         children: [
           const SizedBox(height: 16),
           _buildSearchAndAddButton(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          _buildActiveFilters(),
+          const SizedBox(height: 8),
           FutureBuilder<List<Map<String, dynamic>>>(
-            future: HealthApi.fetchHealthRecords(widget.treeUuid),
+            future: _fetchRecords(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               } else if (snapshot.hasError) {
                 return Center(child: Text("Error: ${snapshot.error}"));
-              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(child: Text("No health records found."));
               }
 
-              final records = snapshot.data!;
-
-              final filteredRecords = records.where((record) {
-                final diseaseName = record['disease']?['diseaseName']?.toString().toLowerCase() ?? '';
-                final matchesSearch = diseaseName.contains(searchQuery.toLowerCase());
-                final matchesDiseaseFilter = _filterDiseaseId == null
-                    ? true
-                    : (record['disease']?['id'] == _filterDiseaseId);
-                return matchesSearch && matchesDiseaseFilter;
+              var filteredRecords = snapshot.data ?? [];
+              
+              // Apply disease filter
+              if (_selectedDiseaseId != null && _selectedDiseaseId!.isNotEmpty) {
+                filteredRecords = filteredRecords.where((record) {
+                  final did = (record['diseaseId'] ?? record['disease_id'])?.toString() ?? '';
+                  return did == _selectedDiseaseId;
+                }).toList();
+              }
+              
+              // Apply date range filter
+              DateTime? parseDate(String? s) {
+                if (s == null || s.trim().isEmpty) return null;
+                try {
+                  return DateFormat('dd-MM-yyyy').parse(s);
+                } catch (e) {
+                  return null;
+                }
+              }
+              
+              final recordedFrom = parseDate(_currentRecordedFrom);
+              final recordedTo = parseDate(_currentRecordedTo);
+              
+              if (recordedFrom != null || recordedTo != null) {
+                filteredRecords = filteredRecords.where((record) {
+                  final s = record['recorded_at']?.toString() ?? '';
+                  final dt = DateTime.tryParse(s);
+                  if (dt == null) return false;
+                  if (recordedFrom != null && dt.isBefore(recordedFrom)) return false;
+                  if (recordedTo != null && dt.isAfter(recordedTo)) return false;
+                  return true;
+                }).toList();
+              }
+              
+              // Apply search query
+              filteredRecords = filteredRecords.where((record) {
+                final name = extractDiseaseName(record);
+                return name.toLowerCase().contains(
+                  searchQuery.toLowerCase(),
+                );
               }).toList();
 
               if (filteredRecords.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: Text('No health records match your search or filter.')),
+                // If there are no records at all in the database, show initial message
+                if (snapshot.data == null || snapshot.data!.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            color: AppColors.gray200,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.health_and_safety_outlined,
+                            size: 40,
+                            color: AppColors.gray600,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No health records yet',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.gray700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Tap the Add button to create your first record',
+                          style: TextStyle(fontSize: 14, color: AppColors.gray600),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                
+                // If records exist but filters removed them all, show filter message
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 48,
+                          color: AppColors.gray400,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No records found',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.gray600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Try adjusting your filters or search',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.gray500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 );
               }
 
               return Column(
-                children:
-                    filteredRecords
-                        .map((record) => _buildRecordCard(record))
-                        .toList(),
+                children: filteredRecords
+                    .map((record) => _buildRecordCard(record))
+                    .toList(),
               );
             },
           ),
@@ -75,10 +225,173 @@ class _HealthTabPageState extends State<HealthTabPage> {
     );
   }
 
+  Widget _buildActiveFilters() {
+    final chips = <Widget>[];
+
+    if (_selectedDiseaseId != null && _selectedDiseaseId!.isNotEmpty) {
+      final diseaseName = _diseaseCache[_selectedDiseaseId] ?? _selectedDiseaseId;
+      chips.add(
+        _buildFilterChip(
+          'Disease: $diseaseName',
+          () {
+            _diseaseFilterController.clear();
+            setState(() {
+              _selectedDiseaseId = null;
+            });
+          },
+        ),
+      );
+    }
+
+    if ((_currentRecordedFrom.isNotEmpty) || (_currentRecordedTo.isNotEmpty)) {
+      String label;
+      if (_currentRecordedFrom.isNotEmpty && _currentRecordedTo.isNotEmpty) {
+        label = 'Recorded: $_currentRecordedFrom to $_currentRecordedTo';
+      } else if (_currentRecordedFrom.isNotEmpty) {
+        label = 'Recorded >= $_currentRecordedFrom';
+      } else {
+        label = 'Recorded <= $_currentRecordedTo';
+      }
+
+      chips.add(
+        _buildFilterChip(
+          label,
+          () {
+            _recordedFromController.clear();
+            _recordedToController.clear();
+            setState(() {
+              _currentRecordedFrom = '';
+              _currentRecordedTo = '';
+            });
+          },
+        ),
+      );
+    }
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.filter_list,
+            size: 18,
+            color: AppColors.gray600,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Active Filters:',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppColors.gray700,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: chips.map((chip) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: chip,
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChip(String label, VoidCallback onClear) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppColors.hunterGreen.withOpacity(0.1),
+            AppColors.mossGreen.withOpacity(0.1),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppColors.hunterGreen.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onClear,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.filter_alt,
+                  size: 16,
+                  color: AppColors.hunterGreen,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.hunterGreen,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: AppColors.hunterGreen,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.close,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchRecords() async {
+    final conn = await Connectivity().checkConnectivity();
+    final healthDB = HealthDB();
+
+    if (conn == ConnectivityResult.none) {
+      final local = await healthDB.fetchByTreeUuid(widget.treeUuid);
+      return local.map((h) => h.toMap()).toList();
+    }
+
+    try {
+      final remote = await HealthApi.fetchTreeHealthRecords(widget.treeUuid);
+      if (remote.isEmpty) {
+        final local = await healthDB.fetchByTreeUuid(widget.treeUuid);
+        return local.map((h) => h.toMap()).toList();
+      }
+      return remote.map((m) => Map<String, dynamic>.from(m)).toList();
+    } catch (e) {
+      final local = await healthDB.fetchByTreeUuid(widget.treeUuid);
+      return local.map((h) => h.toMap()).toList();
+    }
+  }
+
   Widget _buildSearchAndAddButton() {
     return Row(
       children: [
-        // List icon button
         IconButton(
           icon: const Icon(
             Icons.list_alt_rounded,
@@ -89,16 +402,12 @@ class _HealthTabPageState extends State<HealthTabPage> {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder:
-                    (_) =>
-                        const DiseaseListPage(), // <-- navigate to your DiseaseListPage
+                builder: (_) => const DiseaseListPage(),
               ),
             );
           },
         ),
         const SizedBox(width: 8),
-
-        // Search bar
         Expanded(
           child: TextField(
             onChanged: (value) => setState(() => searchQuery = value),
@@ -110,11 +419,8 @@ class _HealthTabPageState extends State<HealthTabPage> {
               ),
               prefixIcon: const Icon(Icons.search),
               suffixIcon: GestureDetector(
-                onTap: () => _showDiseaseFilterDialog(),
-                child: Icon(
-                  Icons.filter_alt_outlined,
-                  color: _filterDiseaseId == null ? null : AppColors.hunterGreen,
-                ),
+                onTap: () => _showFilterDialog(context),
+                child: const Icon(Icons.filter_alt_outlined),
               ),
               filled: true,
               fillColor: AppColors.white,
@@ -133,24 +439,20 @@ class _HealthTabPageState extends State<HealthTabPage> {
             ),
           ),
         ),
-
         const SizedBox(width: 8),
-
-        // Add button
         ElevatedButton.icon(
           onPressed: () async {
             final result = await Navigator.push(
               context,
               MaterialPageRoute(
-                builder:
-                    (_) => CreateHealthInfoPage(
-                      treeTag: widget.treeTag,
-                      treeUuid: widget.treeUuid,
-                      existingRecord: null,
-                    ),
+                builder: (_) => CreateHealthInfoPage(
+                  treeTag: widget.treeTag,
+                  treeUuid: widget.treeUuid,
+                  existingRecord: null,
+                ),
               ),
             );
-            if (result == true) setState(() {}); // refresh
+            if (result == true) setState(() {});
           },
           icon: const Icon(Icons.add, color: Colors.white),
           label: const Text('Add', style: TextStyle(color: Colors.white)),
@@ -165,68 +467,31 @@ class _HealthTabPageState extends State<HealthTabPage> {
     );
   }
 
-  Widget _buildTreeImage(String? thumbnail) {
-    if (thumbnail != null && thumbnail.isNotEmpty) {
-      final imageUrl =
-          '${Config.supabaseBaseUrl}$thumbnail'; // ✅ Correct Supabase path
+  String extractDiseaseName(Map<String, dynamic> record) {
+    try {
+      if (record['disease'] is Map) {
+        final d = record['disease'];
+        return (d['diseaseName'] ?? d['name'] ?? '').toString();
+      }
+    } catch (_) {}
+    
+    final explicit = (record['disease_name'] ?? record['diseaseName'])?.toString() ?? '';
+    if (explicit.isNotEmpty) return explicit;
 
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.network(
-          imageUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return _buildDefaultImage();
-          },
-        ),
-      );
-    } else {
-      return _buildDefaultImage();
+    final did = (record['diseaseId'] ?? record['disease_id'])?.toString() ?? '';
+    if (did.isNotEmpty) {
+      final fromCache = _diseaseCache[did];
+      if (fromCache != null && fromCache.isNotEmpty) return fromCache;
     }
-  }
 
-  Widget _buildDefaultImage() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
-          SizedBox(height: 10),
-          Text('No Image Available'),
-        ],
-      ),
-    );
-  }
-
-  void _showImage(Map<String, dynamic> record) {
-    final String? thumbnail =
-        record['thumbnail']; // or record['diseaseImage'] if named differently
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: SizedBox(
-            width: MediaQuery.of(context).size.width * 0.85,
-            child: _buildTreeImage(
-              thumbnail,
-            ), // ✅ Use same function as Tree Details
-          ),
-        );
-      },
-    );
+    return '';
   }
 
   Widget _buildRecordCard(Map<String, dynamic> record) {
-    // Format date if needed
     String recordedAt = record['recorded_at'] ?? "";
     String status = record['status'] ?? "";
+    final diseaseName = extractDiseaseName(record);
 
-    // Status color logic
     Color statusColor;
     switch (status) {
       case "Recovered":
@@ -242,110 +507,172 @@ class _HealthTabPageState extends State<HealthTabPage> {
         statusColor = AppColors.gray600;
     }
 
+    final thumbnail = (record['thumbnail'] ?? '').toString();
+    final hasThumbnail = thumbnail.isNotEmpty;
+
     return GestureDetector(
       onTap: () async {
+        final hasInternet = await ConnectivityHelper.hasInternetConnection();
+        if (!hasInternet) {
+          if (mounted) {
+            await Flushbar(
+              message: 'Editing is disabled while offline',
+              icon: const Icon(Icons.cloud_off, color: Colors.white),
+              backgroundColor: Colors.orange.shade700,
+              duration: const Duration(seconds: 2),
+              borderRadius: BorderRadius.circular(12),
+              margin: const EdgeInsets.all(12),
+              flushbarPosition: FlushbarPosition.TOP,
+            ).show(context);
+          }
+          return;
+        }
+        
         final result = await Navigator.push(
           context,
           MaterialPageRoute(
-            builder:
-                (_) => CreateHealthInfoPage(
-                  treeTag: widget.treeTag,
-                  treeUuid: widget.treeUuid,
-                  existingRecord: record,
-                ),
+            builder: (_) => CreateHealthInfoPage(
+              treeTag: widget.treeTag,
+              treeUuid: widget.treeUuid,
+              existingRecord: record,
+            ),
           ),
         );
         if (result == true) setState(() {});
       },
       child: Card(
         color: AppColors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        elevation: 1,
-        margin: const EdgeInsets.only(bottom: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        margin: const EdgeInsets.only(bottom: 12),
+        elevation: 2,
+        shadowColor: Colors.black.withOpacity(0.08),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Disease name + treatment
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Disease name
                         Text(
-                          record['disease']['diseaseName'],
+                          diseaseName.isEmpty ? 'Unknown disease' : diseaseName,
                           style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 17,
+                            color: AppColors.hunterGreen,
                           ),
                         ),
-
-                        if ((record['treatment'] ?? "").isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            record['treatment'],
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.gray700,
+                        const SizedBox(height: 8),
+                        
+                        // Date and Status row
+                        Row(
+                          children: [
+                            if (recordedAt.isNotEmpty) ...[
+                              Icon(
+                                Icons.calendar_today,
+                                size: 14,
+                                color: AppColors.gray600,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                recordedAt,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.gray700,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                            ],
+                            // Status chip
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: statusColor.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: statusColor.withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                status,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: statusColor,
+                                ),
+                              ),
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                          ],
+                        ),
                       ],
                     ),
                   ),
-
-                  const SizedBox(width: 8),
-
-                  // Date + Status chips
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      if (recordedAt.isNotEmpty)
-                        Text(
-                          recordedAt,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.gray600,
+                  
+                  // Image thumbnail button
+                  if (hasThumbnail) ...[
+                    const SizedBox(width: 12),
+                    Material(
+                      color: AppColors.hunterGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => _showThumbnail(record),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: AppColors.hunterGreen,
+                            size: 24,
                           ),
                         ),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              
+              // Treatment text
+              if ((record['treatment'] ?? "").isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.gray200.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.medical_services_outlined,
+                        size: 16,
+                        color: AppColors.gray600,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
                         child: Text(
-                          status,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: statusColor,
+                          record['treatment'],
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.gray700,
+                            height: 1.4,
                           ),
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-
-              // Bottom: view image (aligned right)
-              Align(
-                alignment: Alignment.centerRight,
-                child: IconButton(
-                  icon: const Icon(Icons.photo_library_outlined),
-                  onPressed: () => _showImage(record),
-                  tooltip: 'View Image',
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -353,92 +680,491 @@ class _HealthTabPageState extends State<HealthTabPage> {
     );
   }
 
-  Future<void> _showDiseaseFilterDialog() async {
-    try {
-      final List<Map<String, dynamic>> diseases = await HealthApi.fetchDiseases();
+  void _showThumbnail(Map<String, dynamic> record) {
+    final thumb = (record['thumbnail'] ?? '').toString();
+    if (thumb.isEmpty) return;
 
-      String? tempSelectedName = _filterDiseaseName;
-      int? tempSelectedId = _filterDiseaseId;
+    final isHttp = thumb.startsWith('http');
+    final isFile = thumb.startsWith('/') || thumb.startsWith('file:');
+    final url = isHttp ? thumb : '${Config.supabaseBaseUrl}$thumb';
 
-      await showDialog<void>(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: const Text('Filter by Disease'),
-            content: StatefulBuilder(
-              builder: (context, setStateDialog) {
-                return SizedBox(
-                  width: double.maxFinite,
-                  child: DropdownButtonFormField<int>(
-                    isExpanded: true,
-                    value: tempSelectedId,
-                    hint: const Text('Select a disease'),
-                    items: (() {
-                      final List<DropdownMenuItem<int>> list = [];
-                      for (final d in diseases) {
-                        final idValue = d['id'];
-                        final int? id = idValue is int
-                            ? idValue
-                            : (idValue != null ? int.tryParse(idValue.toString()) : null);
-                        final name = (d['diseaseName'] ?? d['name'] ?? '').toString();
-                        if (id != null) {
-                          list.add(DropdownMenuItem<int>(value: id, child: Text(name)));
-                        }
-                      }
-                      return list;
-                    })(),
-                    onChanged: (v) {
-                      setStateDialog(() {
-                        tempSelectedId = v;
-                        final Map<String, dynamic> sel = diseases.firstWhere(
-                          (x) => (x['id'] == v),
-                          orElse: () => <String, dynamic>{},
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        backgroundColor: Colors.transparent,
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: isFile
+                  ? Image.file(File(thumb), fit: BoxFit.contain)
+                  : Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: Colors.white,
+                          padding: const EdgeInsets.all(40),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          ),
                         );
-                        tempSelectedName = (sel['diseaseName'] ?? sel['name'] ?? '').toString();
-                      });
-                    },
-                  ),
-                );
-              },
+                      },
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.white,
+                        padding: const EdgeInsets.all(40),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.error_outline, size: 48, color: Colors.grey),
+                            SizedBox(height: 16),
+                            Text('Image unavailable', style: TextStyle(color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                    ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  // clear filter
-                  setState(() {
-                    _filterDiseaseId = null;
-                    _filterDiseaseName = null;
-                  });
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Clear'),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                icon: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 20),
+                ),
+                onPressed: () => Navigator.of(context).pop(),
               ),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _filterDiseaseId = tempSelectedId;
-                    _filterDiseaseName = tempSelectedName;
-                  });
-                  Navigator.of(context).pop();
-                },
-                child: const Text('Apply'),
-              ),
-            ],
-          );
-        },
-      );
-    } catch (e) {
-      // show simple dialog on error
-      showDialog(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('Error'),
-          content: Text('Failed to load diseases: $e'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
+            ),
           ],
         ),
-      );
+      ),
+    );
+  }
+
+  void _showFilterDialog(BuildContext context) async {
+    // Ensure diseases are loaded before showing dialog
+    if (_diseaseList.isEmpty) {
+      await _loadDiseases();
     }
+
+    String? tempSelectedDiseaseId = _selectedDiseaseId;
+    final recordedFrom = TextEditingController(text: _currentRecordedFrom);
+    final recordedTo = TextEditingController(text: _currentRecordedTo);
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          backgroundColor: Colors.transparent,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.white,
+                  AppColors.background,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 20,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.hunterGreen,
+                        AppColors.mossGreen,
+                      ],
+                    ),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.filter_list,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Filter',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Content
+                Flexible(
+                  child: StatefulBuilder(
+                    builder: (context, setStateDialog) {
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildEnhancedSectionHeader("Disease", Icons.healing),
+                            const SizedBox(height: 8),
+                            _buildEnhancedDropdown(
+                              context: context,
+                              controller: _diseaseFilterController,
+                              initialSelection: tempSelectedDiseaseId,
+                              entries: [
+                                const DropdownMenuEntry(
+                                  value: '',
+                                  label: 'All diseases',
+                                ),
+                                ..._diseaseList.map<DropdownMenuEntry<String>>(
+                                  (disease) {
+                                    final id = (disease['id'] ?? '').toString();
+                                    final name = (disease['diseaseName'] ?? disease['disease_name'] ?? disease['name'] ?? '').toString();
+                                    return DropdownMenuEntry(
+                                      value: id.isNotEmpty ? id : '',
+                                      label: name.isNotEmpty ? name : 'Unknown',
+                                    );
+                                  },
+                                ),
+                              ],
+                              onSelected: (String? v) {
+                                setStateDialog(
+                                  () => tempSelectedDiseaseId = (v == null || v.isEmpty) ? null : v,
+                                );
+                              },
+                            ),
+
+                            const SizedBox(height: 20),
+                            _buildEnhancedSectionHeader("Recorded Date Range", Icons.date_range),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildEnhancedDateField(
+                                    context: context,
+                                    controller: recordedFrom,
+                                    label: 'From',
+                                    icon: Icons.calendar_today,
+                                    setStateDialog: setStateDialog,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildEnhancedDateField(
+                                    context: context,
+                                    controller: recordedTo,
+                                    label: 'To',
+                                    icon: Icons.event,
+                                    setStateDialog: setStateDialog,
+                                    minDate: recordedFrom.text.isNotEmpty
+                                        ? DateTime.tryParse(recordedFrom.text)
+                                        : null,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Actions
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(24),
+                      bottomRight: Radius.circular(24),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _clearFilters();
+                          },
+                          icon: const Icon(Icons.clear_all, size: 18),
+                          label: const Text("Reset"),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.gray700,
+                            side: BorderSide(color: AppColors.gray400, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.hunterGreen,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shadowColor: AppColors.hunterGreen.withOpacity(0.4),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            setState(() {
+                              _selectedDiseaseId = tempSelectedDiseaseId;
+                              _currentRecordedFrom = recordedFrom.text;
+                              _currentRecordedTo = recordedTo.text;
+                            });
+                          },
+                          icon: const Icon(Icons.check, size: 18),
+                          label: const Text(
+                            "Apply Filters",
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _clearFilters() {
+    if (mounted) {
+      setState(() {
+        _selectedDiseaseId = null;
+        _currentRecordedFrom = '';
+        _currentRecordedTo = '';
+        _diseaseFilterController.clear();
+        _recordedFromController.clear();
+        _recordedToController.clear();
+      });
+    }
+  }
+
+  Widget _buildEnhancedSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: AppColors.hunterGreen.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: AppColors.hunterGreen,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: AppColors.gray800,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEnhancedDropdown({
+    required BuildContext context,
+    required TextEditingController controller,
+    required String? initialSelection,
+    required List<DropdownMenuEntry<String>> entries,
+    required Function(String?) onSelected,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gray300, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final menuWidth = constraints.maxWidth;
+          return DropdownMenu<String>(
+            width: menuWidth,
+            menuHeight: 200,
+            controller: controller,
+            requestFocusOnTap: true,
+            initialSelection: initialSelection ?? '',
+            dropdownMenuEntries: entries,
+            onSelected: onSelected,
+            textStyle: const TextStyle(fontSize: 14),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEnhancedDateField({
+    required BuildContext context,
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required Function(void Function()) setStateDialog,
+    DateTime? minDate,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gray300, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        readOnly: true,
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          hintText: label,
+          labelStyle: TextStyle(
+            color: AppColors.gray600,
+            fontSize: 13,
+          ),
+          prefixIcon: Icon(icon, size: 18, color: AppColors.hunterGreen),
+          suffixIcon: controller.text.isNotEmpty
+              ? IconButton(
+                  icon: Icon(Icons.clear, size: 18, color: AppColors.gray600),
+                  onPressed: () {
+                    setStateDialog(() => controller.clear());
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+        onTap: () async {
+          final picked = await showDatePicker(
+            context: context,
+            initialDate: DateTime.now(),
+            firstDate: minDate ?? DateTime(2000),
+            lastDate: DateTime.now(),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: AppColors.hunterGreen,
+                    onPrimary: Colors.white,
+                    surface: Colors.white,
+                  ),
+                ),
+                child: child!,
+              );
+            },
+          );
+          if (picked != null) {
+            setStateDialog(
+              () => controller.text = DateFormat('dd-MM-yyyy').format(picked),
+            );
+          }
+        },
+      ),
+    );
   }
 }

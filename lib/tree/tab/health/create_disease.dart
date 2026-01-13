@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-import 'package:fyp_hbs/services/disease_api.dart';
+import 'package:fyp_hbs/services/api/disease_api.dart';
 import 'package:another_flushbar/flushbar.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
+import 'package:fyp_hbs/services/app_initializer.dart';
+import 'package:fyp_hbs/services/local database/disease_db.dart';
 
 class CreateDiseasePage extends StatefulWidget {
   final Map<String, dynamic>? disease;
@@ -41,14 +44,20 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
 
   Future<void> _saveDisease() async {
     if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please complete the form')));
+      await Flushbar(
+        message: 'Please complete the form',
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 2),
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+      ).show(context);
       return;
     }
 
     try {
       setState(() => isLoading = true);
+
+      final online = await ConnectivityHelper.hasInternetConnection();
 
       if (widget.disease == null) {
         // CREATE mode
@@ -59,8 +68,10 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
         );
       } else {
         // UPDATE mode
+        final diseaseId = widget.disease!['uuid']?.toString() ?? 
+                          widget.disease!['id']?.toString() ?? '';
         await DiseaseApi.updateDisease(
-          id: widget.disease!['id'].toString(),
+          id: diseaseId,
           diseaseName: diseaseNameController.text,
           symptoms: symptomsController.text,
           remarks: remarksController.text,
@@ -68,24 +79,39 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
       }
 
       await Flushbar(
- message:
-            widget.disease != null
+        message: online
+            ? (widget.disease != null
                 ? 'Disease updated successfully.'
-                : 'Disease created successfully.',
-        icon: const Icon(Icons.check_circle, color: Colors.white),
-        backgroundColor: Colors.green.shade700,
+                : 'Disease created successfully.')
+            : (widget.disease != null
+                ? 'Disease updated offline'
+                : 'Disease saved locally. Sync will occur when online'),
+        icon: Icon(
+          online ? Icons.check_circle : Icons.cloud_off,
+          color: Colors.white,
+        ),
+        backgroundColor: online ? Colors.green.shade700 : Colors.orange.shade700,
         duration: const Duration(seconds: 2),
         borderRadius: BorderRadius.circular(12),
         margin: const EdgeInsets.all(12),
         flushbarPosition: FlushbarPosition.TOP,
       ).show(context);
 
+      // Print pending sync counts if saved offline
+      if (!online) {
+        await AppInitializer.printPendingSyncCounts();
+      }
+
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      await Flushbar(
+        message: 'Error: $e',
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+      ).show(context);
     } finally {
       setState(() => isLoading = false);
     }
@@ -93,9 +119,13 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
 
   Future<void> _deleteDisease() async {
     if (widget.disease == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No disease to delete')));
+      await Flushbar(
+        message: 'No disease to delete',
+        backgroundColor: Colors.orange.shade700,
+        duration: const Duration(seconds: 2),
+        margin: const EdgeInsets.all(12),
+        borderRadius: BorderRadius.circular(8),
+      ).show(context);
       return;
     }
 
@@ -126,16 +156,38 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
 
     if (confirm == true) {
       try {
-        await DiseaseApi.deleteDisease(widget.disease!['id'].toString());
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Disease deleted successfully')),
-        );
+        final online = await ConnectivityHelper.hasInternetConnection();
+        final diseaseId = widget.disease!['uuid']?.toString() ?? 
+                          widget.disease!['id']?.toString() ?? '';
+        
+        await DiseaseApi.deleteDisease(diseaseId);
+        
+        // Remove from local cache after successful deletion
+        await DiseaseDB().deleteDisease(diseaseId);
+        
+        await Flushbar(
+          message: online
+              ? 'Disease deleted successfully'
+              : 'Disease marked for deletion',
+          icon: Icon(
+            online ? Icons.check_circle : Icons.cloud_off,
+            color: Colors.white,
+          ),
+          backgroundColor: online ? Colors.green.shade700 : Colors.orange.shade700,
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+        ).show(context);
         Navigator.pop(context); // close page
         Navigator.pop(context, true); // refresh parent
       } catch (e) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting disease: $e')));
+        await Flushbar(
+          message: 'Error deleting disease: $e',
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(8),
+        ).show(context);
       }
     }
   }

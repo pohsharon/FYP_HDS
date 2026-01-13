@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/nav.dart';
+import 'package:fyp_hbs/authentication/login.dart';
+import 'package:another_flushbar/flushbar.dart';
+import 'package:fyp_hbs/services/api/auth_service.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   final bool fromSettings;
+  final String? phone;
 
-  const ResetPasswordPage({super.key, this.fromSettings = false});
+  const ResetPasswordPage({
+    super.key,
+    this.fromSettings = false,
+    this.phone,
+  });
 
   @override
   State<ResetPasswordPage> createState() => _ResetPasswordPageState();
@@ -20,28 +28,57 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   bool _hideOld = true;
   bool _hideNew = true;
   bool _hideConfirm = true;
+  
+  late String _phoneNumber;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializePhoneNumber();
+  }
+
+  Future<void> _initializePhoneNumber() async {
+    if (widget.fromSettings && (widget.phone == null || widget.phone!.isEmpty)) {
+      // Retrieve current user's phone from SharedPreferences
+      final currentPhone = await AuthService.getCurrentUserPhone();
+      if (mounted) {
+        setState(() {
+          _phoneNumber = currentPhone ?? '';
+          _isLoading = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          _phoneNumber = widget.phone ?? '';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'Reset Password',
-          style: TextStyle(
-            fontSize: 24,
+        title: Text(
+         "Reset Password",
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
-            color: Colors.black,
+            color: Colors.white,
           ),
         ),
-        iconTheme: const IconThemeData(color: Colors.black),
+        backgroundColor: AppColors.pakistanGreen,
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 50),
+        child: _isLoading
+            ? const Center(
+                child: CircularProgressIndicator(),
+              )
+            : SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
           child: Form(
             key: _formKey,
             child: Column(
@@ -72,23 +109,126 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   _hideConfirm,
                   () => setState(() => _hideConfirm = !_hideConfirm),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 25),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
-                      if (!_formKey.currentState!.validate()) return;
-                      // TODO logic to reset password
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const Nav(),
-                        ),
+                    onPressed: () async {
+                      final valid = _formKey.currentState?.validate() ?? false;
+                      if (!valid) {
+                        Flushbar(
+                          message: 'Please fill in all required fields correctly.',
+                          icon: const Icon(Icons.error, color: Colors.white),
+                          backgroundColor: Colors.red.shade700,
+                          duration: const Duration(seconds: 3),
+                          borderRadius: BorderRadius.circular(8),
+                          margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
+                        ).show(context);
+                        return;
+                      }
+
+                      // If user is logged in (fromSettings), verify old password first
+                      if (widget.fromSettings) {
+                        Flushbar(
+                          message: 'Verifying old password...',
+                          icon: const Icon(Icons.lock, color: Colors.white),
+                          backgroundColor: AppColors.hunterGreen,
+                          duration: const Duration(seconds: 2),
+                          borderRadius: BorderRadius.circular(8),
+                          margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
+                        ).show(context);
+
+                        final passwordCheck = await AuthService.checkOldPassword(
+                          oldPasswordController.text,
+                        );
+
+                        if (passwordCheck['valid'] != true) {
+                          Flushbar(
+                            message: passwordCheck['message'] ?? 'Old password is incorrect',
+                            icon: const Icon(Icons.error, color: Colors.white),
+                            backgroundColor: Colors.red.shade700,
+                            duration: const Duration(seconds: 3),
+                            borderRadius: BorderRadius.circular(8),
+                            margin: const EdgeInsets.all(12),
+                            flushbarPosition: FlushbarPosition.TOP,
+                          ).show(context);
+                          return;
+                        }
+                      }
+
+                      // Show loading
+                      Flushbar(
+                        message: 'Resetting password...',
+                        icon: const Icon(Icons.sync, color: Colors.white),
+                        backgroundColor: AppColors.hunterGreen,
+                        duration: const Duration(seconds: 2),
+                        borderRadius: BorderRadius.circular(8),
+                        margin: const EdgeInsets.all(12),
+                        flushbarPosition: FlushbarPosition.TOP,
+                      ).show(context);
+
+                      // Call reset password API
+                      final result = await AuthService.resetPassword(
+                        _phoneNumber,
+                        newPasswordController.text,
+                        confirmPasswordController.text,
                       );
+
+                      if (result['success'] == true) {
+                        // Password reset successfully
+                        await Flushbar(
+                          message: result['message'] ?? 'Password reset successfully',
+                          icon: const Icon(Icons.check_circle, color: Colors.white),
+                          backgroundColor: Colors.green.shade700,
+                          duration: const Duration(seconds: 2),
+                          borderRadius: BorderRadius.circular(8),
+                          margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
+                        ).show(context);
+
+                        // Wait for Flushbar to display before navigating
+                        await Future.delayed(const Duration(milliseconds: 500));
+
+                        // Navigate based on context
+                        // If fromSettings is true, user is logged in changing password -> go to home
+                        // If fromSettings is false, user is on login page (forgot password) -> go to login
+                        if (mounted) {
+                          if (widget.fromSettings) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const Nav(),
+                              ),
+                              (route) => false,
+                            );
+                          } else {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => LoginPage(),
+                              ),
+                              (route) => false,
+                            );
+                          }
+                        }
+                      } else {
+                        // Show error
+                        Flushbar(
+                          message: result['message'] ?? 'Password reset failed',
+                          icon: const Icon(Icons.error, color: Colors.white),
+                          backgroundColor: Colors.red.shade700,
+                          duration: const Duration(seconds: 3),
+                          borderRadius: BorderRadius.circular(8),
+                          margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
+                        ).show(context);
+                      }
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.hunterGreen,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -107,8 +247,8 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             ),
           ),
         ),
-      ),
-    );
+            ),
+      );
   }
 
   Widget _buildPasswordField(

@@ -1,12 +1,15 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
-import 'package:fyp_hbs/services/tree_growth_api.dart';
+import 'package:fyp_hbs/services/api/tree_growth_api.dart';
+import 'package:fyp_hbs/models/tree_growth_model.dart';
+import 'package:fyp_hbs/services/local database/growth_db.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class GrowthLogTabPage extends StatefulWidget {
   final String treeUuid;
-  const GrowthLogTabPage({super.key, required this.treeUuid});
+  final VoidCallback? onGrowthLogSaved;
+  const GrowthLogTabPage({super.key, required this.treeUuid, this.onGrowthLogSaved});
 
   @override
   State<GrowthLogTabPage> createState() => _GrowthLogTabPageState();
@@ -28,6 +31,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
+      if (!mounted) return;
       setState(() {
         selectedTab = _tabController.index;
       });
@@ -36,10 +40,30 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
     _fetchGrowthLogs();
   }
 
-  Future<void> _fetchGrowthLogs() async {
-    try {
-      final logs = await TreeGrowthApi.fetchGrowthLogsByUuid(widget.treeUuid);
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
+  Future<void> _fetchGrowthLogs() async {
+    List<Map<String, dynamic>> logs = [];
+    try {
+      final remote = await TreeGrowthApi.fetchGrowthLogsByUuid(widget.treeUuid);
+      logs = List<Map<String, dynamic>>.from(remote);
+    } catch (e) {
+      print("⚠️ Remote growth fetch failed, falling back to local DB: $e");
+      try {
+        final local = await GrowthDB().fetchAllGrowths(treeUuid: widget.treeUuid);
+        logs = local.map((m) => m.toMap()).toList();
+        // Reverse to show oldest first (local DB returns newest first)
+        logs = logs.reversed.toList();
+      } catch (localErr) {
+        print("⚠️ Failed to load local growth logs: $localErr");
+      }
+    }
+
+    try {
       List<FlSpot> heights = [];
       List<FlSpot> diameters = [];
       List<String> labels = [];
@@ -47,7 +71,6 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
       for (int i = 0; i < logs.length; i++) {
         final log = logs[i];
 
-        // parse height
         final rawHeight = log["height"];
         final double heightValue =
             rawHeight == null
@@ -56,7 +79,6 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
                     ? rawHeight.toDouble()
                     : double.tryParse(rawHeight.toString()) ?? 0.0);
 
-        // parse diameter
         final rawDiameter = log["diameter"];
         final double diameterValue =
             rawDiameter == null
@@ -68,7 +90,6 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
         heights.add(FlSpot(i.toDouble(), heightValue));
         diameters.add(FlSpot(i.toDouble(), diameterValue));
 
-        // parse date → Month/Year
         if (log["created_at"] != null) {
           final date = DateTime.tryParse(log["created_at"]);
           if (date != null) {
@@ -81,6 +102,7 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
         }
       }
 
+      if (!mounted) return;
       setState(() {
         heightData = heights;
         diameterData = diameters;
@@ -88,365 +110,681 @@ class _GrowthLogTabPageState extends State<GrowthLogTabPage>
         isLoading = false;
       });
     } catch (e) {
-      print("Error fetching growth logs: $e");
+      print("Error processing growth logs: $e");
+      if (!mounted) return;
       setState(() {
         isLoading = false;
       });
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // Prepare axis helpers
-    // Determine which x-label indices to show (only first occurrence per month/year)
-    final Map<String, int> _firstIndexForLabel = {};
-    for (int i = 0; i < xLabels.length; i++) {
-      _firstIndexForLabel.putIfAbsent(xLabels[i], () => i);
-    }
-    
+  void _showAddGrowthDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bottomSheetContext) {
+        final TextEditingController heightController = TextEditingController();
+        final TextEditingController diameterController = TextEditingController();
 
-    // Determine Y axis formatting based on currently selected tab
-    final List<FlSpot> displayedSpots = selectedTab == 0 ? heightData : diameterData;
-    double minY = double.infinity;
-    double maxY = double.negativeInfinity;
-    for (final s in displayedSpots) {
-      if (s.y.isNaN) continue;
-      if (s.y < minY) minY = s.y;
-      if (s.y > maxY) maxY = s.y;
-    }
-    if (minY == double.infinity || maxY == double.negativeInfinity) {
-      minY = 0;
-      maxY = 1;
-    }
-
-    // Add padding when min==max or small range
-    double ySpan = (maxY - minY);
-    if (ySpan == 0) {
-      ySpan = maxY == 0 ? 1.0 : maxY * 0.1;
-    }
-    final yPadding = ySpan * 0.12;
-    minY = max(0, minY - yPadding);
-    maxY = maxY + yPadding;
-
-    // Decide decimal places: if any value has fractional part -> show 1 decimal, else 0
-    int yDecimals = 0;
-    for (final s in displayedSpots) {
-      if ((s.y - s.y.truncateToDouble()).abs() > 1e-9) {
-        yDecimals = 1;
-        break;
-      }
-    }
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center, // Center everything
+        return Container(
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 24,
+            bottom: MediaQuery.of(bottomSheetContext).viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ToggleButtons(
-                borderRadius: BorderRadius.circular(30),
-                fillColor: AppColors.hunterGreen,
-                selectedColor: Colors.white,
-                color: AppColors.gray600,
-                selectedBorderColor: AppColors.hunterGreen,
-                constraints: const BoxConstraints(minHeight: 30, minWidth: 100),
-                isSelected: [
-                  _tabController.index == 0,
-                  _tabController.index == 1,
-                ],
-                onPressed: (index) {
-                  setState(() {
-                    _tabController.animateTo(index);
-                  });
-                },
-                children: const [
-                  Text("Height", style: TextStyle(fontSize: 12)),
-                  Text("Diameter", style: TextStyle(fontSize: 12)),
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.hunterGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.add_chart,
+                      color: AppColors.hunterGreen,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    "Add Growth Log",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.hunterGreen,
+                    ),
+                  ),
                 ],
               ),
+              const SizedBox(height: 24),
 
-              const SizedBox(width: 8),
-
-              // Smaller circle button
-              Container(
-                width: 32,
-                height: 32,
-                decoration: const BoxDecoration(
-                  color: AppColors.hunterGreen,
-                  shape: BoxShape.circle,
+              // Height field
+              TextField(
+                controller: heightController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: "Height (m)",
+                  prefixIcon: Icon(Icons.height, color: AppColors.hunterGreen),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: AppColors.hunterGreen, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: AppColors.background,
                 ),
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  iconSize: 18,
-                  icon: const Icon(Icons.add, color: Colors.white),
-                  onPressed: () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(20),
+              ),
+              const SizedBox(height: 16),
+
+              // Diameter field
+              TextField(
+                controller: diameterController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: "Diameter (m)",
+                  prefixIcon: Icon(Icons.circle_outlined, color: AppColors.hunterGreen),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: AppColors.hunterGreen, width: 2),
+                  ),
+                  filled: true,
+                  fillColor: AppColors.background,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Action buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(bottomSheetContext),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(color: AppColors.gray400),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      builder: (context) {
-                        final TextEditingController heightController =
-                            TextEditingController();
-                        final TextEditingController diameterController =
-                            TextEditingController();
+                      child: const Text(
+                        "Cancel",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.hunterGreen,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () async {
+                        final height = heightController.text.trim();
+                        final diameter = diameterController.text.trim();
+                        
+                        if (height.isEmpty || diameter.isEmpty) {
+                          await Flushbar(
+                            message: 'Please enter both height and diameter',
+                            backgroundColor: Colors.orange.shade700,
+                            duration: const Duration(seconds: 2),
+                            margin: const EdgeInsets.all(12),
+                            borderRadius: BorderRadius.circular(8),
+                          ).show(bottomSheetContext);
+                          return;
+                        }
 
-                        return Padding(
-                          padding: EdgeInsets.only(
-                            left: 30,
-                            right: 30,
-                            top: 20,
-                            bottom:
-                                MediaQuery.of(context).viewInsets.bottom + 20,
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                "Add Growth Log",
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
+                        try {
+                          final result = await TreeGrowthApi.addGrowthLog(
+                            treeUuid: widget.treeUuid,
+                            height: double.parse(height),
+                            diameter: double.parse(diameter),
+                          );
 
-                              // Height field
-                              TextField(
-                                controller: heightController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: "Height (cm)",
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
+                          // Cache the result locally with synced=1
+                          try {
+                            final serverUuid = result['uuid']?.toString() ?? 
+                                result['data']?['uuid']?.toString() ?? 
+                                'remote_${DateTime.now().millisecondsSinceEpoch}';
+                            final createdAt = result['created_at']?.toString() ?? 
+                                result['data']?['created_at']?.toString() ?? 
+                                DateTime.now().toIso8601String();
+                            
+                            final g = TreeGrowthModel(
+                              uuid: serverUuid,
+                              treeUuid: widget.treeUuid,
+                              height: double.tryParse(height) ?? 0.0,
+                              diameter: double.tryParse(diameter) ?? 0.0,
+                              createdAt: createdAt,
+                              synced: 1,
+                            );
+                            await GrowthDB().insertGrowth(g);
+                          } catch (cacheErr) {
+                            print('⚠️ Failed to cache growth log locally: $cacheErr');
+                          }
 
-                              // Diameter field
-                              TextField(
-                                controller: diameterController,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: "Diameter (cm)",
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-
-                              // Save button
-                              SizedBox(
-                                width: double.infinity,
-                                child: ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.hunterGreen,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  onPressed: () async {
-                                    final height = heightController.text.trim();
-                                    final diameter =
-                                        diameterController.text.trim();
-                                    if (height.isNotEmpty && diameter.isNotEmpty) {
-                                      try {
-                                        await TreeGrowthApi.addGrowthLog(
-                                          treeUuid: widget.treeUuid,
-                                          height: double.parse(height),
-                                          diameter: double.parse(diameter),
-                                        );
-
-                                        Navigator.pop(context, true);
-                                        await _fetchGrowthLogs();
-                                        setState(() {});
-                                      } catch (e) {
-                                        print("Error: $e");
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              "Failed to save growth log: $e",
-                                            ),
-                                          ),
-                                        );
-                                      }
-                                    } else {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            "Please enter height and diameter",
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  },
-                                  child: const Text("Save"),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
+                          if (mounted) {
+                            Navigator.pop(bottomSheetContext);
+                            await _fetchGrowthLogs();
+                            widget.onGrowthLogSaved?.call();
+                            await Flushbar(
+                              message: 'Growth log added successfully',
+                              icon: const Icon(Icons.check_circle, color: Colors.white),
+                              backgroundColor: Colors.green.shade700,
+                              duration: const Duration(seconds: 2),
+                              margin: const EdgeInsets.all(12),
+                              borderRadius: BorderRadius.circular(8),
+                            ).show(context);
+                          }
+                        } catch (e) {
+                          // API already handles offline save, just show appropriate message
+                          print("⚠️ API error: $e");
+                          if (mounted) {
+                            Navigator.pop(bottomSheetContext);
+                            await _fetchGrowthLogs();
+                            widget.onGrowthLogSaved?.call();
+                            
+                            // Check if it was saved offline or actual error
+                            if (e.toString().contains('Saved offline')) {
+                              await Flushbar(
+                                message: 'Growth log saved locally. Sync will occur when online',
+                                icon: const Icon(Icons.cloud_off, color: Colors.white),
+                                backgroundColor: Colors.orange.shade700,
+                                duration: const Duration(seconds: 2),
+                                margin: const EdgeInsets.all(12),
+                                borderRadius: BorderRadius.circular(8),
+                              ).show(context);
+                            } else {
+                              await Flushbar(
+                                message: 'Failed to save growth log',
+                                backgroundColor: Colors.red.shade700,
+                                duration: const Duration(seconds: 3),
+                                margin: const EdgeInsets.all(12),
+                                borderRadius: BorderRadius.circular(8),
+                              ).show(context);
+                            }
+                          }
+                        }
                       },
-                    );
-                  },
+                      child: const Text(
+                        "Save Log",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Header with controls
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.gray300, width: 1.5),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => _tabController.animateTo(0),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: selectedTab == 0
+                                  ? AppColors.hunterGreen
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.height,
+                                  size: 18,
+                                  color: selectedTab == 0
+                                      ? Colors.white
+                                      : AppColors.gray600,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "Height",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: selectedTab == 0
+                                        ? Colors.white
+                                        : AppColors.gray600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => _tabController.animateTo(1),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: selectedTab == 1
+                                  ? AppColors.hunterGreen
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.circle_outlined,
+                                  size: 18,
+                                  color: selectedTab == 1
+                                      ? Colors.white
+                                      : AppColors.gray600,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "Diameter",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: selectedTab == 1
+                                        ? Colors.white
+                                        : AppColors.gray600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppColors.hunterGreen, AppColors.mossGreen],
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.hunterGreen.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.add, color: Colors.white, size: 24),
+                  onPressed: _showAddGrowthDialog,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        // Chart
+
+        // Chart area
         Expanded(
-          child:
-              isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : heightData.isEmpty && diameterData.isEmpty
-                  ? const Center(child: Text("No growth logs yet"))
-                  : Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: // Build labels from your fetched logs
-                        LineChart(
-                      LineChartData(
-            minX: 0,
-            maxX: xLabels.length > 0 ? (xLabels.length - 1).toDouble() : 0,
-            minY: minY,
-            maxY: maxY,
-                        gridData: FlGridData(
-                          show: true,
-                          drawVerticalLine: true,
-                          getDrawingHorizontalLine:
-                              (value) => FlLine(
-                                strokeWidth: 0.5,
-                                color: AppColors.gray300,
-                              ),
-                          getDrawingVerticalLine:
-                              (value) => FlLine(
-                                strokeWidth: 0.5,
-                                color: AppColors.gray300,
-                              ),
-                        ),
-
-                        titlesData: FlTitlesData(
-                          bottomTitles: AxisTitles(
-                            axisNameWidget: const Text(
-                              "Date (Month/Year)",
+          child: isLoading
+              ? Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.hunterGreen,
+                  ),
+                )
+              : heightData.isEmpty && diameterData.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.show_chart,
+                              size: 64,
+                              color: AppColors.gray400,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No growth data yet',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
+                                color: AppColors.gray600,
                               ),
                             ),
-                            axisNameSize: 22,
-                            sideTitles: SideTitles(
-                              showTitles: true,
-                              reservedSize: 30,
-                              getTitlesWidget: (value, meta) {
-                                final index = value.toInt();
-                                if (index >= 0 && index < xLabels.length && _firstIndexForLabel[xLabels[index]] == index) {
-                                  return Padding(
-                                    padding: const EdgeInsets.only(top: 6),
-                                    child: Text(
-                                      xLabels[index],
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  );
-                                }
-                                return const SizedBox.shrink();
-                              },
-                            ),
-                          ),
-                          leftTitles: AxisTitles(
-                            axisNameWidget: Text(
-                              selectedTab == 0
-                                  ? "Height (cm)"
-                                  : "Diameter (cm)",
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
+                            const SizedBox(height: 8),
+                            Text(
+                              'Add your first growth measurement to track progress',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppColors.gray500,
                               ),
                             ),
-                            axisNameSize: 30,
-                            sideTitles: SideTitles(
-                              showTitles: true,
-                              reservedSize: 40,
-                              getTitlesWidget: (value, meta) {
-                                return Text(
-                                  value.toStringAsFixed(yDecimals),
-                                  style: const TextStyle(
-                                    color: Colors.black87,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w400,
+                          ],
+                        ),
+                      ),
+                    )
+                  : heightData.length < 2 || diameterData.length < 2
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.timeline,
+                                  size: 64,
+                                  color: AppColors.gray400,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Keep Tracking!',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.gray600,
                                   ),
-                                );
-                              },
-                            ),
-                          ),
-                          // Hide top & right completely
-                          rightTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: false),
-                          ),
-                          topTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: false),
-                          ),
-                        ),
-
-                        // Only bottom & left borders
-                        borderData: FlBorderData(
-                          show: true,
-                          border: const Border(
-                            bottom: BorderSide(color: Colors.black, width: 1),
-                            left: BorderSide(color: Colors.black, width: 1),
-                          ),
-                        ),
-                        lineTouchData: LineTouchData(
-                          touchTooltipData: LineTouchTooltipData(
-                            tooltipBgColor: Colors.white.withOpacity(0.9),
-                            tooltipRoundedRadius: 12,
-                            getTooltipItems: (touchedSpots) {
-                              return touchedSpots.map((spot) {
-                                return LineTooltipItem(
-                                  "Month: ${xLabels[spot.x.toInt()]}\nValue: ${spot.y}",
-                                  const TextStyle(color: Colors.black87),
-                                );
-                              }).toList();
-                            },
-                          ),
-                        ),
-
-                        lineBarsData: [
-                          LineChartBarData(
-                            spots: selectedTab == 0 ? heightData : diameterData,
-                            isCurved: true,
-                            curveSmoothness: 0.2,
-                            barWidth: 3,
-                            gradient: const LinearGradient(
-                              colors: [
-                                AppColors.hunterGreen,
-                                AppColors.gray600,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Add 1 more measurement to see the growth chart',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: AppColors.gray500,
+                                  ),
+                                ),
                               ],
                             ),
-                            dotData: FlDotData(show: false),
-                            belowBarData: BarAreaData(
-                              show: true,
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  AppColors.hunterGreen.withOpacity(0.3),
-                                  Colors.transparent,
+                          ),
+                        )
+                      : Container(
+                          margin: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: AppColors.gray300,
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Chart title
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.hunterGreen.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      selectedTab == 0 ? Icons.height : Icons.circle_outlined,
+                                      color: AppColors.hunterGreen,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        selectedTab == 0 ? 'Height Growth' : 'Diameter Growth',
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.hunterGreen,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Over time (m)',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.gray600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
-                            ),
+                              const SizedBox(height: 20),
+                              
+                              // Chart
+                              Expanded(
+                                child: LineChart(
+                                  LineChartData(
+                                    minX: 0,
+                                    maxX: xLabels.isNotEmpty
+                                        ? (xLabels.length - 1).toDouble()
+                                        : 0,
+                                    gridData: FlGridData(
+                                      show: true,
+                                      drawVerticalLine: true,
+                                      horizontalInterval: 1,
+                                      verticalInterval: 1,
+                                      getDrawingHorizontalLine: (value) {
+                                        return FlLine(
+                                          color: AppColors.gray300,
+                                          strokeWidth: 1,
+                                          dashArray: [5, 5],
+                                        );
+                                      },
+                                      getDrawingVerticalLine: (value) {
+                                        return FlLine(
+                                          color: AppColors.gray300,
+                                          strokeWidth: 1,
+                                          dashArray: [5, 5],
+                                        );
+                                      },
+                                    ),
+                                    titlesData: FlTitlesData(
+                                      show: true,
+                                      topTitles: AxisTitles(
+                                        sideTitles: SideTitles(showTitles: false),
+                                      ),
+                                      rightTitles: AxisTitles(
+                                        sideTitles: SideTitles(showTitles: false),
+                                      ),
+                                      leftTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: true,
+                                          reservedSize: 45,
+                                          getTitlesWidget: (value, meta) {
+                                            return Padding(
+                                              padding: const EdgeInsets.only(right: 8),
+                                              child: Text(
+                                                value.toInt().toString(),
+                                                style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: AppColors.gray600,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      bottomTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: true,
+                                          reservedSize: 40,
+                                          interval: 1,
+                                          getTitlesWidget: (value, meta) {
+                                            final index = value.toInt();
+                                            if (index >= 0 && index < xLabels.length) {
+                                              // Show every other label if there are many data points
+                                              if (xLabels.length > 6 && index % 2 != 0) {
+                                                return const SizedBox.shrink();
+                                              }
+                                              return Padding(
+                                                padding: const EdgeInsets.only(top: 8),
+                                                child: Transform.rotate(
+                                                  angle: -0.5,
+                                                  child: Text(
+                                                    xLabels[index],
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: AppColors.gray600,
+                                                      fontWeight: FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                            return const SizedBox.shrink();
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                    borderData: FlBorderData(
+                                      show: true,
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: AppColors.gray400,
+                                          width: 2,
+                                        ),
+                                        left: BorderSide(
+                                          color: AppColors.gray400,
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                    lineBarsData: [
+                                      LineChartBarData(
+                                        spots: selectedTab == 0 ? heightData : diameterData,
+                                        isCurved: true,
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            AppColors.hunterGreen,
+                                            AppColors.mossGreen,
+                                          ],
+                                        ),
+                                        barWidth: 4,
+                                        isStrokeCapRound: true,
+                                        dotData: FlDotData(
+                                          show: true,
+                                          getDotPainter: (spot, percent, barData, index) {
+                                            return FlDotCirclePainter(
+                                              radius: 6,
+                                              color: Colors.white,
+                                              strokeWidth: 3,
+                                              strokeColor: AppColors.hunterGreen,
+                                            );
+                                          },
+                                        ),
+                                        belowBarData: BarAreaData(
+                                          show: true,
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              AppColors.hunterGreen.withOpacity(0.2),
+                                              AppColors.mossGreen.withOpacity(0.05),
+                                            ],
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                    lineTouchData: LineTouchData(
+                                      touchTooltipData: LineTouchTooltipData(
+                                        tooltipBgColor: AppColors.hunterGreen,
+                                        tooltipRoundedRadius: 8,
+                                        getTooltipItems: (touchedSpots) {
+                                          return touchedSpots.map((spot) {
+                                            return LineTooltipItem(
+                                              '${spot.y.toStringAsFixed(1)} m',
+                                              const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                              ),
+                                            );
+                                          }).toList();
+                                        },
+                                      ),
+                                      handleBuiltInTouches: true,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
+                        ),
         ),
       ],
     );

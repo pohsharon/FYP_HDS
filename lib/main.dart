@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/authentication/login.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
+import 'services/app_initializer.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Geolocator.checkPermission();
+
+  // (We use a simple file-backed tile cache implemented in the app.)
+
+  // Initialize connectivity listener only - caching happens after login
+  AppInitializer.initConnectivityListener();
+  // Ensure connectivity-driven syncs are enabled even for already logged-in users
+  AppInitializer.enableConnectivitySync();
+  // final localDB = LocalDB.instance;
+  // await localDB.resetTreesTable();
+
+
   runApp(const MainApp());
 }
 
@@ -18,6 +29,7 @@ class MainApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: "Hosba Durian System",
+      navigatorKey: AppInitializer.navigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: AppColors.pakistanGreen,
@@ -41,8 +53,8 @@ class MainApp extends StatelessWidget {
           ),
         ),
         switchTheme: SwitchThemeData(
-          thumbColor: MaterialStateProperty.all(AppColors.pakistanGreen),
-          trackColor: MaterialStateProperty.all(
+          thumbColor: WidgetStateProperty.all(AppColors.pakistanGreen),
+          trackColor: WidgetStateProperty.all(
             AppColors.pakistanGreen.withOpacity(0.5),
           ),
         ),
@@ -52,7 +64,29 @@ class MainApp extends StatelessWidget {
           border: OutlineInputBorder(),
         ),
       ),
-      home: LoginPage(),
+      home: const GlobalKeyboardDismissal(
+        child: LoginPage(),
+      ),
+    );
+  }
+}
+
+/// Custom widget that wraps the entire app to dismiss keyboard on tap anywhere
+class GlobalKeyboardDismissal extends StatelessWidget {
+  final Widget child;
+
+  const GlobalKeyboardDismissal({
+    super.key,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        FocusScope.of(context).unfocus();
+      },
+      child: child,
     );
   }
 }
