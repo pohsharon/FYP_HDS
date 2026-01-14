@@ -274,7 +274,7 @@ class _CreateDiseasePageState extends State<CreateDiseasePage> {
                     isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
                         : Text(
-                          isEditing ? 'Update Disease' : 'Save',
+                          'Save',
                           style: const TextStyle(color: Colors.white),
                         ),
               ),

@@ -320,6 +320,27 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
                             await HealthApi.deleteHealthRecord(
                               id: widget.existingRecord!['id'].toString(),
                             );
+                            // Remove cached local copy if present. Try by id first,
+                            // then fall back to matching tree_uuid+recorded_at+disease.
+                            try {
+                              await HealthDB().deleteHealthById(widget.existingRecord!['id']);
+                            } catch (delErr) {
+                              print('⚠️ delete by id failed: $delErr');
+                            }
+                            try {
+                              final rec = widget.existingRecord!;
+                              final recorded = rec['recorded_at']?.toString() ?? rec['recordedAt']?.toString() ?? '';
+                              final did = (rec['disease'] is Map) ? (rec['disease']['id']?.toString() ?? '') : (rec['disease_id']?.toString() ?? rec['diseaseId']?.toString() ?? '');
+                              if (recorded.isNotEmpty && did.isNotEmpty) {
+                                await HealthDB().deleteHealthByMatch(
+                                  treeUuid: widget.treeUuid,
+                                  recordedAt: recorded,
+                                  diseaseId: did,
+                                );
+                              }
+                            } catch (matchErr) {
+                              print('⚠️ delete by match failed: $matchErr');
+                            }
                             if (!mounted) return;
                             await Flushbar(
                               message: 'Health record deleted',

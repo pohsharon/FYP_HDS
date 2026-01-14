@@ -61,6 +61,30 @@ class HealthDB {
     return await db.delete('health_record', where: 'tree_uuid = ?', whereArgs: [treeUuid]);
   }
 
+  // Delete a specific health record by its server numeric id
+  Future<int> deleteHealthById(dynamic id) async {
+    final db = await LocalDB.getDatabase();
+    // Accept either int or string representation
+    final idVal = (id is int) ? id : int.tryParse(id?.toString() ?? '');
+    if (idVal == null) return 0;
+    return await db.delete('health_record', where: 'id = ?', whereArgs: [idVal]);
+  }
+
+  // Delete health record(s) by matching tree_uuid + recorded_at + diseaseId
+  // This is a best-effort match used when server uses UUIDs and local numeric id is not available.
+  Future<int> deleteHealthByMatch({
+    required String treeUuid,
+    required String recordedAt,
+    required String diseaseId,
+  }) async {
+    final db = await LocalDB.getDatabase();
+    return await db.delete(
+      'health_record',
+      where: 'tree_uuid = ? AND recorded_at = ? AND (diseaseId = ? OR diseaseId = ?)',
+      whereArgs: [treeUuid, recordedAt, diseaseId, diseaseId.toString()],
+    );
+  }
+
   // Fetch health records for a specific tree_uuid
   Future<List<HealthModel>> fetchByTreeUuid(String treeUuid) async {
     final db = await LocalDB.getDatabase();
