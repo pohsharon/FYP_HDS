@@ -51,15 +51,15 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     }
 
     // Coerce numeric strings to double for height/width if possible so they render offline.
-    double? _asDouble(dynamic v) {
+    double? asDouble(dynamic v) {
       if (v is num) return v.toDouble();
       return double.tryParse(v?.toString() ?? '');
     }
 
-    final h = _asDouble(normalized['height']);
+    final h = asDouble(normalized['height']);
     if (h != null) normalized['height'] = h;
 
-    final w = _asDouble(normalized['width']);
+    final w = asDouble(normalized['width']);
     if (w != null) normalized['width'] = w;
 
     return normalized;
@@ -242,16 +242,14 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
         String period = '-';
         
         // Extract flowering_period from the response
-        if (result is Map) {
-          // Check if response has 'data' wrapper
-          if (result.containsKey('data') && result['data'] is Map) {
-            period = result['data']['flowering_period']?.toString() ?? '-';
-          } else {
-            // Direct response format
-            period = result['flowering_period']?.toString() ?? '-';
-          }
+        // Check if response has 'data' wrapper
+        if (result.containsKey('data') && result['data'] is Map) {
+          period = result['data']['flowering_period']?.toString() ?? '-';
+        } else {
+          // Direct response format
+          period = result['flowering_period']?.toString() ?? '-';
         }
-        
+              
         // Cache the flowering period to SharedPreferences
         if (period != '-') {
           try {

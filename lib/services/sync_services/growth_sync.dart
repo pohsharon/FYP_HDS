@@ -1,5 +1,7 @@
 import '../local database/growth_db.dart';
 import '../api/tree_growth_api.dart';
+import '../app_initializer.dart';
+import 'dart:async';
 
 class SyncGrowth {
   Future<void> syncGrowth() async {
@@ -9,6 +11,10 @@ class SyncGrowth {
       // 1) Handle pending deletes
       final deletes = await db.fetchPendingDeletes();
       for (final g in deletes) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting growth sync due to connectivity loss');
+          break;
+        }
         try {
           final uuid = g['uuid']?.toString() ?? '';
           if (uuid.isEmpty) continue;
@@ -27,6 +33,10 @@ class SyncGrowth {
       // 2) Handle pending updates
       final updates = await db.fetchPendingUpdates();
       for (final g in updates) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting growth sync due to connectivity loss');
+          break;
+        }
         try {
           final uuid = g['uuid']?.toString() ?? '';
           if (uuid.isEmpty) continue;
@@ -49,12 +59,21 @@ class SyncGrowth {
       // 3) Handle unsynced new growth logs
       final unsynced = await db.fetchUnsyncedGrowths();
       for (final g in unsynced) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting growth sync due to connectivity loss');
+          break;
+        }
         try {
-          await TreeGrowthApi.addGrowthLog(
-            treeUuid: g.treeUuid,
-            height: g.height ?? 0.0,
-            diameter: g.diameter ?? 0.0,
-          );
+          try {
+            await TreeGrowthApi.addGrowthLog(
+              treeUuid: g.treeUuid,
+              height: g.height ?? 0.0,
+              diameter: g.diameter ?? 0.0,
+            ).timeout(const Duration(seconds: 10));
+          } on TimeoutException {
+            print('❌ addGrowthLog timed out for ${g.uuid}');
+            continue;
+          }
           
           // Mark as synced
           await db.markGrowthAsSynced(g.uuid);

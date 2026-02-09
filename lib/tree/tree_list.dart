@@ -667,7 +667,7 @@ class _TreePageState extends State<TreePage> {
                                       );
                                     },
                                   )
-                                  .toList(),
+                                  ,
                             ],
                             onSelected: (String? v) {
                               setStateDialog(
@@ -1251,11 +1251,11 @@ Widget _buildActiveFilters() {
   if ((_currentPlantingFrom.isNotEmpty) || (_currentPlantingTo.isNotEmpty)) {
     String label;
     if (_currentPlantingFrom.isNotEmpty && _currentPlantingTo.isNotEmpty) {
-      label = 'Planted: ${_currentPlantingFrom} to ${_currentPlantingTo}';
+      label = 'Planted: $_currentPlantingFrom to $_currentPlantingTo';
     } else if (_currentPlantingFrom.isNotEmpty) {
-      label = 'Planted >= ${_currentPlantingFrom}';
+      label = 'Planted >= $_currentPlantingFrom';
     } else {
-      label = 'Planted <= ${_currentPlantingTo}';
+      label = 'Planted <= $_currentPlantingTo';
     }
 
     chips.add(

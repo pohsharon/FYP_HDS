@@ -5,6 +5,8 @@ import '../local database/growth_db.dart';
 import '../local database/fruit_db.dart';
 import '../api/tree_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../app_initializer.dart';
+import 'dart:async';
 
 class SyncTrees {
   bool _isRunning = false;
@@ -39,11 +41,21 @@ class SyncTrees {
       // 🧹 STEP 2: Handle pending deletes
       final deletes = await TreeDB().fetchPendingDeletes();
       for (final t in deletes) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting tree sync due to connectivity loss');
+          break;
+        }
         try {
           // Prefer resolving the authoritative server id by UUID first to avoid using
           // stale local numeric ids. If GET by uuid returns 404, treat as already deleted.
           try {
-            final remote = await TreeApi.getTreeByUuid(t.uuid);
+            Map<String, dynamic> remote;
+            try {
+              remote = await TreeApi.getTreeByUuid(t.uuid).timeout(const Duration(seconds: 10));
+            } on TimeoutException {
+              print('❌ getTreeByUuid timed out for ${t.uuid}');
+              continue;
+            }
             Map<String, dynamic> treeObj = {};
             if (remote.containsKey('data') && remote['data'] is Map) {
               treeObj = Map<String, dynamic>.from(remote['data']);
@@ -54,7 +66,12 @@ class SyncTrees {
             final serverId =
                 treeObj['id']?.toString() ?? treeObj['server_id']?.toString();
             if (serverId != null && serverId.isNotEmpty) {
-              await TreeApi.deleteTree(serverId);
+              try {
+                await TreeApi.deleteTree(serverId).timeout(const Duration(seconds: 10));
+              } on TimeoutException {
+                print('❌ deleteTree timed out for serverId=$serverId');
+                continue;
+              }
               await TreeDB().deleteTreeByUuid(t.uuid);
               print(
                 '✅ Deleted remote & local by resolved id: ${t.uuid} -> $serverId',
@@ -85,7 +102,12 @@ class SyncTrees {
           // As a fallback, if no uuid-resolve/delete happened, try delete by local numeric id
           if (t.id != null) {
             try {
-              await TreeApi.deleteTree(t.id.toString());
+              try {
+                await TreeApi.deleteTree(t.id.toString()).timeout(const Duration(seconds: 10));
+              } on TimeoutException {
+                print('❌ deleteTree timed out for id=${t.id}');
+                continue;
+              }
               await TreeDB().deleteTreeByUuid(t.uuid);
               print('✅ Deleted remote & local by local id fallback: ${t.uuid}');
             } catch (e) {
@@ -115,6 +137,10 @@ class SyncTrees {
       // 📝 STEP 3: Handle pending updates
       final updates = await TreeDB().fetchPendingUpdates();
       for (final t in updates) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting tree sync due to connectivity loss');
+          break;
+        }
         try {
           // Check if this is a location-only update
           bool isLocationUpdate = (t.latitude != null || t.longitude != null);
@@ -124,11 +150,16 @@ class SyncTrees {
           if (isLocationUpdate && t.latitude != null && t.longitude != null) {
             try {
               print('🌐 Syncing location for tree ${t.uuid}...');
-              await TreeApi.addTreeLocation(
-                treeUuid: t.uuid,
-                latitude: t.latitude!,
-                longitude: t.longitude!,
-              );
+              try {
+                await TreeApi.addTreeLocation(
+                  treeUuid: t.uuid,
+                  latitude: t.latitude!,
+                  longitude: t.longitude!,
+                ).timeout(const Duration(seconds: 10));
+              } on TimeoutException {
+                print('❌ addTreeLocation timed out for ${t.uuid}');
+                continue;
+              }
               await TreeDB().clearPendingUpdate(t.uuid);
               print('✅ Synced location update: ${t.uuid}');
               continue;
@@ -144,15 +175,21 @@ class SyncTrees {
           bool updated = false;
           if (t.id != null) {
             try {
-              final resp = await TreeApi.updateTree(
-                id: t.id.toString(),
-                speciesId: t.speciesId ?? '',
-                plantedAt: t.plantedAt?.toIso8601String() ?? '',
-                height: t.height ?? 0.0,
-                diameter: t.diameter ?? 0.0,
-                floweringPeriod: t.floweringPeriod?.toString() ?? '',
-                imageFile: t.imageFile,
-              );
+              Map<String, dynamic> resp;
+              try {
+                resp = await TreeApi.updateTree(
+                  id: t.id.toString(),
+                  speciesId: t.speciesId ?? '',
+                  plantedAt: t.plantedAt?.toIso8601String() ?? '',
+                  height: t.height ?? 0.0,
+                  diameter: t.diameter ?? 0.0,
+                  floweringPeriod: t.floweringPeriod?.toString() ?? '',
+                  imageFile: t.imageFile,
+                ).timeout(const Duration(seconds: 10));
+              } on TimeoutException {
+                print('❌ updateTree timed out for id=${t.id}');
+                continue;
+              }
               if (resp['success'] == true || resp.containsKey('data')) {
                 await TreeDB().clearPendingUpdate(t.uuid);
                 print('✅ Synced update by id: ${t.uuid}');
@@ -168,7 +205,13 @@ class SyncTrees {
           if (!updated) {
             // Try resolving server numeric id via GET /trees/uuid/{uuid}
             try {
-              final remote = await TreeApi.getTreeByUuid(t.uuid);
+              Map<String, dynamic> remote;
+              try {
+                remote = await TreeApi.getTreeByUuid(t.uuid).timeout(const Duration(seconds: 10));
+              } on TimeoutException {
+                print('❌ getTreeByUuid timed out for ${t.uuid}');
+                continue;
+              }
               // remote may be the tree object, or contain 'data'
               Map<String, dynamic> treeObj = {};
               if (remote.containsKey('data') && remote['data'] is Map) {
@@ -180,15 +223,21 @@ class SyncTrees {
               final serverId =
                   treeObj['id']?.toString() ?? treeObj['server_id']?.toString();
               if (serverId != null && serverId.isNotEmpty) {
-                final resp3 = await TreeApi.updateTree(
-                  id: serverId,
-                  speciesId: t.speciesId ?? '',
-                  plantedAt: t.plantedAt?.toIso8601String() ?? '',
-                  height: t.height ?? 0.0,
-                  diameter: t.diameter ?? 0.0,
-                  floweringPeriod: t.floweringPeriod?.toString() ?? '',
-                  imageFile: t.imageFile,
-                );
+                Map<String, dynamic> resp3;
+                try {
+                  resp3 = await TreeApi.updateTree(
+                    id: serverId,
+                    speciesId: t.speciesId ?? '',
+                    plantedAt: t.plantedAt?.toIso8601String() ?? '',
+                    height: t.height ?? 0.0,
+                    diameter: t.diameter ?? 0.0,
+                    floweringPeriod: t.floweringPeriod?.toString() ?? '',
+                    imageFile: t.imageFile,
+                  ).timeout(const Duration(seconds: 10));
+                } on TimeoutException {
+                  print('❌ updateTree timed out for resolved id=$serverId');
+                  continue;
+                }
                 if (resp3['success'] == true || resp3.containsKey('data')) {
                   await TreeDB().clearPendingUpdate(t.uuid);
                   print(
@@ -246,7 +295,13 @@ class SyncTrees {
           if (speciesIdToSend.isEmpty ||
               int.tryParse(speciesIdToSend) == null) {
             try {
-              final speciesList = await TreeApi.fetchSpecies();
+              List<Map<String, dynamic>> speciesList;
+              try {
+                speciesList = await TreeApi.fetchSpecies().timeout(const Duration(seconds: 10));
+              } on TimeoutException {
+                print('❌ fetchSpecies timed out');
+                speciesList = [];
+              }
               final match = speciesList.firstWhere(
                 (s) =>
                     (s['name'] ?? '').toString().toLowerCase() ==
@@ -262,7 +317,9 @@ class SyncTrees {
           }
 
           // --- upload ---
-          final response = await TreeApi.createTree(
+          Map<String, dynamic> response;
+          try {
+            response = await TreeApi.createTree(
             speciesId: speciesIdToSend,
             plantedAt:
                 tree.plantedAt is String
@@ -275,7 +332,11 @@ class SyncTrees {
                     ? tree.floweringPeriod as String
                     : (tree.floweringPeriod ?? '').toString(),
             imageFile: tree.imageFile,
-          );
+            ).timeout(const Duration(seconds: 10));
+          } on TimeoutException {
+            print('❌ createTree timed out for ${tree.uuid}');
+            continue;
+          }
 
           if (response['success'] == true ||
               response['status'] == 'success' ||

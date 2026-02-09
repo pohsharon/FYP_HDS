@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config.dart';
 import '../local database/disease_db.dart';
 import '../api/disease_api.dart';
+import '../app_initializer.dart';
+import 'dart:async';
 
 class SyncDiseases {
   Future<void> syncDiseases() async {
@@ -13,11 +15,19 @@ class SyncDiseases {
       // 1) Handle pending deletes
       final deletes = await db.fetchPendingDeletes();
       for (final d in deletes) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting disease sync due to connectivity loss');
+          break;
+        }
         try {
           final id = d['uuid']?.toString() ?? d['id']?.toString() ?? '';
           if (id.isEmpty) continue;
-          
-          await DiseaseApi.deleteDisease(id);
+          try {
+            await DiseaseApi.deleteDisease(id).timeout(const Duration(seconds: 10));
+          } on TimeoutException {
+            print('❌ deleteDisease timed out for $id');
+            continue;
+          }
           await db.deleteDisease(id);
           print('✅ Deleted disease: $id');
         } catch (e) {
@@ -28,16 +38,24 @@ class SyncDiseases {
       // 2) Handle pending updates
       final updates = await db.fetchPendingUpdates();
       for (final d in updates) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting disease sync due to connectivity loss');
+          break;
+        }
         try {
           final id = d['uuid']?.toString() ?? d['id']?.toString() ?? '';
           if (id.isEmpty) continue;
-          
-          await DiseaseApi.updateDisease(
+          try {
+            await DiseaseApi.updateDisease(
             id: id,
             diseaseName: d['disease_name']?.toString() ?? '',
             symptoms: d['symptoms']?.toString() ?? '',
             remarks: d['remarks']?.toString() ?? '',
-          );
+            ).timeout(const Duration(seconds: 10));
+          } on TimeoutException {
+            print('❌ updateDisease timed out for $id');
+            continue;
+          }
           await db.markAsSynced(id);
           print('✅ Synced disease update: $id');
         } catch (e) {
@@ -48,6 +66,10 @@ class SyncDiseases {
       // 3) Handle unsynced new diseases
       final unsynced = await db.fetchUnsyncedDiseases();
       for (final d in unsynced) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting disease sync due to connectivity loss');
+          break;
+        }
         try {
           final localUuid = d['uuid']?.toString() ?? '';
           
@@ -55,7 +77,9 @@ class SyncDiseases {
           final token = prefs.getString('token');
 
           // Create the disease on the server
-          final response = await http.post(
+          http.Response response;
+          try {
+            response = await http.post(
             Uri.parse("${Config.apiBaseUrl}/diseases"),
             headers: {
               "Content-Type": "application/json",
@@ -67,7 +91,11 @@ class SyncDiseases {
               "symptoms": d['symptoms']?.toString() ?? '',
               "remarks": d['remarks']?.toString() ?? '',
             }),
-          );
+            ).timeout(const Duration(seconds: 10));
+          } on TimeoutException {
+            print('❌ create disease http.post timed out for localUuid=$localUuid');
+            continue;
+          }
 
           if (response.statusCode == 200 || response.statusCode == 201) {
             final data = jsonDecode(response.body);
@@ -101,9 +129,17 @@ class SyncDiseases {
       }
       // Refresh remote disease list into local cache to ensure deletes/updates reflect
       try {
-        final remoteDiseases = await DiseaseApi.fetchDiseases();
-        await db.saveDiseaseList(remoteDiseases);
-        print('🔁 Refreshed local disease cache after sync (${remoteDiseases.length} items)');
+        List<Map<String, dynamic>> remoteDiseases;
+        try {
+          remoteDiseases = await DiseaseApi.fetchDiseases().timeout(const Duration(seconds: 10));
+        } on TimeoutException {
+          print('❌ fetchDiseases timed out');
+          remoteDiseases = [];
+        }
+        if (remoteDiseases.isNotEmpty) {
+          await db.saveDiseaseList(remoteDiseases);
+          print('🔁 Refreshed local disease cache after sync (${remoteDiseases.length} items)');
+        }
       } catch (e) {
         print('⚠️ Failed to refresh disease cache after sync: $e');
       }

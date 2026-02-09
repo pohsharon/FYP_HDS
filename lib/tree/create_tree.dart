@@ -17,23 +17,28 @@ import 'package:fyp_hbs/services/local%20database/growth_db.dart';
 import 'package:fyp_hbs/services/local%20database/local_db.dart';
 import 'package:fyp_hbs/services/app_initializer.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:geolocator/geolocator.dart';
 
 // Formatter that allows decimals and limits fractional digits
 // e.g. DecimalTextInputFormatter(decimalRange: 2) allows up to 2 decimals
 class DecimalTextInputFormatter extends TextInputFormatter {
   final int decimalRange;
 
-  DecimalTextInputFormatter({this.decimalRange = 2}) : assert(decimalRange >= 0);
+  DecimalTextInputFormatter({this.decimalRange = 2})
+    : assert(decimalRange >= 0);
 
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     String text = newValue.text;
     if (text == '') return newValue;
 
     // Allow only digits and at most one decimal point. We intentionally do
     // not rewrite a leading '.' to '0.' so users can type ".5" without a
     // forced leading zero.
-  final regExp = RegExp(r'^\d*\.?\d*$');
+    final regExp = RegExp(r'^\d*\.?\d*$');
     if (!regExp.hasMatch(text)) {
       return oldValue;
     }
@@ -45,7 +50,10 @@ class DecimalTextInputFormatter extends TextInputFormatter {
       }
     }
 
-    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 }
 
@@ -65,6 +73,14 @@ class _CreateTreePageState extends State<CreateTreePage> {
   final widthController = TextEditingController();
   final floweringPeriodController = TextEditingController();
   final TextEditingController speciesController = TextEditingController();
+  final TextEditingController terraceController = TextEditingController();
+  final TextEditingController waterValveController = TextEditingController();
+  final TextEditingController latitudeController = TextEditingController();
+  final TextEditingController longitudeController = TextEditingController();
+
+  String? selectedArea;
+  String? previewTag;
+  String? _tempLocationUuid;
 
   List<Map<String, dynamic>> speciesList = [];
   String? selectedSpeciesId;
@@ -82,9 +98,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
         final tree = widget.tree!;
         // Clean up planted_at to remove time portion if present
         final rawPlantedAt = tree['planted_at'] ?? '';
-        plantingDateController.text = rawPlantedAt.toString().contains('T') 
-            ? rawPlantedAt.toString().split('T').first 
-            : rawPlantedAt.toString();
+        plantingDateController.text =
+            rawPlantedAt.toString().contains('T')
+                ? rawPlantedAt.toString().split('T').first
+                : rawPlantedAt.toString();
 
         // Don't prefill with a leading 0 — treat null/0 as empty so the
         // user sees a blank input instead of '0' or '0.0'.
@@ -110,6 +127,12 @@ class _CreateTreePageState extends State<CreateTreePage> {
             tree['flowering_period']?.toString() ?? '';
         selectedSpeciesId = tree['species']?['id']?.toString();
         _existingThumbnailPath = tree['thumbnail'];
+        // prefill area/terrace/water_valve if available in payload
+        selectedArea = tree['area']?.toString();
+        terraceController.text = tree['terrace']?.toString() ?? '';
+        waterValveController.text = tree['water_valve']?.toString() ?? '';
+        latitudeController.text = tree['latitude']?.toString() ?? '';
+        longitudeController.text = tree['longitude']?.toString() ?? '';
       }
     });
   }
@@ -121,6 +144,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
     widthController.dispose();
     floweringPeriodController.dispose();
     speciesController.dispose();
+    terraceController.dispose();
+    waterValveController.dispose();
+    latitudeController.dispose();
+    longitudeController.dispose();
     super.dispose();
   }
 
@@ -134,6 +161,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
             selectedSpeciesId = speciesList.first['id'].toString();
           }
         });
+        // update preview tag after species list is available
+        if (widget.tree == null) {
+          _deriveTagPreview();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -147,6 +178,50 @@ class _CreateTreePageState extends State<CreateTreePage> {
         ).show(context);
       }
     }
+  }
+
+  Future<void> _deriveTagPreview() async {
+    if (selectedSpeciesId == null) return;
+
+    String prefix = 'OFF';
+    try {
+      final found = speciesList.firstWhere(
+        (s) => s['id'].toString() == selectedSpeciesId,
+      );
+      final code = (found['code']?.toString() ?? '').trim();
+      if (code.isNotEmpty) {
+        prefix = code;
+      } else {
+        final name = (found['name']?.toString() ?? 'OFF');
+        prefix =
+            name
+                .split(' ')
+                .map((p) => p.isNotEmpty ? p[0] : '')
+                .join()
+                .toUpperCase();
+      }
+    } catch (_) {}
+
+    int nextSeq = 1;
+    try {
+      final existing = await TreeDB().fetchAllTrees();
+      int maxSeq = 0;
+      for (final t in existing) {
+        final tag = (t.treeTag ?? '').toString();
+        if (tag.contains('-')) {
+          final parts = tag.split('-');
+          final seqStr = parts.last.replaceAll(RegExp(r'[^0-9]'), '');
+          final val = int.tryParse(seqStr) ?? 0;
+          if (val > maxSeq) maxSeq = val;
+        }
+      }
+      nextSeq = maxSeq + 1;
+    } catch (_) {}
+
+    final seqPadded = nextSeq.toString().padLeft(3, '0');
+    setState(() {
+      previewTag = '$prefix-$seqPadded';
+    });
   }
 
   Future<void> _pickImage() async {
@@ -207,12 +282,16 @@ class _CreateTreePageState extends State<CreateTreePage> {
             await _cacheOnlineTree(
               serverTree,
               fallback: {
-                'uuid': _extractCreatedId(createResp) ?? serverTree['id']?.toString(),
+                'uuid':
+                    _extractCreatedId(createResp) ??
+                    serverTree['id']?.toString(),
                 'species_id': selectedSpeciesId,
                 'planted_at': plantingDateController.text,
                 'height': double.tryParse(heightController.text),
                 'diameter': double.tryParse(widthController.text),
-                'flowering_period': int.tryParse(floweringPeriodController.text),
+                'flowering_period': int.tryParse(
+                  floweringPeriodController.text,
+                ),
               },
             );
           } catch (e) {
@@ -225,12 +304,14 @@ class _CreateTreePageState extends State<CreateTreePage> {
             plantedAt: plantingDateController.text,
             height: double.parse(heightController.text),
             diameter: double.parse(widthController.text),
-            latitude: (widget.tree != null && widget.tree!['latitude'] != null)
-                ? double.tryParse(widget.tree!['latitude'].toString())
-                : null,
-            longitude: (widget.tree != null && widget.tree!['longitude'] != null)
-                ? double.tryParse(widget.tree!['longitude'].toString())
-                : null,
+            latitude:
+                (widget.tree != null && widget.tree!['latitude'] != null)
+                    ? double.tryParse(widget.tree!['latitude'].toString())
+                    : null,
+            longitude:
+                (widget.tree != null && widget.tree!['longitude'] != null)
+                    ? double.tryParse(widget.tree!['longitude'].toString())
+                    : null,
             floweringPeriod: floweringPeriodController.text,
             imageFile: _selectedImage,
           );
@@ -239,13 +320,17 @@ class _CreateTreePageState extends State<CreateTreePage> {
             await _cacheOnlineTree(
               serverTree,
               fallback: {
-                'uuid': widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString(),
+                'uuid':
+                    widget.tree!['uuid']?.toString() ??
+                    widget.tree!['id']?.toString(),
                 'tree_tag': widget.tree!['tree_tag'],
                 'species_id': selectedSpeciesId,
                 'planted_at': plantingDateController.text,
                 'height': double.tryParse(heightController.text),
                 'diameter': double.tryParse(widthController.text),
-                'flowering_period': int.tryParse(floweringPeriodController.text),
+                'flowering_period': int.tryParse(
+                  floweringPeriodController.text,
+                ),
                 'thumbnail': widget.tree!['thumbnail'],
                 'latitude': widget.tree!['latitude'],
                 'longitude': widget.tree!['longitude'],
@@ -275,14 +360,18 @@ class _CreateTreePageState extends State<CreateTreePage> {
           final createdId = _extractCreatedId(createResp);
           if (createdId != null && createdId.isNotEmpty) {
             // Pop back to tree list with refresh flag, then tree list will navigate to details
-            Navigator.pop(context, {'refreshList': true, 'createdUuid': createdId});
+            Navigator.pop(context, {
+              'refreshList': true,
+              'createdUuid': createdId,
+            });
           } else {
             Navigator.pop(context, {'refreshList': true});
           }
           return;
         } else {
           final idString =
-              widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString();
+              widget.tree!['uuid']?.toString() ??
+              widget.tree!['id']?.toString();
           Navigator.pop(context, {'updatedId': idString, 'refreshList': true});
           return;
         }
@@ -347,10 +436,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
           await AppInitializer.printPendingSyncCounts();
 
           if (!mounted) return;
-          Navigator.pop(
-            context,
-            {'updatedId': uuidExisting, 'refreshList': true},
-          );
+          Navigator.pop(context, {
+            'updatedId': uuidExisting,
+            'refreshList': true,
+          });
           return;
         } else {
           // Creating a new offline tree
@@ -360,14 +449,21 @@ class _CreateTreePageState extends State<CreateTreePage> {
           String prefix = 'OFF';
           try {
             // Prefer using species code (e.g., D197 for Musang King)
-            final found = speciesList.firstWhere((s) => s['id'].toString() == selectedSpeciesId);
+            final found = speciesList.firstWhere(
+              (s) => s['id'].toString() == selectedSpeciesId,
+            );
             final code = (found['code']?.toString() ?? '').trim();
             if (code.isNotEmpty) {
               prefix = code;
             } else {
               // fallback: use species name initials
               final name = (found['name']?.toString() ?? 'OFF');
-              prefix = name.split(' ').map((p) => p.isNotEmpty ? p[0] : '').join().toUpperCase();
+              prefix =
+                  name
+                      .split(' ')
+                      .map((p) => p.isNotEmpty ? p[0] : '')
+                      .join()
+                      .toUpperCase();
             }
           } catch (_) {}
 
@@ -376,7 +472,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
           try {
             final existing = await TreeDB().fetchAllTrees();
             int maxSeq = 0;
-            
+
             // Scan all trees and extract the highest sequence number
             for (final t in existing) {
               final tag = (t.treeTag ?? '').toString();
@@ -423,10 +519,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
 
           // Navigate back to tree list with refresh flag so it shows the new tree
           if (!mounted) return;
-          Navigator.pop(
-            context,
-            {'refreshList': true, 'createdUuid': uuid},
-          );
+          Navigator.pop(context, {'refreshList': true, 'createdUuid': uuid});
           return;
         }
       }
@@ -451,7 +544,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
       if (resp['data'] is Map<String, dynamic>) {
         final data = Map<String, dynamic>.from(resp['data']);
         // If this is a paginated response, ignore it here; otherwise treat as the tree payload.
-        if (!(data['data'] is List)) return data;
+        if (data['data'] is! List) return data;
       }
       if (resp['tree'] is Map<String, dynamic>) {
         return Map<String, dynamic>.from(resp['tree']);
@@ -496,7 +589,9 @@ class _CreateTreePageState extends State<CreateTreePage> {
     final values = {
       'uuid': uuid,
       'tree_tag': merged['tree_tag'] ?? merged['treeTag'] ?? merged['tag'],
-      'species_id': merged['species']?['id']?.toString() ?? merged['species_id']?.toString(),
+      'species_id':
+          merged['species']?['id']?.toString() ??
+          merged['species_id']?.toString(),
       'planted_at': plantedIso,
       'height': _asDouble(merged['height']),
       'diameter': _asDouble(merged['diameter'] ?? merged['width']),
@@ -504,7 +599,11 @@ class _CreateTreePageState extends State<CreateTreePage> {
       'thumbnail': merged['thumbnail'],
       'latitude': _asDouble(merged['latitude']),
       'longitude': _asDouble(merged['longitude']),
-      'updated_at': (merged['updated_at'] ?? merged['updatedAt'] ?? DateTime.now().toIso8601String()).toString(),
+      'updated_at':
+          (merged['updated_at'] ??
+                  merged['updatedAt'] ??
+                  DateTime.now().toIso8601String())
+              .toString(),
       'synced': 1,
       'pending_update': 0,
       'pending_delete': 0,
@@ -529,7 +628,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
     // Clean up any duplicate rows for the same uuid so offline reads see the latest values.
     await db.delete(
       'trees',
-      where: 'uuid = ? AND rowid NOT IN (SELECT MAX(rowid) FROM trees WHERE uuid = ?)',
+      where:
+          'uuid = ? AND rowid NOT IN (SELECT MAX(rowid) FROM trees WHERE uuid = ?)',
       whereArgs: [uuid, uuid],
     );
   }
@@ -561,95 +661,109 @@ class _CreateTreePageState extends State<CreateTreePage> {
           style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
         backgroundColor: AppColors.pakistanGreen,
-        actions: widget.tree != null
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.white),
-                  onPressed: () async {
-                    // Only reachable when editing an existing tree (widget.tree != null)
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Delete Tree'),
-                        content: const Text(
-                          'Are you sure you want to delete this tree?',
-                        ),
-                        backgroundColor: Colors.white,
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text(
-                              'Delete',
-                              style: TextStyle(color: Colors.red),
+        actions:
+            widget.tree != null
+                ? [
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.white),
+                    onPressed: () async {
+                      // Only reachable when editing an existing tree (widget.tree != null)
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder:
+                            (context) => AlertDialog(
+                              title: const Text('Delete Tree'),
+                              content: const Text(
+                                'Are you sure you want to delete this tree?',
+                              ),
+                              backgroundColor: Colors.white,
+                              actions: [
+                                TextButton(
+                                  onPressed:
+                                      () => Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text(
+                                    'Delete',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
-                    );
+                      );
 
-                    if (confirm == true) {
-                      try {
-                        final online =
-                            await ConnectivityHelper.hasInternetConnection();
-                        final treeUuid = (widget.tree!['uuid']?.toString() ?? widget.tree!['id']?.toString()) ?? '';
-                        
-                        if (treeUuid.isEmpty) {
-                          throw Exception('Cannot delete: tree ID not found');
-                        }
-                        
-                        if (!online) {
-                          // Offline: Mark as pending delete (keep the row locally so sync can find it)
-                          // The tree will be hidden from the UI but sync will process the delete when online
-                          await TreeDB().markAsPendingDelete(treeUuid);
-                          if (!mounted) return;
+                      if (confirm == true) {
+                        try {
+                          final online =
+                              await ConnectivityHelper.hasInternetConnection();
+                          final treeUuid =
+                              (widget.tree!['uuid']?.toString() ??
+                                  widget.tree!['id']?.toString()) ??
+                              '';
+
+                          if (treeUuid.isEmpty) {
+                            throw Exception('Cannot delete: tree ID not found');
+                          }
+
+                          if (!online) {
+                            // Offline: Mark as pending delete (keep the row locally so sync can find it)
+                            // The tree will be hidden from the UI but sync will process the delete when online
+                            await TreeDB().markAsPendingDelete(treeUuid);
+                            if (!mounted) return;
+                            await Flushbar(
+                              message:
+                                  'Tree marked for deletion (will sync when online)',
+                              icon: const Icon(
+                                Icons.check_circle,
+                                color: Colors.white,
+                              ),
+                              backgroundColor: Colors.orange.shade700,
+                              duration: const Duration(seconds: 2),
+                              borderRadius: BorderRadius.circular(12),
+                              margin: const EdgeInsets.all(12),
+                              flushbarPosition: FlushbarPosition.TOP,
+                            ).show(context);
+                            // Single pop: return true to signal deletion/refresh
+                            Navigator.pop(context, true);
+                          } else {
+                            // Online: Delete from remote AND local immediately
+                            await TreeApi.deleteTree(
+                              widget.tree!['id'].toString(),
+                            );
+                            await TreeDB().deleteTreeByUuid(treeUuid);
+                            if (!mounted) return;
+                            await Flushbar(
+                              message: 'Tree deleted successfully',
+                              icon: const Icon(
+                                Icons.check_circle,
+                                color: Colors.white,
+                              ),
+                              backgroundColor: Colors.green.shade700,
+                              duration: const Duration(seconds: 2),
+                              borderRadius: BorderRadius.circular(12),
+                              margin: const EdgeInsets.all(12),
+                              flushbarPosition: FlushbarPosition.TOP,
+                            ).show(context);
+                            // Single pop: return true to signal deletion/refresh
+                            Navigator.pop(context, true);
+                          }
+                        } catch (e) {
                           await Flushbar(
-                            message:
-                                'Tree marked for deletion (will sync when online)',
-                            icon: const Icon(Icons.check_circle, color: Colors.white),
-                            backgroundColor: Colors.orange.shade700,
-                            duration: const Duration(seconds: 2),
-                            borderRadius: BorderRadius.circular(12),
+                            message: 'Error deleting tree: $e',
+                            icon: const Icon(Icons.error, color: Colors.white),
+                            backgroundColor: Colors.red.shade700,
+                            duration: const Duration(seconds: 3),
+                            borderRadius: BorderRadius.circular(8),
                             margin: const EdgeInsets.all(12),
-                            flushbarPosition: FlushbarPosition.TOP,
                           ).show(context);
-                          // Single pop: return true to signal deletion/refresh
-                          Navigator.pop(context, true);
-                        } else {
-                          // Online: Delete from remote AND local immediately
-                          await TreeApi.deleteTree(widget.tree!['id'].toString());
-                          await TreeDB().deleteTreeByUuid(treeUuid);
-                          if (!mounted) return;
-                          await Flushbar(
-                            message: 'Tree deleted successfully',
-                            icon: const Icon(Icons.check_circle, color: Colors.white),
-                            backgroundColor: Colors.green.shade700,
-                            duration: const Duration(seconds: 2),
-                            borderRadius: BorderRadius.circular(12),
-                            margin: const EdgeInsets.all(12),
-                            flushbarPosition: FlushbarPosition.TOP,
-                          ).show(context);
-                          // Single pop: return true to signal deletion/refresh
-                          Navigator.pop(context, true);
                         }
-                      } catch (e) {
-                        await Flushbar(
-                          message: 'Error deleting tree: $e',
-                          icon: const Icon(Icons.error, color: Colors.white),
-                          backgroundColor: Colors.red.shade700,
-                          duration: const Duration(seconds: 3),
-                          borderRadius: BorderRadius.circular(8),
-                          margin: const EdgeInsets.all(12),
-                        ).show(context);
                       }
-                    }
-                  },
-                ),
-              ]
-            : null,
+                    },
+                  ),
+                ]
+                : null,
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
@@ -657,8 +771,55 @@ class _CreateTreePageState extends State<CreateTreePage> {
           key: _formKey,
           child: ListView(
             children: [
-              _buildImagePreview(),
-              const SizedBox(height: 16),
+              // Tree Tag display
+              if (widget.tree != null &&
+                  (widget.tree!['tree_tag'] ?? widget.tree!['treeTag']) != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Text(
+                      'Tree Tag: ' +
+                          (widget.tree!['tree_tag'] ?? widget.tree!['treeTag'])
+                              .toString(),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                )
+              else
+                const SizedBox.shrink(),
+              // Preview tag when creating
+              if (widget.tree == null && previewTag != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12.0),
+                  child: SizedBox(
+                    height: 56,
+                    child: Container(
+                      width: double.infinity,
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Text(
+                        'Preview Tag: ' + previewTag!,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                const SizedBox.shrink(),
 
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -675,31 +836,40 @@ class _CreateTreePageState extends State<CreateTreePage> {
                       initialSelection: selectedSpeciesId,
                       label: const Text('Species'),
                       menuHeight: 300,
-                      dropdownMenuEntries: speciesList
-                          .map<DropdownMenuEntry<String>>(
-                            (species) => DropdownMenuEntry(
-                              value: species['id'].toString(),
-                              label: species['name']?.toString() ?? '',
-                            ),
-                          )
-                          .toList(),
-                      onSelected: isEditing ? null : (String? v) {
-                        if (v == null) return;
-                        setState(() {
-                          selectedSpeciesId = v;
-                          try {
-                            final found = speciesList.firstWhere((s) => s['id'].toString() == v);
-                            speciesController.text = found['name']?.toString() ?? '';
-                          } catch (_) {
-                            speciesController.text = '';
-                          }
-                        });
-                      },
+                      dropdownMenuEntries:
+                          speciesList
+                              .map<DropdownMenuEntry<String>>(
+                                (species) => DropdownMenuEntry(
+                                  value: species['id'].toString(),
+                                  label: species['name']?.toString() ?? '',
+                                ),
+                              )
+                              .toList(),
+                      onSelected:
+                          isEditing
+                              ? null
+                              : (String? v) {
+                                if (v == null) return;
+                                setState(() {
+                                  selectedSpeciesId = v;
+                                  try {
+                                    final found = speciesList.firstWhere(
+                                      (s) => s['id'].toString() == v,
+                                    );
+                                    speciesController.text =
+                                        found['name']?.toString() ?? '';
+                                  } catch (_) {
+                                    speciesController.text = '';
+                                  }
+                                  // update preview when species changes
+                                  if (!isEditing) _deriveTagPreview();
+                                });
+                              },
                     ),
                   );
                 },
               ),
-
+              // Area dropdown (A - H)
               const SizedBox(height: 16),
 
               TextFormField(
@@ -737,12 +907,14 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 controller: heightController,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  labelText: 'Initial Height (m)',
+                  labelText: 'Initial Height (ft)',
                   hintText: 'e.g. 2.5',
                   filled: true,
                   fillColor: Colors.white,
                 ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 inputFormatters: [DecimalTextInputFormatter(decimalRange: 2)],
                 validator:
                     (value) =>
@@ -754,16 +926,72 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 controller: widthController,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  labelText: 'Initial Diameter (m)',
+                  labelText: 'Initial Diameter (ft)',
                   hintText: 'e.g. 1.6',
                   filled: true,
                   fillColor: Colors.white,
                 ),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 inputFormatters: [DecimalTextInputFormatter(decimalRange: 2)],
                 validator:
                     (value) =>
                         value == null || value.isEmpty ? 'Enter width' : null,
+              ),
+               const SizedBox(height: 16),
+              
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final menuWidth = constraints.maxWidth;
+                  return SizedBox(
+                    width: double.infinity,
+                    child: DropdownMenu<String>(
+                      width: max(menuWidth, 240),
+                      menuHeight: 250,
+                      initialSelection: selectedArea,
+                      label: const Text('Area (Select A to H)'),
+                      dropdownMenuEntries:
+                          List.generate(8, (i) => String.fromCharCode(65 + i))
+                              .map((v) => DropdownMenuEntry(value: v, label: v))
+                              .toList(),
+                      onSelected: (String? v) {
+                        setState(() {
+                          selectedArea = v;
+                        });
+                      },
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: terraceController,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Terrace',
+                  hintText: 'e.g. 3',
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) => null,
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: waterValveController,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Water Valve',
+                  hintText: 'e.g. 2',
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) => null,
               ),
               const SizedBox(height: 16),
 
@@ -782,6 +1010,59 @@ class _CreateTreePageState extends State<CreateTreePage> {
                             ? 'Enter flowering period'
                             : null,
               ),
+              const SizedBox(height: 16),
+
+              // Latitude / Longitude input fields
+              TextFormField(
+                controller: latitudeController,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Latitude',
+                  hintText: 'e.g. 3.123456',
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [DecimalTextInputFormatter(decimalRange: 6)],
+                validator: (value) => null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: longitudeController,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Longitude',
+                  hintText: 'e.g. 101.123456',
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [DecimalTextInputFormatter(decimalRange: 6)],
+                validator: (value) => null,
+              ),
+              const SizedBox(height: 12),
+
+              // Get Current Location button (autofills latitude/longitude)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () => _fillCurrentLocation(),
+                  icon: const Icon(Icons.my_location),
+                  label: const Text('Get Current Location'),
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Image preview moved to bottom so image is last in the input order
+              _buildImagePreview(),
+
               const SizedBox(height: 24),
 
               SizedBox(
@@ -795,20 +1076,24 @@ class _CreateTreePageState extends State<CreateTreePage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Text(
-                          'Save',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                            color: Colors.white,
+                  child:
+                      isLoading
+                          ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                          : const Text(
+                            'Save',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
                 ),
               ),
             ],
@@ -897,4 +1182,63 @@ class _CreateTreePageState extends State<CreateTreePage> {
     final baseUrl = Config.supabaseBaseUrl;
     return '$baseUrl/$path';
   }
+
+
+
+  // Fetch current device location and fill the latitude/longitude fields
+  Future<void> _fillCurrentLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        await Flushbar(
+          message: 'Location services are disabled. Please enable them.',
+          icon: const Icon(Icons.location_off, color: Colors.white),
+          backgroundColor: Colors.orange.shade700,
+          duration: const Duration(seconds: 3),
+          borderRadius: BorderRadius.circular(8),
+          margin: const EdgeInsets.all(12),
+        ).show(context);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        await Flushbar(
+          message: 'Location permission denied. Please grant permission in settings.',
+          icon: const Icon(Icons.lock, color: Colors.white),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+          borderRadius: BorderRadius.circular(8),
+          margin: const EdgeInsets.all(12),
+        ).show(context);
+        return;
+      }
+
+      showDialog<void>(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+      Position pos;
+      try {
+        pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+      } finally {
+        Navigator.pop(context);
+      }
+
+      setState(() {
+        latitudeController.text = pos.latitude.toStringAsFixed(6);
+        longitudeController.text = pos.longitude.toStringAsFixed(6);
+      });
+    } catch (e) {
+      await Flushbar(
+        message: 'Failed to get location: $e',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(8),
+        margin: const EdgeInsets.all(12),
+      ).show(context);
+    }
+  }
+
 }

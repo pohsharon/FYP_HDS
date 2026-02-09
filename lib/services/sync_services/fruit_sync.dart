@@ -1,6 +1,8 @@
 import '../local database/fruit_db.dart';
 import '../api/fruit_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../app_initializer.dart';
+import 'dart:async';
 
 class SyncFruits {
   Future<void> syncFruits() async {
@@ -15,9 +17,18 @@ class SyncFruits {
       // 1) Pending deletes
       final deletes = await FruitDB().fetchPendingFruitDeletes();
       for (final f in deletes) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting fruit sync due to connectivity loss');
+          break;
+        }
         try {
           try {
-            await FruitApi.deleteFruit(f.harvest_uuid ?? '');
+            try {
+              await FruitApi.deleteFruit(f.harvest_uuid ?? '').timeout(const Duration(seconds: 10));
+            } on TimeoutException {
+              print('❌ deleteFruit timed out for ${f.harvest_uuid}');
+              continue;
+            }
             await FruitDB().deleteFruitByHarvestUuid(f.harvest_uuid ?? '');
             print('✅ Deleted remote & local fruit ${f.harvest_uuid}');
           } catch (e) {
@@ -42,6 +53,10 @@ class SyncFruits {
       // 2) Pending updates
       final updates = await FruitDB().fetchPendingFruitUpdates();
       for (final f in updates) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting fruit sync due to connectivity loss');
+          break;
+        }
         try {
           // Check if this fruit has an offline-generated UUID (gen_*)
           final isOfflineUuid = (f.uuid ?? '').toString().startsWith('gen_');
@@ -52,7 +67,8 @@ class SyncFruits {
           } else {
             // For server-synced fruits, try update first
             try {
-              await FruitApi.updateFruit(
+              try {
+                await FruitApi.updateFruit(
                 uuid: f.uuid ?? '',
                 tree_uuid: f.tree_uuid ?? '',
                 harvest_uuid: f.harvest_uuid ?? '',
@@ -60,7 +76,11 @@ class SyncFruits {
                 grade: f.grade ?? '',
                 harvested_at: f.harvested_at ?? '',
                 is_spoiled: f.is_spoiled,
-              );
+                ).timeout(const Duration(seconds: 10));
+              } on TimeoutException {
+                print('❌ updateFruit timed out for ${f.uuid}');
+                continue;
+              }
               await FruitDB().clearFruitPendingUpdate(f.harvest_uuid ?? '');
               print('✅ Synced fruit update ${f.uuid}');
               continue;
@@ -82,14 +102,20 @@ class SyncFruits {
 
           // If update wasn't possible, try creating as a fallback (or for offline fruits)
           try {
-            final resp = await FruitApi.createFruit(
+            Map<String, dynamic> resp;
+            try {
+              resp = await FruitApi.createFruit(
               tree_uuid: f.tree_uuid ?? '',
               harvest_uuid: f.harvest_uuid ?? '',
               weight: f.weight ?? 0.0,
               grade: f.grade ?? '',
               harvested_at: f.harvested_at ?? '',
               is_spoiled: f.is_spoiled,
-            );
+              ).timeout(const Duration(seconds: 10));
+            } on TimeoutException {
+              print('❌ createFruit timed out for ${f.uuid}');
+              continue;
+            }
             if (resp['success'] == true || resp.containsKey('data')) {
               // If this was an offline fruit and server returned a real UUID, update local record
               if (isOfflineUuid) {
@@ -129,6 +155,10 @@ class SyncFruits {
               .where((f) => f.pendingUpdate == 0 && f.pendingDelete == 0)
               .toList();
       for (final fruit in newOnes) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting fruit sync due to connectivity loss');
+          break;
+        }
         try {
           final payload = {
             'tree_uuid': fruit.tree_uuid ?? '',
@@ -140,14 +170,20 @@ class SyncFruits {
           };
           print('🔁 Uploading fruit ${fruit.uuid} payload=$payload');
 
-          final response = await FruitApi.createFruit(
+          Map<String, dynamic> response;
+          try {
+            response = await FruitApi.createFruit(
             tree_uuid: fruit.tree_uuid ?? '',
             harvest_uuid: fruit.harvest_uuid ?? '',
             weight: fruit.weight ?? 0.0,
             grade: fruit.grade ?? '',
             harvested_at: fruit.harvested_at ?? '',
             is_spoiled: fruit.is_spoiled,
-          );
+            ).timeout(const Duration(seconds: 10));
+          } on TimeoutException {
+            print('❌ createFruit timed out for ${fruit.uuid}');
+            continue;
+          }
 
           print('📡 Server response for ${fruit.uuid}: $response');
 

@@ -235,7 +235,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
         // Offline: save locally with synced=0 (needs syncing)
         await _saveLocally(formattedDate, synced: 0);
         await Flushbar(
-          message: 'Saved locally — will sync when online',
+          message: 'Agrochemical application saved locally. Sync will occur when online',
           icon: const Icon(Icons.cloud_off, color: Colors.white),
           backgroundColor: Colors.orange.shade700,
           duration: const Duration(seconds: 2),
@@ -314,8 +314,17 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
                           await AgrochemicalApi.deleteAgrochemicalRecord(
                             widget.agrochemicalRecord!['uuid'],
                           );
-                          if (!mounted) return;
-                          Navigator.pop(context, true);
+                              if (!mounted) return;
+                              await Flushbar(
+                                message: 'Agrochemical record deleted',
+                                icon: const Icon(Icons.check_circle, color: Colors.white),
+                                backgroundColor: Colors.green.shade700,
+                                duration: const Duration(seconds: 2),
+                                borderRadius: BorderRadius.circular(12),
+                                margin: const EdgeInsets.all(12),
+                                flushbarPosition: FlushbarPosition.TOP,
+                              ).show(context);
+                              Navigator.pop(context, true);
                         } catch (e) {
                           await Flushbar(
                             message: 'Error deleting record: $e',
@@ -429,7 +438,7 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
                     isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
                         : Text(
-                          isEdit ? 'Update' : 'Save',
+                          'Save',
                           style: const TextStyle(color: Colors.white),
                         ),
               ),

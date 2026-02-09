@@ -60,9 +60,11 @@ class _HealthTabPageState extends State<HealthTabPage> {
         final name = (r['disease_name'] ?? r['diseaseName'] ?? '').toString();
         if (id.isNotEmpty && name.isNotEmpty) map[id] = name;
       }
-      if (mounted) setState(() => _diseaseCache
+      if (mounted) {
+        setState(() => _diseaseCache
         ..clear()
         ..addAll(map));
+      }
     } catch (e) {
     }
   }

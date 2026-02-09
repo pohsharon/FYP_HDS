@@ -70,7 +70,9 @@ class _FruitPageState extends State<FruitListPage> {
           if (fruits.isEmpty) {
             final local = await FruitDB().getAllFruits();
             final localMatches = local.where((f) => (f.harvest_uuid ?? '') == target && (f.tree_uuid ?? '') == widget.treeUuid).toList();
-            for (final lm in localMatches) fruits.add(lm.toMap());
+            for (final lm in localMatches) {
+              fruits.add(lm.toMap());
+            }
           }
 
           final matchedNonNull = matched;

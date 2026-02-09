@@ -176,8 +176,8 @@ class _CreateHealthInfoPageState extends State<CreateHealthInfoPage> {
 
           // Cache successful remote record locally so it is visible offline
           try {
-            final rec = (remoteData != null && remoteData!['data'] is Map)
-                ? Map<String, dynamic>.from(remoteData!['data'])
+            final rec = (remoteData['data'] is Map)
+                ? Map<String, dynamic>.from(remoteData['data'])
                 : (remoteData ?? <String, dynamic>{});
             final cached = healthModel.copyWith(
               id: (rec['id'] is int)

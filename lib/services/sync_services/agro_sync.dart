@@ -1,6 +1,8 @@
 import '../local database/agro_db.dart';
 import '../api/agrochemical_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../app_initializer.dart';
+import 'dart:async';
 
 bool _looksLikeUuid(String? s) {
   if (s == null) return false;
@@ -25,6 +27,10 @@ class SyncAgro {
       // 1) Pending deletes
       final deletes = await db.fetchPendingDeletes();
       for (final a in deletes) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting agro sync due to connectivity loss');
+          break;
+        }
         try {
           final tu = a.tree_uuid ?? '';
           if (tu.isEmpty) {
@@ -34,7 +40,13 @@ class SyncAgro {
 
           try {
             // Fetch remote agrochemical records for this tree and try to match by applied_at + agrochemicalId/name
-            final remote = await AgrochemicalApi.getAvailableAgrochemicals();
+            List<Map<String, dynamic>> remote;
+            try {
+              remote = await AgrochemicalApi.getAvailableAgrochemicals().timeout(const Duration(seconds: 10));
+            } on TimeoutException {
+              print('❌ getAvailableAgrochemicals timed out');
+              continue;
+            }
             Map<String, dynamic>? match;
             for (final r in remote) {
               final applied = (r['applied_at'] ?? r['appliedAt'])?.toString() ?? '';
@@ -51,12 +63,17 @@ class SyncAgro {
             if (match != null && (match['id'] != null || match['uuid'] != null)) {
               // Prefer an explicit UUID field. Some API responses may include numeric 'id'
               // which isn't valid for endpoints that expect UUIDs. Validate before using.
-              final candUuid = (match['uuid'] ?? match['id'])?.toString();
+                final candUuid = (match['uuid'] ?? match['id'])?.toString();
               if (!_looksLikeUuid(candUuid)) {
                 print('⚠️ Resolved remote id is not a UUID (value=$candUuid). Skipping delete for tree $tu to avoid backend type errors.');
               } else {
                 final id = candUuid!;
-                await AgrochemicalApi.deleteAgrochemicalRecord(id);
+                try {
+                  await AgrochemicalApi.deleteAgrochemicalRecord(id).timeout(const Duration(seconds: 10));
+                } on TimeoutException {
+                  print('❌ deleteAgrochemicalRecord timed out for $id');
+                  continue;
+                }
                 await db.deleteAgrochemicalByTreeUuid(tu);
                 print('✅ Deleted remote & local agrochemical records for tree $tu');
               }
@@ -74,6 +91,10 @@ class SyncAgro {
       // 2) Pending updates
       final updates = await db.fetchPendingUpdates();
       for (final a in updates) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting agro sync due to connectivity loss');
+          break;
+        }
         try {
           final tu = a.tree_uuid ?? '';
           if (tu.isEmpty) {
@@ -82,7 +103,13 @@ class SyncAgro {
           }
 
           try {
-            final remote = await AgrochemicalApi.getAvailableAgrochemicals();
+            List<Map<String, dynamic>> remote;
+            try {
+              remote = await AgrochemicalApi.getAvailableAgrochemicals().timeout(const Duration(seconds: 10));
+            } on TimeoutException {
+              print('❌ getAvailableAgrochemicals timed out');
+              continue;
+            }
             Map<String, dynamic>? match;
             for (final r in remote) {
               final applied = (r['applied_at'] ?? r['appliedAt'])?.toString() ?? '';
@@ -96,7 +123,7 @@ class SyncAgro {
             }
 
             if (match != null && (match['id'] != null || match['uuid'] != null)) {
-              final candUuid = (match['uuid'] ?? match['id'])?.toString();
+                final candUuid = (match['uuid'] ?? match['id'])?.toString();
               if (!_looksLikeUuid(candUuid)) {
                 print('⚠️ Resolved remote id is not a UUID (value=$candUuid). Skipping update for tree $tu to avoid backend type errors.');
               } else {
@@ -108,7 +135,7 @@ class SyncAgro {
                     tree_uuid: a.tree_uuid ?? '',
                     applied_at: a.applied_at ?? '',
                     description: a.description ?? '',
-                  );
+                  ).timeout(const Duration(seconds: 10));
                   await db.markAsSynced(a.tree_uuid ?? '');
                   print('✅ Synced agrochemical update for tree ${a.tree_uuid}');
                 } catch (e) {
@@ -130,6 +157,10 @@ class SyncAgro {
       final unsynced = await db.fetchUnsyncedAgrochemicals();
       final newOnes = unsynced.where((h) => h.pendingUpdate == 0 && h.pendingDelete == 0).toList();
       for (final h in newOnes) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting agro create loop due to connectivity loss');
+          break;
+        }
         try {
           // Ensure we send a server-valid agrochemical UUID. If the local row
           // stored a numeric id (e.g. '3'), the backend may reject it. Try to
@@ -138,8 +169,10 @@ class SyncAgro {
 
           if (!_looksLikeUuid(agroUuidToSend)) {
             // Try to fetch remote master list and map by id/name
+            List<Map<String, dynamic>> master = [];
             try {
-              final master = await AgrochemicalApi.getAgrochemical();
+              master = await AgrochemicalApi.getAgrochemical().timeout(const Duration(seconds: 10));
+
               Map<String, dynamic>? found;
               for (final m in master) {
                 final mid = (m['id'] ?? m['uuid'] ?? '').toString();
@@ -192,7 +225,7 @@ class SyncAgro {
             agrochemical_uuid: agroUuidToSend,
             applied_at: h.applied_at ?? '',
             description: h.description ?? '',
-          );
+          ).timeout(const Duration(seconds: 10));
 
           // createAgrochemicalRecord returns a Map on success (or throws)
           if (resp['success'] == true || resp.containsKey('data')) {

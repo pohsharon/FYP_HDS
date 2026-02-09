@@ -201,12 +201,12 @@ class TreeDB{
       }
     }
 
-    double? _asDouble(dynamic value) {
+    double? asDouble(dynamic value) {
       if (value is num) return value.toDouble();
       return double.tryParse(value?.toString() ?? '');
     }
 
-    int? _asInt(dynamic value) {
+    int? asInt(dynamic value) {
       if (value is num) return value.toInt();
       return int.tryParse(value?.toString() ?? '');
     }
@@ -216,12 +216,12 @@ class TreeDB{
       'tree_tag': apiTree['tree_tag'] ?? apiTree['treeTag'] ?? apiTree['tag'],
       'species_id': apiTree['species']?['id']?.toString() ?? apiTree['species_id']?.toString(),
       'planted_at': plantedIso,
-      'height': _asDouble(apiTree['height']),
-      'diameter': _asDouble(apiTree['diameter'] ?? apiTree['width']),
-      'flowering_period': _asInt(apiTree['flowering_period']),
+      'height': asDouble(apiTree['height']),
+      'diameter': asDouble(apiTree['diameter'] ?? apiTree['width']),
+      'flowering_period': asInt(apiTree['flowering_period']),
       'thumbnail': apiTree['thumbnail'],
-      'latitude': _asDouble(apiTree['latitude']),
-      'longitude': _asDouble(apiTree['longitude']),
+      'latitude': asDouble(apiTree['latitude']),
+      'longitude': asDouble(apiTree['longitude']),
       'updated_at': (apiTree['updated_at'] ?? apiTree['updatedAt'] ?? DateTime.now().toIso8601String()).toString(),
       'synced': 1,
       'pending_update': 0,

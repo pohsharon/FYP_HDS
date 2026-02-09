@@ -1,6 +1,8 @@
 import '../local database/health_db.dart';
 import '../api/health_api.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../app_initializer.dart';
+import 'dart:async';
 
 class SyncHealth {
   Future<void> syncHealth() async {
@@ -17,6 +19,10 @@ class SyncHealth {
       // 1) Pending deletes
       final deletes = await db.fetchPendingDeletes();
       for (final h in deletes) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting health sync due to connectivity loss');
+          break;
+        }
         try {
           final tu = h.tree_uuid ?? '';
           if (tu.isEmpty) {
@@ -25,7 +31,13 @@ class SyncHealth {
           }
 
           try {
-            final remote = await HealthApi.fetchTreeHealthRecords(tu);
+            List<Map<String, dynamic>> remote;
+            try {
+              remote = await HealthApi.fetchTreeHealthRecords(tu).timeout(const Duration(seconds: 10));
+            } on TimeoutException {
+              print('❌ fetchTreeHealthRecords timed out for $tu');
+              continue;
+            }
             // Try to match by recorded_at and disease id (best-effort)
             Map<String, dynamic>? match;
             for (final r in remote) {
@@ -39,9 +51,13 @@ class SyncHealth {
 
             if (match != null && (match['id'] != null || match['uuid'] != null)) {
               final id = (match['id'] ?? match['uuid']).toString();
-              await HealthApi.deleteHealthRecord(id);
-              await db.deleteHealthByTreeUuid(tu);
-              print('✅ Deleted remote & local health for tree $tu');
+              try {
+                await HealthApi.deleteHealthRecord(id).timeout(const Duration(seconds: 10));
+                await db.deleteHealthByTreeUuid(tu);
+                print('✅ Deleted remote & local health for tree $tu');
+              } on TimeoutException {
+                print('❌ deleteHealthRecord timed out for $id');
+              }
             } else {
               print('ℹ️ Could not resolve remote id for pending delete on tree $tu; skipping');
             }
@@ -56,6 +72,10 @@ class SyncHealth {
       // 2) Pending updates
       final updates = await db.fetchPendingUpdates();
       for (final h in updates) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting health sync due to connectivity loss');
+          break;
+        }
         try {
           final tu = h.tree_uuid ?? '';
           if (tu.isEmpty) {
@@ -64,7 +84,13 @@ class SyncHealth {
           }
 
           try {
-            final remote = await HealthApi.fetchTreeHealthRecords(tu);
+            List<Map<String, dynamic>> remote;
+            try {
+              remote = await HealthApi.fetchTreeHealthRecords(tu).timeout(const Duration(seconds: 10));
+            } on TimeoutException {
+              print('❌ fetchTreeHealthRecords timed out for $tu');
+              continue;
+            }
             Map<String, dynamic>? match;
             for (final r in remote) {
               final recorded = (r['recorded_at'] ?? r['recordedAt'])?.toString() ?? '';
@@ -85,7 +111,7 @@ class SyncHealth {
                   date: h.recorded_at ?? '',
                   status: h.status ?? '',
                   treatment: h.treatment ?? '',
-                );
+                ).timeout(const Duration(seconds: 10));
                 if (resp['success'] == true || resp.containsKey('data')) {
                   await db.markAsSynced(h.tree_uuid ?? '');
                   print('✅ Synced health update for tree ${h.tree_uuid}');
@@ -110,6 +136,10 @@ class SyncHealth {
       final unsynced = await db.fetchUnsyncedHealths();
       final newOnes = unsynced.where((h) => h.pendingUpdate == 0 && h.pendingDelete == 0).toList();
       for (final h in newOnes) {
+        if (AppInitializer.isAbortRequested) {
+          print('⚠️ Aborting health sync due to connectivity loss');
+          break;
+        }
         try {
           final resp = await HealthApi.createHealthRecord(
             treeUuid: h.tree_uuid ?? '',
@@ -118,7 +148,7 @@ class SyncHealth {
             status: h.status ?? '',
             treatment: h.treatment ?? '',
             imageFile: null,
-          );
+          ).timeout(const Duration(seconds: 10));
 
           if (resp['success'] == true || resp.containsKey('data')) {
             await db.markAsSynced(h.tree_uuid ?? '');

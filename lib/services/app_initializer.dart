@@ -29,6 +29,7 @@ import 'sync_services/disease_sync.dart';
 import 'sync_services/growth_sync.dart';
 import '../services/local database/disease_db.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 
 class AppInitializer {
   static const bool _logEnabled = false;
@@ -47,6 +48,16 @@ class AppInitializer {
   static bool _wasOnline = false;
   // Prevent overlapping syncs when connectivity flaps quickly
   static bool _isSyncing = false;
+  // If true, a running sync should abort as soon as practical
+  static bool _abortSyncRequested = false;
+  // Track whether the last sync run was aborted (used to show different Flushbar)
+  static bool _lastSyncAborted = false;
+
+  // Maximum allowed duration for a full sync run before we force-abort
+  static const Duration _maxSyncDuration = Duration(seconds: 30);
+
+  // Public accessor so other services can check whether an abort was requested
+  static bool get isAbortRequested => _abortSyncRequested;
   // Expose sync-in-progress so UI can show a spinner
   static final ValueNotifier<bool> syncInProgress = ValueNotifier<bool>(false);
   // Notify listeners when sync completes so they can refresh
@@ -61,6 +72,9 @@ class AppInitializer {
     if (syncInProgress.value) {
       return false;
     }
+    // Reset abort state when a fresh sync begins
+    _abortSyncRequested = false;
+    _lastSyncAborted = false;
     syncInProgress.value = true;
     _showSyncStartedFlushbar();
     return true;
@@ -72,6 +86,24 @@ class AppInitializer {
     syncCompleted.value++;
     // Print pending sync counts for each type
     printPendingSyncCounts();
+    // If the last sync was aborted due to connectivity loss, show an abort message
+    if (_lastSyncAborted) {
+      try {
+        final context = navigatorKey.currentContext;
+        if (context != null) {
+          Flushbar(message: 'Sync aborted: connection lost.',
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 3),
+            margin: const EdgeInsets.all(12),
+            borderRadius: BorderRadius.circular(8),
+            flushbarPosition: FlushbarPosition.TOP,
+          ).show(context);
+        }
+      } catch (_) {}
+      _lastSyncAborted = false;
+      return;
+    }
+
     _showSyncCompletedFlushbar();
   }
 
@@ -203,6 +235,17 @@ class AppInitializer {
       _log('⚠️ Sync already running, skipping cacheAllData');
       return;
     }
+    // Listen for connectivity changes during this sync so we can abort early
+    _abortSyncRequested = false;
+    _lastSyncAborted = false;
+    final sub = Connectivity().onConnectivityChanged.listen((_) async {
+      final onlineNow = await ConnectivityHelper.hasInternetConnection();
+      if (!onlineNow) {
+        _abortSyncRequested = true;
+        _lastSyncAborted = true;
+        _log('⚠️ Connectivity lost during sync — abort requested');
+      }
+    });
 
     final online = await ConnectivityHelper.hasInternetConnection();
     final treeDB = TreeDB();
@@ -217,231 +260,69 @@ class AppInitializer {
     }
 
     _log('🌐 Online mode detected at $nowStamp');
-    try {
-      // Fetch species
+    _log('🌐 Online mode detected at $nowStamp');
+
+    // Run the sync body with an overall timeout so it cannot hang indefinitely
+    Future<void> runSyncBody() async {
       try {
-        await TreeApi.fetchSpecies();
-      } catch (e) {
-        _log('❌ Error fetching species: $e');
-      }
-
-      // Fetch and cache disease list for offline use
-      try {
-        final remoteDiseases = await DiseaseApi.fetchDiseases();
-        await DiseaseDB().saveDiseaseList(remoteDiseases);
-      } catch (e) {
-        _log('❌ Error fetching diseases: $e');
-      }
-
-      // Fetch and cache AVAILABLE agrochemical master list for offline use
-      try {
-        final agroTypes = await AgrochemicalApi.getAvailableAgrochemicals();
-        await AgroDB().saveAgrochemicalList(agroTypes);
-      } catch (e) {
-        _log('❌ Error fetching available agrochemicals: $e');
-      }
-
-      // 🔄 SYNC PENDING UPDATES FIRST before caching remote trees
-      // This ensures pending_update flags are not cleared by upsertTreeFromApi
-      try {
-        await SyncTrees().syncUnsyncedTrees();
-      } catch (e) {
-        _log('❌ Error syncing trees: $e');
-      }
-
-      // Fetch and cache trees (after pending syncs to preserve pending flags)
-      final repo = TreeRepository();
-      final trees = await repo.getTrees(forceRefresh: true);
-      await treeDB.cacheRemoteTrees(trees);
-
-      // Fetch and cache fruits for offline use
-      try {
-        final remoteFruits = await FruitApi.fetchFruits();
-        final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
-        await fruitDB.cacheRemoteFruits(fruitModels);
-      } catch (e) {
-          _log('❌ Error fetching fruits: $e');
-      }
-
-      // Fetch and cache health records in bulk, then group per-tree before caching
-      try {
-        final healthDB = HealthDB();
-        final allRemoteHealth = await HealthApi.fetchAllHealthRecords();
-
-        // Group by tree_uuid
-        final Map<String, List<Map<String, dynamic>>> healthByTree = {};
-        for (final h in allRemoteHealth) {
-          final tUuid = h['tree_uuid'] ?? h['treeUuid'] ?? '';
-          if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
-          healthByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(h));
-        }
-
-        for (final t in trees) {
-          try {
-            final remoteForTree = healthByTree[t.uuid] ?? [];
-            final healthModels = remoteForTree.map((h) => HealthModel.fromMap(h)).toList();
-            await healthDB.cacheRemoteHealth(healthModels);
-          } catch (e) {
-            _log('❌ Error caching health for tree ${t.uuid}: $e');
-          }
-        }
-      } catch (e) {
-        _log('❌ Error fetching health records: $e');
-      }
-
-      // Fetch and cache agrochemical records in bulk, then group per-tree before caching
-      try {
-        final agroDB = AgroDB();
-        final allRemoteAgro = await AgrochemicalApi.fetchAllAgroRecords();
-
-        // Group by tree_uuid
-        final Map<String, List<Map<String, dynamic>>> agroByTree = {};
-        for (final a in allRemoteAgro) {
-          final tUuid = a['tree_uuid'] ?? a['treeUuid'] ?? '';
-          if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
-          agroByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(a));
-        }
-
-        for (final t in trees) {
-          try {
-            final remoteForTree = agroByTree[t.uuid] ?? [];
-            final agroModels = remoteForTree.map((a) => AgrochemicalModel.fromMap(a)).toList();
-            await agroDB.cacheRemoteAgrochemical(agroModels);
-          } catch (e) {
-            _log('❌ Error caching agro for tree ${t.uuid}: $e');
-          }
-        }
-      } catch (e) {
-        _log('❌ Error fetching agrochemical records: $e');
-      }
-
-      // Fetch and cache growth logs once, then group them per-tree before caching
-      try {
-        final remoteGrowth = await TreeGrowthApi.fetchAllGrowthLogs();
-        final growthModels = remoteGrowth.map((g) => TreeGrowthModel.fromMap(g)).toList();
-        await growthDB.cacheRemoteGrowths(growthModels);
-      } catch (e) {
-        _log('❌ Error fetching growth logs: $e');
-      }
-
-      // Fetch and cache harvest events for offline use
-      try {
-        final harvestDB = HarvestDB();
-        await harvestDB.fetchAndCacheFromCloud();
-      } catch (e) {
-        _log('❌ Error fetching harvest events: $e');
-      }
-
-      // Also attempt to sync any fruits that were created offline
-      try {
-        await SyncFruits().syncFruits();
-      } catch (e) {
-        _log('❌ Error syncing fruits: $e');
-      }
-
-      // Attempt to sync any pending health records created while offline
-      try {
-        await SyncHealth().syncHealth();
-      } catch (e) {
-        _log('❌ Error syncing health: $e');
-      }
-
-      // Attempt to sync any pending agrochemical records created while offline
-      try {
-        await SyncAgro().syncAgro();
-      } catch (e) {
-        _log('❌ Error syncing agrochemicals: $e');
-      }
-
-      // Attempt to sync any pending disease records created while offline
-      try {
-        await SyncDiseases().syncDiseases();
-      } catch (e) {
-        _log('❌ Error syncing diseases: $e');
-      }
-
-      // Attempt to sync any pending growth logs created while offline
-      try {
-        await SyncGrowth().syncGrowth();
-      } catch (e) {
-        _log('❌ Error syncing growth logs: $e');
-      }
-
-      final timestamp = DateTime.now().toIso8601String();
-      _log('✅ Sync complete at $timestamp');
-
-      // We performed the initial full cache; skip the first reconnect
-      // event in the connectivity listener (if it fires immediately after registration)
-      _skipFirstReconnect = true;
-    } catch (e) {
-      _log('❌ Error during cache: $e');
-    } finally {
-      _endSync();
-    }
-  }
-
-  static Future<List<TreeModel>> initializeApp() async {
-    // Prevent overlapping with other sync operations
-    final started = _beginSync();
-    if (!started) {
-      _log('⚠️ Sync already running, skipping initializeApp');
-      return [];
-    }
-
-    final online = await ConnectivityHelper.hasInternetConnection();
-  // Local DB instance will be fetched where needed
-    final treeDB = TreeDB();
-    final fruitDB = FruitDB();
-    final growthDB = GrowthDB();
-    List<TreeModel> trees = [];
-
-    final nowStamp = DateTime.now().toIso8601String();
-    if (!online) {
-      _log('📴 Offline mode detected at $nowStamp');
-      trees = await treeDB.fetchAllTrees();
-    } else {
-      _log('🌐 Online mode detected at $nowStamp');
-      try {
+        // existing sync steps
+        
+        // Fetch species
         try {
           await TreeApi.fetchSpecies();
         } catch (e) {
           _log('❌ Error fetching species: $e');
         }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
         // Fetch and cache disease list for offline use
         try {
           final remoteDiseases = await DiseaseApi.fetchDiseases();
           await DiseaseDB().saveDiseaseList(remoteDiseases);
         } catch (e) {
-          _log('❌ Error caching diseases: $e');
+          _log('❌ Error fetching diseases: $e');
         }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
         // Fetch and cache AVAILABLE agrochemical master list for offline use
         try {
           final agroTypes = await AgrochemicalApi.getAvailableAgrochemicals();
           await AgroDB().saveAgrochemicalList(agroTypes);
         } catch (e) {
-          _log('❌ Error caching available agrochemicals: $e');
+          _log('❌ Error fetching available agrochemicals: $e');
         }
 
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
         // 🔄 SYNC PENDING UPDATES FIRST before caching remote trees
-        // This ensures pending_update flags are not cleared by upsertTreeFromApi
         try {
           await SyncTrees().syncUnsyncedTrees();
         } catch (e) {
           _log('❌ Error syncing trees: $e');
         }
 
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
+        // Fetch and cache trees (after pending syncs to preserve pending flags)
         final repo = TreeRepository();
-        // Force a fresh remote fetch during initialization
-        trees = await repo.getTrees(forceRefresh: true);
+        final trees = await repo.getTrees(forceRefresh: true);
         await treeDB.cacheRemoteTrees(trees);
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
         // Fetch and cache fruits for offline use
         try {
           final remoteFruits = await FruitApi.fetchFruits();
           final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
           await fruitDB.cacheRemoteFruits(fruitModels);
         } catch (e) {
-          _log('❌ Error caching fruits: $e');
+            _log('❌ Error fetching fruits: $e');
         }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
         // Fetch and cache health records in bulk, then group per-tree before caching
         try {
           final healthDB = HealthDB();
@@ -464,6 +345,260 @@ class AppInitializer {
               _log('❌ Error caching health for tree ${t.uuid}: $e');
             }
           }
+        } catch (e) {
+          _log('❌ Error fetching health records: $e');
+        }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
+        // Fetch and cache agrochemical records in bulk, then group per-tree before caching
+        try {
+          final agroDB = AgroDB();
+          final allRemoteAgro = await AgrochemicalApi.fetchAllAgroRecords();
+
+          // Group by tree_uuid
+          final Map<String, List<Map<String, dynamic>>> agroByTree = {};
+          for (final a in allRemoteAgro) {
+            final tUuid = a['tree_uuid'] ?? a['treeUuid'] ?? '';
+            if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
+            agroByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(a));
+          }
+
+          for (final t in trees) {
+            try {
+              final remoteForTree = agroByTree[t.uuid] ?? [];
+              final agroModels = remoteForTree.map((a) => AgrochemicalModel.fromMap(a)).toList();
+              await agroDB.cacheRemoteAgrochemical(agroModels);
+            } catch (e) {
+              _log('❌ Error caching agro for tree ${t.uuid}: $e');
+            }
+          }
+        } catch (e) {
+          _log('❌ Error fetching agrochemical records: $e');
+        }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
+        // Fetch and cache growth logs once, then group them per-tree before caching
+        try {
+          final remoteGrowth = await TreeGrowthApi.fetchAllGrowthLogs();
+          final growthModels = remoteGrowth.map((g) => TreeGrowthModel.fromMap(g)).toList();
+          await growthDB.cacheRemoteGrowths(growthModels);
+        } catch (e) {
+          _log('❌ Error fetching growth logs: $e');
+        }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
+        // Fetch and cache harvest events for offline use
+        try {
+          final harvestDB = HarvestDB();
+          await harvestDB.fetchAndCacheFromCloud();
+        } catch (e) {
+          _log('❌ Error fetching harvest events: $e');
+        }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
+        // Also attempt to sync any fruits that were created offline
+        try {
+          await SyncFruits().syncFruits();
+        } catch (e) {
+          _log('❌ Error syncing fruits: $e');
+        }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
+        // Attempt to sync any pending health records created while offline
+        try {
+          await SyncHealth().syncHealth();
+        } catch (e) {
+          _log('❌ Error syncing health: $e');
+        }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
+        // Attempt to sync any pending agrochemical records created while offline
+        try {
+          await SyncAgro().syncAgro();
+        } catch (e) {
+          _log('❌ Error syncing agrochemicals: $e');
+        }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
+        // Attempt to sync any pending disease records created while offline
+        try {
+          await SyncDiseases().syncDiseases();
+        } catch (e) {
+          _log('❌ Error syncing diseases: $e');
+        }
+
+        if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
+
+        // Attempt to sync any pending growth logs created while offline
+        try {
+          await SyncGrowth().syncGrowth();
+        } catch (e) {
+          _log('❌ Error syncing growth logs: $e');
+        }
+
+        final timestamp = DateTime.now().toIso8601String();
+        _log('✅ Sync complete at $timestamp');
+      } finally {
+        // nothing here; outer finally will handle cleanup
+      }
+    }
+
+    try {
+      // Start a watchdog timer that forces abort if the sync takes too long.
+      Timer? watchdog;
+      watchdog = Timer(_maxSyncDuration, () async {
+        _log('❌ Watchdog: Sync exceeded $_maxSyncDuration — forcing abort');
+        _abortSyncRequested = true;
+        _lastSyncAborted = true;
+        try { await sub.cancel(); } catch (_) {}
+        try {
+          // Force UI update to clear long-running flushbar
+          _endSync();
+        } catch (_) {}
+      });
+
+      try {
+        await runSyncBody().timeout(_maxSyncDuration);
+      } finally {
+        watchdog.cancel();
+      }
+    } on TimeoutException {
+      _log('❌ Sync exceeded $_maxSyncDuration — forcing abort');
+      _abortSyncRequested = true;
+      _lastSyncAborted = true;
+    } catch (e) {
+      _log('❌ Error during cache: $e');
+    } finally {
+      // Ensure connectivity listener is torn down
+      try { await sub.cancel(); } catch (_) {}
+      // Mark that the last sync was aborted if requested
+      if (_abortSyncRequested) _lastSyncAborted = true;
+      _endSync();
+    }
+    
+    // We performed the initial full cache; skip the first reconnect
+    // event in the connectivity listener (if it fires immediately after registration)
+    _skipFirstReconnect = true;
+  }
+
+  static Future<List<TreeModel>> initializeApp() async {
+    // Prevent overlapping with other sync operations
+    final started = _beginSync();
+    if (!started) {
+      _log('⚠️ Sync already running, skipping initializeApp');
+      return [];
+    }
+    // Setup connectivity watcher so we can abort init if connection drops
+    _abortSyncRequested = false;
+    _lastSyncAborted = false;
+    final sub = Connectivity().onConnectivityChanged.listen((_) async {
+      final onlineNow = await ConnectivityHelper.hasInternetConnection();
+      if (!onlineNow) {
+        _abortSyncRequested = true;
+        _lastSyncAborted = true;
+        _log('⚠️ Connectivity lost during init — abort requested');
+      }
+    });
+
+    final online = await ConnectivityHelper.hasInternetConnection();
+  // Local DB instance will be fetched where needed
+    final treeDB = TreeDB();
+    final fruitDB = FruitDB();
+    final growthDB = GrowthDB();
+    List<TreeModel> trees = [];
+
+    final nowStamp = DateTime.now().toIso8601String();
+    if (!online) {
+      _log('📴 Offline mode detected at $nowStamp');
+      trees = await treeDB.fetchAllTrees();
+    } else {
+      _log('🌐 Online mode detected at $nowStamp');
+      // Start a watchdog timer for initialization to force abort if it hangs
+      Timer? watchdog;
+      watchdog = Timer(_maxSyncDuration, () async {
+        _log('❌ Watchdog: Init exceeded $_maxSyncDuration — forcing abort');
+        _abortSyncRequested = true;
+        _lastSyncAborted = true;
+        try { await sub.cancel(); } catch (_) {}
+        try { _endSync(); } catch (_) {}
+      });
+
+      try {
+        try {
+          await TreeApi.fetchSpecies();
+        } catch (e) {
+          _log('❌ Error fetching species: $e');
+        }
+        if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
+        // Fetch and cache disease list for offline use
+        try {
+          final remoteDiseases = await DiseaseApi.fetchDiseases();
+          await DiseaseDB().saveDiseaseList(remoteDiseases);
+        } catch (e) {
+          _log('❌ Error caching diseases: $e');
+        }
+        if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
+        // Fetch and cache AVAILABLE agrochemical master list for offline use
+        try {
+          final agroTypes = await AgrochemicalApi.getAvailableAgrochemicals();
+          await AgroDB().saveAgrochemicalList(agroTypes);
+        } catch (e) {
+          _log('❌ Error caching available agrochemicals: $e');
+        }
+
+        // 🔄 SYNC PENDING UPDATES FIRST before caching remote trees
+        // This ensures pending_update flags are not cleared by upsertTreeFromApi
+        try {
+          await SyncTrees().syncUnsyncedTrees();
+        } catch (e) {
+          _log('❌ Error syncing trees: $e');
+        }
+        if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
+
+        final repo = TreeRepository();
+        // Force a fresh remote fetch during initialization
+        trees = await repo.getTrees(forceRefresh: true);
+        await treeDB.cacheRemoteTrees(trees);
+        if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
+        // Fetch and cache fruits for offline use
+        try {
+          final remoteFruits = await FruitApi.fetchFruits();
+          final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
+          await fruitDB.cacheRemoteFruits(fruitModels);
+        } catch (e) {
+          _log('❌ Error caching fruits: $e');
+        }
+        if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
+        // Fetch and cache health records in bulk, then group per-tree before caching
+        try {
+          final healthDB = HealthDB();
+          final allRemoteHealth = await HealthApi.fetchAllHealthRecords();
+
+          // Group by tree_uuid
+          final Map<String, List<Map<String, dynamic>>> healthByTree = {};
+          for (final h in allRemoteHealth) {
+            final tUuid = h['tree_uuid'] ?? h['treeUuid'] ?? '';
+            if (tUuid == null || (tUuid is String && tUuid.isEmpty)) continue;
+            healthByTree.putIfAbsent(tUuid as String, () => []).add(Map<String, dynamic>.from(h));
+          }
+
+          for (final t in trees) {
+            try {
+              final remoteForTree = healthByTree[t.uuid] ?? [];
+              final healthModels = remoteForTree.map((h) => HealthModel.fromMap(h)).toList();
+              await healthDB.cacheRemoteHealth(healthModels);
+            } catch (e) {
+              _log('❌ Error caching health for tree ${t.uuid}: $e');
+            }
+          }
+          if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
         } catch (e) {
           _log('❌ Error fetching health in init: $e');
         }
@@ -506,6 +641,7 @@ class AppInitializer {
         } catch (e) {
           _log('❌ Error syncing fruits in init: $e');
         }
+        if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
 
         // Attempt to sync any pending health records created while offline
         try {
@@ -513,12 +649,14 @@ class AppInitializer {
         } catch (e) {
           _log('❌ Error syncing health in init: $e');
         }
+        if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
         // Attempt to sync any pending agrochemical records created while offline
         try {
           await SyncAgro().syncAgro();
         } catch (e) {
           _log('❌ Error syncing agrochemicals in init: $e');
         }
+        if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
         
         // Attempt to sync any pending disease records created while offline
         try {
@@ -526,6 +664,7 @@ class AppInitializer {
         } catch (e) {
           _log('❌ Error syncing diseases in init: $e');
         }
+        if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
 
         // Attempt to sync any pending growth logs created while offline
         try {
@@ -548,8 +687,14 @@ class AppInitializer {
         _log('❌ Error during init: $e');
         trees = await treeDB.fetchAllTrees();
       }
+      finally {
+        watchdog.cancel();
+      }
     }
 
+    // Clean up connectivity listener and end sync. Ensure we record aborted state
+    try { await sub.cancel(); } catch (_) {}
+    if (_abortSyncRequested) _lastSyncAborted = true;
     _endSync();
     return trees;
   }

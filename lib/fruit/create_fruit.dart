@@ -502,7 +502,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
           } else {
             final offlineMsg = widget.fruit != null
                 ? 'Changes saved locally and will be synced'
-                : 'Fruit saved locally';
+                : 'Fruit saved locally. Sync will occur when online';
             await Flushbar(
               message: offlineMsg,
               icon: const Icon(Icons.cloud_off, color: Colors.white),
@@ -548,72 +548,7 @@ class _CreateFruitPageState extends State<CreateFruitPage> {
           ),
         ),
         backgroundColor: AppColors.pakistanGreen,
-        actions: widget.fruit != null
-            ? [
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.white),
-                  onPressed: () async {
-                    final shouldDelete = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Delete Fruit'),
-                        content: const Text(
-                          'Are you sure you want to delete this fruit?',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Cancel'),
-                          ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                            ),
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Delete'),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (shouldDelete == true) {
-                      try {
-                        final fruitUuid = widget.fruit!['uuid'];
-                        if (fruitUuid != null) {
-                          await FruitApi.deleteFruit(fruitUuid.toString());
-                          if (mounted) {
-                            await Flushbar(
-                              message: 'Fruit deleted successfully',
-                              icon: const Icon(
-                                Icons.check_circle,
-                                color: Colors.white,
-                              ),
-                              backgroundColor: Colors.green.shade700,
-                              duration: const Duration(seconds: 2),
-                              borderRadius: BorderRadius.circular(12),
-                              margin: const EdgeInsets.all(12),
-                              flushbarPosition: FlushbarPosition.TOP,
-                            ).show(context);
-                            Navigator.pop(context, true);
-                          }
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          await Flushbar(
-                            message: 'Error deleting fruit: $e',
-                            icon: const Icon(Icons.error, color: Colors.white),
-                            backgroundColor: Colors.red.shade700,
-                            duration: const Duration(seconds: 3),
-                            borderRadius: BorderRadius.circular(8),
-                            margin: const EdgeInsets.all(12),
-                          ).show(context);
-                        }
-                      }
-                    }
-                  },
-                ),
-              ]
-            : null,
+        actions: null,
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),

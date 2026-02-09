@@ -17,6 +17,11 @@ class TreeApi {
     required double diameter,
     required String floweringPeriod,
     File? imageFile,
+    double? latitude,
+    double? longitude,
+    String? area,
+    int? terrace,
+    int? waterValve,
   }) async {
     final uri = Uri.parse("${Config.apiBaseUrl}/trees");
     var request = http.MultipartRequest('POST', uri);
@@ -27,6 +32,13 @@ class TreeApi {
     request.fields['height'] = height.toString();
     request.fields['diameter'] = diameter.toString();
     request.fields['flowering_period'] = floweringPeriod;
+
+    // Optional location and metadata
+    if (latitude != null) request.fields['latitude'] = latitude.toString();
+    if (longitude != null) request.fields['longitude'] = longitude.toString();
+    if (area != null && area.isNotEmpty) request.fields['area'] = area;
+    if (terrace != null) request.fields['terrace'] = terrace.toString();
+    if (waterValve != null) request.fields['water_valve'] = waterValve.toString();
 
     // Add image if present
     if (imageFile != null) {

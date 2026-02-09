@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/config.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/agrochemical_api.dart';
-import 'package:fyp_hbs/widgets/persistent_appbar.dart';
 import 'package:intl/intl.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
@@ -573,7 +572,7 @@ class _AgrochemicalListPageState extends State<AgrochemicalListPage> {
       Flushbar(
         message: 'Usage recorded successfully',
         icon: const Icon(Icons.check_circle, color: Colors.white),
-        backgroundColor: AppColors.success,
+        backgroundColor: Colors.green.shade700,
         duration: const Duration(seconds: 3),
         borderRadius: BorderRadius.circular(8),
         margin: const EdgeInsets.all(12),

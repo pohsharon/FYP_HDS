@@ -8,7 +8,6 @@ import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/services/local database/agro_db.dart';
 import 'package:fyp_hbs/models/agrochemical_model.dart';
 import 'package:intl/intl.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:another_flushbar/flushbar.dart';
 
 class AgrochemicalTabPage extends StatefulWidget {
