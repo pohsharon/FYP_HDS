@@ -32,6 +32,11 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 class AppInitializer {
+  /// When true, all automatic sync / offline caching activities are skipped.
+  /// Use this for temporary debugging or to disable network sync during testing.
+  /// Toggle at runtime via `AppInitializer.temporarilyDisableSync = true`.
+  static bool temporarilyDisableSync = false;
+
   static const bool _logEnabled = false;
   static void _log(String message) {
     if (_logEnabled) print(message);
@@ -224,11 +229,20 @@ class AppInitializer {
   }
 
   static void enableConnectivitySync() {
+    if (temporarilyDisableSync) {
+      _log('🔕 enableConnectivitySync skipped (temporarilyDisableSync=true)');
+      return;
+    }
+
     _connectivitySyncEnabled = true;
   }
 
   /// Cache all data from remote to local storage
   static Future<void> cacheAllData() async {
+    if (temporarilyDisableSync) {
+      _log('🔕 cacheAllData skipped (temporarilyDisableSync=true)');
+      return;
+    }
     // Avoid overlapping syncs
     final started = _beginSync();
     if (!started) {
@@ -489,6 +503,17 @@ class AppInitializer {
   }
 
   static Future<List<TreeModel>> initializeApp() async {
+    if (temporarilyDisableSync) {
+      _log('🔕 initializeApp skipped (temporarilyDisableSync=true) — returning local cache only');
+      try {
+        final treeDB = TreeDB();
+        final trees = await treeDB.fetchAllTrees();
+        return trees;
+      } catch (e) {
+        _log('⚠️ Error fetching local trees while sync disabled: $e');
+        return [];
+      }
+    }
     // Prevent overlapping with other sync operations
     final started = _beginSync();
     if (!started) {
@@ -701,6 +726,10 @@ class AppInitializer {
 
   static void initConnectivityListener() {
     if (_connectivityListenerInitialized) {
+      return;
+    }
+    if (temporarilyDisableSync) {
+      _log('🔕 initConnectivityListener skipped (temporarilyDisableSync=true)');
       return;
     }
     _connectivityListenerInitialized = true;

@@ -18,7 +18,6 @@ import 'package:another_flushbar/flushbar.dart';
 import '../utils/connectivity_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 class TreeDetailsPage extends StatefulWidget {
   final String treeID;
   final bool refreshOnPop;
@@ -39,6 +38,8 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   bool _shouldRefresh = false;
   bool _isOnline = true;
   String _floweringPeriod = '-';
+  // Labels attached to this tree (temporary in-memory list)
+  List<String> labels = [];
 
   Map<String, dynamic> _normalizeTree(Map<String, dynamic> src) {
     final normalized = Map<String, dynamic>.from(src);
@@ -73,6 +74,20 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     _loadTreeDetails();
   }
 
+  void _showAddLabelSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder:
+          (_) => AddLabelSheet(
+            onLabelAdded: (label) => setState(() => labels.add(label)),
+          ),
+    );
+  }
+
   Future<void> _checkConnectivity() async {
     try {
       final online = await ConnectivityHelper.hasInternetConnection();
@@ -96,10 +111,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     Navigator.pop(
       context,
       _shouldRefresh
-          ? {
-              'refreshList': true,
-              'updatedId': tree?['uuid'] ?? widget.treeID,
-            }
+          ? {'refreshList': true, 'updatedId': tree?['uuid'] ?? widget.treeID}
           : null,
     );
     return false;
@@ -107,24 +119,37 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
 
   Future<void> _loadTreeDetails() async {
     try {
-      final data = await TreeApi.getTreeByUuid(widget.treeID);
-      
+      var data = await TreeApi.getTreeByUuid(widget.treeID);
+
+      // Unwrap common API response shapes: {data: {...}} or {data: {data: {...}}}
+      try {
+        if (data is Map && data.containsKey('data')) {
+          final inner = data['data'];
+          if (inner is Map && inner.containsKey('data')) {
+            final inner2 = inner['data'];
+            if (inner2 is Map) data = Map<String, dynamic>.from(inner2);
+          } else if (inner is Map) {
+            data = Map<String, dynamic>.from(inner);
+          }
+        }
+      } catch (_) {}
+
       // 💾 Cache fetched tree to local DB immediately
       try {
         await TreeDB().upsertTreeFromApi(data);
       } catch (e) {
         print('⚠️ Failed to cache tree to local DB: $e');
       }
-      
+
       if (!mounted) return;
       setState(() {
-        tree = _normalizeTree(data);
+        tree = _normalizeTree(Map<String, dynamic>.from(data));
         isLoading = false;
       });
-      
+
       // Fetch flowering period from dedicated endpoint
-      _fetchFloweringPeriod(data['uuid'] ?? widget.treeID);
-      
+      _fetchFloweringPeriod((data['uuid'] ?? widget.treeID).toString());
+
       // Merge any cached growth measurements (offline cache) to show latest values
       try {
         final treeUuid = data['uuid'] ?? widget.treeID;
@@ -132,24 +157,37 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
       } catch (_) {}
     } catch (e1) {
       try {
-        final data = await TreeApi.getTreeById(widget.treeID);
-        
+        var data = await TreeApi.getTreeById(widget.treeID);
+
+        // Unwrap common API response shapes
+        try {
+          if (data is Map && data.containsKey('data')) {
+            final inner = data['data'];
+            if (inner is Map && inner.containsKey('data')) {
+              final inner2 = inner['data'];
+              if (inner2 is Map) data = Map<String, dynamic>.from(inner2);
+            } else if (inner is Map) {
+              data = Map<String, dynamic>.from(inner);
+            }
+          }
+        } catch (_) {}
+
         // 💾 Cache fetched tree to local DB immediately
         try {
           await TreeDB().upsertTreeFromApi(data);
         } catch (e) {
           print('⚠️ Failed to cache tree to local DB: $e');
         }
-        
+
         if (!mounted) return;
         setState(() {
-          tree = _normalizeTree(data);
+          tree = _normalizeTree(Map<String, dynamic>.from(data));
           isLoading = false;
         });
-        
+
         // Fetch flowering period from dedicated endpoint
-        _fetchFloweringPeriod(data['uuid'] ?? widget.treeID);
-        
+        _fetchFloweringPeriod((data['uuid'] ?? widget.treeID).toString());
+
         // Merge cached growth measurements (if any) after loading by numeric id
         try {
           final treeUuid = data['uuid'] ?? widget.treeID;
@@ -198,6 +236,10 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
               'width': m.diameter ?? 0.0,
               'diameter': m.diameter ?? 0.0,
               'flowering_period': m.floweringPeriod ?? 0,
+              'flowering_status': m.floweringStatus ?? '-',
+              'area': m.area ?? '-',
+              'terrace': m.terrace ?? '-',
+              'water_valve': m.waterValve ?? '-',
             };
 
             if (!mounted) return;
@@ -205,10 +247,12 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
               tree = _normalizeTree(localMap);
               isLoading = false;
             });
-            
+
             // Fetch flowering period from dedicated endpoint
-            _fetchFloweringPeriod((localMap['uuid'] as String?) ?? widget.treeID);
-            
+            _fetchFloweringPeriod(
+              (localMap['uuid'] as String?) ?? widget.treeID,
+            );
+
             // Merge cached growth measurements for this offline tree
             try {
               final treeUuid = localMap['uuid'] ?? widget.treeID;
@@ -237,10 +281,10 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   Future<void> _fetchFloweringPeriod(String uuid) async {
     try {
       final result = await TreeApi.getTreeFloweringPeriod(uuid);
-      
+
       if (mounted) {
         String period = '-';
-        
+
         // Extract flowering_period from the response
         // Check if response has 'data' wrapper
         if (result.containsKey('data') && result['data'] is Map) {
@@ -249,7 +293,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
           // Direct response format
           period = result['flowering_period']?.toString() ?? '-';
         }
-              
+
         // Cache the flowering period to SharedPreferences
         if (period != '-') {
           try {
@@ -259,17 +303,17 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
             print('⚠️ Failed to cache flowering period: $e');
           }
         }
-        
+
         setState(() => _floweringPeriod = period);
       }
     } catch (e) {
       print('⚠️ Failed to fetch flowering period: $e');
-      
+
       // Try to load from cache when API fails (offline mode)
       try {
         final prefs = await SharedPreferences.getInstance();
         final cachedPeriod = prefs.getString('flowering_period_$uuid');
-        
+
         if (cachedPeriod != null && mounted) {
           setState(() => _floweringPeriod = cachedPeriod);
           print('📦 Loaded flowering period from cache: $cachedPeriod');
@@ -278,7 +322,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
       } catch (cacheErr) {
         print('⚠️ Failed to load flowering period from cache: $cacheErr');
       }
-      
+
       // Fall back to tree's stored flowering_period if available
       if (mounted && tree != null) {
         final fallback = tree!['flowering_period']?.toString() ?? '-';
@@ -310,8 +354,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
         // Also print total rows in DB for debugging
         try {
           final all = await GrowthDB().fetchAllGrowths();
-        } catch (_) {
-        }
+        } catch (_) {}
         return;
       }
 
@@ -337,7 +380,11 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
       // Determine the last-updated timestamp of the tree record (if available).
       DateTime treeUpdated = DateTime.fromMillisecondsSinceEpoch(0);
       try {
-        final raw = tree?['updated_at'] ?? tree?['updatedAt'] ?? tree?['created_at'] ?? tree?['createdAt'];
+        final raw =
+            tree?['updated_at'] ??
+            tree?['updatedAt'] ??
+            tree?['created_at'] ??
+            tree?['createdAt'];
         if (raw != null && raw.toString().isNotEmpty) {
           treeUpdated = DateTime.tryParse(raw.toString()) ?? treeUpdated;
         }
@@ -415,12 +462,13 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
 
     final String treeTag = tree!['tree_tag'] ?? 'Unknown';
     final String treeType = tree!['species']?['name'] ?? 'Unknown Type';
-  final rawPlanted = tree!['planted_at'] ?? '';
-  final String treeDate = rawPlanted.toString().trim().isEmpty
-    ? 'Unknown Date'
-    : (rawPlanted.toString().contains('T')
-      ? rawPlanted.toString().split('T').first
-      : rawPlanted.toString());
+    final rawPlanted = tree!['planted_at'] ?? '';
+    final String treeDate =
+        rawPlanted.toString().trim().isEmpty
+            ? '-'
+            : (rawPlanted.toString().contains('T')
+                ? rawPlanted.toString().split('T').first
+                : rawPlanted.toString());
     final String treeImage = tree!['thumbnail'] ?? '';
     final String uuid = tree!['uuid'] ?? 'Unknown UUID';
     final String floweringPeriod = _floweringPeriod;
@@ -429,65 +477,78 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     final double latitude = double.tryParse(tree!['latitude'].toString()) ?? 0;
     final double longitude =
         double.tryParse(tree!['longitude'].toString()) ?? 0;
+    final String area = tree!['area']?.toString() ?? '-';
+    final String terrace = tree!['terrace']?.toString() ?? '-';
+    final String waterValve = tree!['water_valve']?.toString() ?? '-';
+    final String flowering_status = tree!['flowering_status']?.toString() ?? '-';
 
     return WillPopScope(
       onWillPop: _handleWillPop,
       child: DefaultTabController(
         length: 4,
         child: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            "Tree Details",
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          backgroundColor: AppColors.pakistanGreen,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.edit, color: Colors.white),
-              onPressed: () async {
-                if (!_isOnline) {
-                  await Flushbar(
-                    message: 'Editing is disabled while offline',
-                    icon: const Icon(Icons.cloud_off, color: Colors.white),
-                    backgroundColor: Colors.orange.shade700,
-                    duration: const Duration(seconds: 2),
-                    borderRadius: BorderRadius.circular(12),
-                    margin: const EdgeInsets.all(12),
-                    flushbarPosition: FlushbarPosition.TOP,
-                  ).show(context);
-                  return;
-                }
-                
-                final updated = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => CreateTreePage(tree: tree)),
-                );
-
-                if (updated == true) {
-                  // Tree was deleted; pop back to tree list with refresh signal
-                  Navigator.pop(context, {'refreshList': true});
-                  return;
-                }
-
-                if (updated is Map) {
-                  if (updated['refreshList'] == true) {
-                    _markShouldRefresh();
+          appBar: AppBar(
+            title: const Text(
+              "Tree Details",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            backgroundColor: AppColors.pakistanGreen,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.edit, color: Colors.white),
+                onPressed: () async {
+                  if (!_isOnline) {
+                    await Flushbar(
+                      message: 'Editing is disabled while offline',
+                      icon: const Icon(Icons.cloud_off, color: Colors.white),
+                      backgroundColor: Colors.orange.shade700,
+                      duration: const Duration(seconds: 2),
+                      borderRadius: BorderRadius.circular(12),
+                      margin: const EdgeInsets.all(12),
+                      flushbarPosition: FlushbarPosition.TOP,
+                    ).show(context);
+                    return;
                   }
 
-                  // Reload latest details so the page reflects the edits
-                  await _loadTreeDetails();
-                }
-              },
-            ),
-          ],
-        ),
+                  final updated = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CreateTreePage(tree: tree),
+                    ),
+                  );
+
+                  if (updated == true) {
+                    // Tree was deleted; pop back to tree list with refresh signal
+                    Navigator.pop(context, {'refreshList': true});
+                    return;
+                  }
+
+                  if (updated is Map) {
+                    if (updated['refreshList'] == true) {
+                      _markShouldRefresh();
+                    }
+
+                    // Reload latest details so the page reflects the edits
+                    await _loadTreeDetails();
+                  }
+                },
+              ),
+            ],
+          ),
           backgroundColor: AppColors.background,
           body: NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) => [
-              SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+            headerSliverBuilder:
+                (context, innerBoxIsScrolled) => [
+                  SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Image display removed per request.
+                        // Original GestureDetector + image code commented out below for reference.
+                        /*
                     GestureDetector(
                       onTap: () {
                         if (_isOnline && treeImage.isNotEmpty) {
@@ -514,179 +575,284 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                       },
                       child: _buildTreeImage(treeImage),
                     ),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              showDialog(
-                                context: context,
-                                builder:
-                                    (_) => Dialog(
-                                      backgroundColor: Colors.transparent,
-                                      insetPadding: const EdgeInsets.symmetric(
-                                        horizontal: 30,
-                                        vertical: 100,
-                                      ),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(20),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white,
-                                          borderRadius: BorderRadius.circular(16),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black.withOpacity(0.15),
-                                              blurRadius: 10,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            QrImageView(
-                                              data: uuid,
-                                              version: QrVersions.auto,
-                                              size: 300,
-                                              gapless: true,
-                                            ),
-                                            const SizedBox(height: 12),
-                                            Text(
-                                              uuid,
-                                              textAlign: TextAlign.center,
-                                              style: const TextStyle(
-                                                color: Colors.black,
-                                                fontWeight: FontWeight.w500,
+                    */
+                        const SizedBox.shrink(),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  showDialog(
+                                    context: context,
+                                    builder:
+                                        (_) => Dialog(
+                                          backgroundColor: Colors.transparent,
+                                          insetPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 30,
+                                                vertical: 100,
                                               ),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(20),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withOpacity(0.15),
+                                                  blurRadius: 10,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ],
                                             ),
-                                          ],
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                QrImageView(
+                                                  data: uuid,
+                                                  version: QrVersions.auto,
+                                                  size: 300,
+                                                  gapless: true,
+                                                ),
+                                                const SizedBox(height: 12),
+                                                Text(
+                                                  uuid,
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    color: Colors.black,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
                                         ),
+                                  );
+                                },
+                                child: QrImageView(
+                                  data: uuid,
+                                  version: QrVersions.auto,
+                                  size: 80,
+                                  gapless: true,
+                                ),
+                              ),
+
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      treeTag,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
                                       ),
                                     ),
-                              );
-                            },
-                            child: QrImageView(
-                              data: uuid,
-                              version: QrVersions.auto,
-                              size: 80,
-                              gapless: true,
-                            ),
-                          ),
-
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  treeTag,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  treeType,
-                                  style: const TextStyle(color: Colors.grey),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.pin_drop,
-                                      size: 14,
-                                      color: Colors.grey,
-                                    ),
-                                    const SizedBox(width: 4),
+                                    const SizedBox(height: 4),
                                     Text(
-                                      'Lat: ${latitude.toStringAsFixed(5)}, Lon: ${longitude.toStringAsFixed(5)}',
+                                      treeType,
                                       style: const TextStyle(
-                                        fontSize: 11,
                                         color: Colors.grey,
                                       ),
                                     ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.pin_drop,
+                                          size: 14,
+                                          color: Colors.grey,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Lat: ${latitude.toStringAsFixed(5)}, Lon: ${longitude.toStringAsFixed(5)}',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ],
                                 ),
-                              ],
-                            ),
+                              ),
+                              GestureDetector(
+                                onTap: () async {
+                                  final updated = await Navigator.push<bool?>(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => MapIndividualTreePage(
+                                            treeLatitude: latitude,
+                                            treeLongitude: longitude,
+                                            treeTag: treeTag,
+                                            treeUuid: uuid,
+                                          ),
+                                    ),
+                                  );
+                                  if (updated == true) {
+                                    // Refresh details after possible location update
+                                    _loadTreeDetails();
+                                  }
+                                },
+                                child: const Icon(
+                                  Icons.location_on,
+                                  color: AppColors.pakistanGreen,
+                                ),
+                              ),
+                            ],
                           ),
-                          GestureDetector(
-                            onTap: () async {
-                                final updated = await Navigator.push<bool?>(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder:
-                                        (context) => MapIndividualTreePage(
-                                          treeLatitude: latitude,
-                                          treeLongitude: longitude,
-                                          treeTag: treeTag,
-                                          treeUuid: uuid,
-                                        ),
-                                  ),
-                                );
-                                if (updated == true) {
-                                  // Refresh details after possible location update
-                                  _loadTreeDetails();
-                                }
-                              },
-                            child: const Icon(
-                              Icons.location_on,
-                              color: AppColors.pakistanGreen,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                        ),
 
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Wrap(
-                        spacing: 16,
-                        runSpacing: 16,
-                        children: [
-                          _InfoCard(label: "Planting Date", value: treeDate),
-                          _InfoCard(
-                            label: "Flowering Period",
-                            value: floweringPeriod,
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            children: [
+                              _InfoCard(label: "Area", value: area),
+                              _InfoCard(label: "Terrace", value: terrace),
+                              _InfoCard(
+                                label: "Water Valve",
+                                value: waterValve,
+                              ),
+                              _InfoCard(
+                                label: "Planting Date",
+                                value: treeDate,
+                              ),
+                              _InfoCard(
+                                label: "Flowering Period",
+                                value: floweringPeriod,
+                              ),
+                              _InfoCard(
+                                label: "Flowering Status",
+                                value: flowering_status,
+                              ),
+                              _InfoCard(label: "Height", value: "$height ft"),
+                              _InfoCard(label: "Diameter", value: "$width ft"),
+                            ],
                           ),
-                          _InfoCard(label: "Height", value: "$height m"),
-                          _InfoCard(label: "Diameter", value: "$width m"),
+                        ),
+                        // After your Padding(cards Wrap), add:
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 6,
+                                        height: 6,
+                                        decoration: const BoxDecoration(
+                                          color: AppColors.pakistanGreen,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Text(
+                                        "Labels",
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  TextButton.icon(
+                                    onPressed:
+                                        () => _showAddLabelSheet(context),
+                                    icon: const Icon(
+                                      Icons.add,
+                                      size: 14,
+                                      color: Colors.white,
+                                    ),
+                                    label: const Text(
+                                      "Add Label",
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    style: TextButton.styleFrom(
+                                      backgroundColor: AppColors.sage,
+                                      shape: StadiumBorder(),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              labels.isEmpty
+                                  ? const Text(
+                                    "No labels yet",
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                    ),
+                                  )
+                                  : Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children:
+                                        labels
+                                            .map(
+                                              (label) => _LabelChip(
+                                                label: label,
+                                                onDelete:
+                                                    () => setState(
+                                                      () =>
+                                                          labels.remove(label),
+                                                    ),
+                                              ),
+                                            )
+                                            .toList(),
+                                  ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
+                  ),
+                  SliverAppBar(
+                    pinned: true,
+                    backgroundColor: AppColors.background,
+                    toolbarHeight: 0,
+                    bottom: PreferredSize(
+                      preferredSize: const Size.fromHeight(50),
+                      child: TabBar(
+                        labelColor: AppColors.hunterGreen,
+                        unselectedLabelColor: AppColors.hunterGreen,
+                        tabs: const [
+                          Tab(text: "Health"),
+                          Tab(text: "Agrochemical"),
+                          Tab(text: "Growth Log"),
+                          Tab(text: "Harvest"),
                         ],
+                        labelStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                        unselectedLabelStyle: const TextStyle(fontSize: 11),
+                        indicatorColor: AppColors.hunterGreen,
+                        indicatorWeight: 3,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-              SliverAppBar(
-                pinned: true,
-                backgroundColor: AppColors.background,
-                toolbarHeight: 0,
-                bottom: PreferredSize(
-                  preferredSize: const Size.fromHeight(50),
-                  child: TabBar(
-                    labelColor: AppColors.hunterGreen,
-                    unselectedLabelColor: AppColors.hunterGreen,
-                    tabs: const [
-                      Tab(text: "Health"),
-                      Tab(text: "Agrochemical"),
-                      Tab(text: "Growth Log"),
-                      Tab(text: "Harvest"),
-                    ],
-                    labelStyle: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 11,
-                    ),
-                    unselectedLabelStyle: const TextStyle(fontSize: 11),
-                    indicatorColor: AppColors.hunterGreen,
-                    indicatorWeight: 3,
                   ),
-                ),
-              ),
-            ],
+                ],
             body: TabBarView(
               children: [
                 HealthTabPage(treeTag: treeTag, treeUuid: uuid),
@@ -736,6 +902,94 @@ class _InfoCard extends StatelessWidget {
             Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet to add a label
+class AddLabelSheet extends StatefulWidget {
+  final void Function(String) onLabelAdded;
+  const AddLabelSheet({required this.onLabelAdded});
+
+  @override
+  State<AddLabelSheet> createState() => _AddLabelSheetState();
+}
+
+class _AddLabelSheetState extends State<AddLabelSheet> {
+  final TextEditingController _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        left: 16,
+        right: 16,
+        top: 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Add Label',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _ctrl,
+            decoration: const InputDecoration(hintText: 'Enter label'),
+            onSubmitted: (v) => _submit(),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: _submit, child: const Text('Add')),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
+  void _submit() {
+    final v = _ctrl.text.trim();
+    if (v.isNotEmpty) {
+      widget.onLabelAdded(v);
+      Navigator.pop(context);
+    }
+  }
+}
+
+class _LabelChip extends StatelessWidget {
+  final String label;
+  final VoidCallback? onDelete;
+  const _LabelChip({required this.label, this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      label: Text(label),
+      deleteIcon: const Icon(Icons.close, size: 18),
+      onDeleted: onDelete,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: AppColors.gray400),
       ),
     );
   }

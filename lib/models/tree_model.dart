@@ -9,9 +9,13 @@ class TreeModel {
   final double? height;
   final double? diameter;
   final int? floweringPeriod;
+  final String? floweringStatus;
   final String? thumbnail;
   final double? latitude;
   final double? longitude;
+  final String? area;
+  final String? terrace;
+  final String? waterValve;
   final int synced;
   final File? imageFile;
   final int pendingUpdate;
@@ -26,9 +30,13 @@ class TreeModel {
     this.height,
     this.diameter,
     this.floweringPeriod,
+    this.floweringStatus,
     this.thumbnail,
     this.latitude,
     this.longitude,
+    this.area,
+    this.terrace,
+    this.waterValve,
     this.synced = 0,
     this.imageFile,
     this.pendingUpdate = 0,
@@ -44,9 +52,13 @@ class TreeModel {
     'height': height,
     'diameter': diameter,
     'flowering_period': floweringPeriod,
+    'flowering_status': floweringStatus,
     'thumbnail': thumbnail,
     'latitude': latitude,
     'longitude': longitude,
+    'area': area,
+    'terrace': terrace,
+    'water_valve': waterValve,
     'synced': synced,
     'pending_update': pendingUpdate,
     'pending_delete': pendingDelete,
@@ -86,6 +98,7 @@ class TreeModel {
       if (fp is num) return fp.toInt();
       return int.tryParse(fp.toString());
     })(),
+    floweringStatus: map['flowering_status']?.toString(),
     thumbnail: map['thumbnail'],
     latitude:
         (map['latitude'] is num)
@@ -95,6 +108,9 @@ class TreeModel {
         (map['longitude'] is num)
             ? (map['longitude'] as num).toDouble()
             : double.tryParse(map['longitude']?.toString() ?? '0'),
+    area: map['area'].toString(),
+    terrace: map['terrace'].toString(),
+    waterValve: map['water_valve'].toString(),
     synced: (() {
       final s = map['synced'];
       if (s == null) return 0;
@@ -124,9 +140,13 @@ class TreeModel {
     double? height,
     double? diameter,
     int? floweringPeriod,
+    String? floweringStatus,
     String? thumbnail,
     double? latitude,
     double? longitude,
+    String? area,
+    String? terrace,
+    String? waterValve,
     int? synced,
     File? imageFile,
     int? pendingUpdate,
@@ -141,9 +161,13 @@ class TreeModel {
       height: height ?? this.height,
       diameter: diameter ?? this.diameter,
       floweringPeriod: floweringPeriod ?? this.floweringPeriod,
+      floweringStatus: floweringStatus ?? this.floweringStatus,
       thumbnail: thumbnail ?? this.thumbnail,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      area: area ?? this.area,
+      terrace: terrace ?? this.terrace,
+      waterValve: waterValve ?? this.waterValve,
       synced: synced ?? this.synced,
       imageFile: imageFile ?? this.imageFile,
       pendingUpdate: pendingUpdate ?? this.pendingUpdate,

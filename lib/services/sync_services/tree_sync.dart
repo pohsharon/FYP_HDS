@@ -184,7 +184,10 @@ class SyncTrees {
                   height: t.height ?? 0.0,
                   diameter: t.diameter ?? 0.0,
                   floweringPeriod: t.floweringPeriod?.toString() ?? '',
-                  imageFile: t.imageFile,
+                    area: t.area,
+                    terrace: t.terrace != null ? int.tryParse(t.terrace!) : null,
+                    waterValve: t.waterValve != null ? int.tryParse(t.waterValve!) : null,
+                    imageFile: t.imageFile,
                 ).timeout(const Duration(seconds: 10));
               } on TimeoutException {
                 print('❌ updateTree timed out for id=${t.id}');
@@ -232,6 +235,9 @@ class SyncTrees {
                     height: t.height ?? 0.0,
                     diameter: t.diameter ?? 0.0,
                     floweringPeriod: t.floweringPeriod?.toString() ?? '',
+                    area: t.area,
+                    terrace: t.terrace != null ? int.tryParse(t.terrace!) : null,
+                    waterValve: t.waterValve != null ? int.tryParse(t.waterValve!) : null,
                     imageFile: t.imageFile,
                   ).timeout(const Duration(seconds: 10));
                 } on TimeoutException {
@@ -322,15 +328,21 @@ class SyncTrees {
             response = await TreeApi.createTree(
             speciesId: speciesIdToSend,
             plantedAt:
-                tree.plantedAt is String
-                    ? tree.plantedAt as String
-                    : (tree.plantedAt == null ? '' : tree.plantedAt.toString()),
+              tree.plantedAt is String
+                ? tree.plantedAt as String
+                : (tree.plantedAt == null ? '' : tree.plantedAt.toString()),
             height: tree.height ?? 0.0,
             diameter: tree.diameter ?? 0.0,
             floweringPeriod:
-                tree.floweringPeriod is String
-                    ? tree.floweringPeriod as String
-                    : (tree.floweringPeriod ?? '').toString(),
+              tree.floweringPeriod is String
+                ? tree.floweringPeriod as String
+                : (tree.floweringPeriod ?? '').toString(),
+            floweringStatus: tree.floweringStatus,
+            latitude: tree.latitude,
+            longitude: tree.longitude,
+            area: tree.area,
+            terrace: (tree.terrace != null && tree.terrace!.isNotEmpty) ? int.tryParse(tree.terrace!) : null,
+            waterValve: (tree.waterValve != null && tree.waterValve!.isNotEmpty) ? int.tryParse(tree.waterValve!) : null,
             imageFile: tree.imageFile,
             ).timeout(const Duration(seconds: 10));
           } on TimeoutException {

@@ -78,6 +78,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
   final TextEditingController latitudeController = TextEditingController();
   final TextEditingController longitudeController = TextEditingController();
 
+  String? selectedFloweringStatus;
+
   String? selectedArea;
   String? previewTag;
   String? _tempLocationUuid;
@@ -127,12 +129,12 @@ class _CreateTreePageState extends State<CreateTreePage> {
             tree['flowering_period']?.toString() ?? '';
         selectedSpeciesId = tree['species']?['id']?.toString();
         _existingThumbnailPath = tree['thumbnail'];
-        // prefill area/terrace/water_valve if available in payload
         selectedArea = tree['area']?.toString();
         terraceController.text = tree['terrace']?.toString() ?? '';
         waterValveController.text = tree['water_valve']?.toString() ?? '';
         latitudeController.text = tree['latitude']?.toString() ?? '';
         longitudeController.text = tree['longitude']?.toString() ?? '';
+        selectedFloweringStatus = tree['flowering_status']?.toString() ?? '';
       }
     });
   }
@@ -272,9 +274,13 @@ class _CreateTreePageState extends State<CreateTreePage> {
           createResp = await TreeApi.createTree(
             speciesId: selectedSpeciesId!,
             plantedAt: plantingDateController.text,
-            height: double.parse(heightController.text),
-            diameter: double.parse(widthController.text),
+            height: double.tryParse(heightController.text) ?? 0.0,
+            diameter: double.tryParse(widthController.text) ?? 0.0,
             floweringPeriod: floweringPeriodController.text,
+            floweringStatus: selectedFloweringStatus,
+            area: selectedArea,
+            terrace: int.tryParse(terraceController.text),
+            waterValve: int.tryParse(waterValveController.text),
             imageFile: _selectedImage,
           );
           try {
@@ -292,6 +298,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 'flowering_period': int.tryParse(
                   floweringPeriodController.text,
                 ),
+                'flowering_status': selectedFloweringStatus,
+                'area': selectedArea,
+                'terrace': terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : null,
+                'water_valve': waterValveController.text.isNotEmpty ? int.tryParse(waterValveController.text) : null,
               },
             );
           } catch (e) {
@@ -302,8 +312,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
             id: widget.tree!['id'].toString(),
             speciesId: selectedSpeciesId!,
             plantedAt: plantingDateController.text,
-            height: double.parse(heightController.text),
-            diameter: double.parse(widthController.text),
+            height: double.tryParse(heightController.text) ?? 0.0,
+            diameter: double.tryParse(widthController.text) ?? 0.0,
             latitude:
                 (widget.tree != null && widget.tree!['latitude'] != null)
                     ? double.tryParse(widget.tree!['latitude'].toString())
@@ -313,6 +323,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
                     ? double.tryParse(widget.tree!['longitude'].toString())
                     : null,
             floweringPeriod: floweringPeriodController.text,
+            floweringStatus: selectedFloweringStatus,
+            area: selectedArea,
+            terrace: terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : null,
+            waterValve: waterValveController.text.isNotEmpty ? int.tryParse(waterValveController.text) : null,
             imageFile: _selectedImage,
           );
           try {
@@ -331,6 +345,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 'flowering_period': int.tryParse(
                   floweringPeriodController.text,
                 ),
+                'flowering_status': widget.tree!['flowering_status'],
+                'area': selectedArea ?? widget.tree!['area'],
+                'terrace': terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : (widget.tree!['terrace'] is int ? widget.tree!['terrace'] : int.tryParse(widget.tree!['terrace']?.toString() ?? '')), 
+                'water_valve': waterValveController.text.isNotEmpty ? int.tryParse(waterValveController.text) : (widget.tree!['water_valve'] is int ? widget.tree!['water_valve'] : int.tryParse(widget.tree!['water_valve']?.toString() ?? '')),
                 'thumbnail': widget.tree!['thumbnail'],
                 'latitude': widget.tree!['latitude'],
                 'longitude': widget.tree!['longitude'],
@@ -395,6 +413,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
             'height': double.tryParse(heightController.text),
             'diameter': double.tryParse(widthController.text),
             'flowering_period': int.tryParse(floweringPeriodController.text),
+            'flowering_status': selectedFloweringStatus,
+            'area': selectedArea,
+            'terrace': terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : null,
+            'water_valve': waterValveController.text.isNotEmpty ? int.tryParse(waterValveController.text) : null,
             'updated_at': now.toIso8601String(),
             // Do not clear thumbnail here; imageFile is stored separately in TreeModel.imageFile
           };
@@ -494,10 +516,11 @@ class _CreateTreePageState extends State<CreateTreePage> {
             uuid: uuid,
             treeTag: derivedTag,
             speciesId: selectedSpeciesId!,
-            plantedAt: DateTime.parse(plantingDateController.text),
+            plantedAt: plantingDateController.text.isNotEmpty ? DateTime.parse(plantingDateController.text) : null,
             height: double.tryParse(heightController.text),
             diameter: double.tryParse(widthController.text),
             floweringPeriod: int.tryParse(floweringPeriodController.text),
+            floweringStatus: selectedFloweringStatus,
             synced: 0,
             imageFile: _selectedImage,
           );
@@ -596,6 +619,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
       'height': _asDouble(merged['height']),
       'diameter': _asDouble(merged['diameter'] ?? merged['width']),
       'flowering_period': _asInt(merged['flowering_period']),
+      'flowering_status': merged['flowering_status']?.toString(),
+      'area': merged['area']?.toString(),
+      'terrace': merged['terrace'],
+      'water_valve': merged['water_valve'],
       'thumbnail': merged['thumbnail'],
       'latitude': _asDouble(merged['latitude']),
       'longitude': _asDouble(merged['longitude']),
@@ -829,7 +856,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
                     width: double.infinity,
                     child: DropdownMenu<String>(
                       // ensure popup has a reasonable minimum width on larger screens
-                      width: max(menuWidth, 360),
+                      width: max(menuWidth, 240),
                       controller: speciesController,
                       requestFocusOnTap: !isEditing,
                       enabled: !isEditing,
@@ -869,38 +896,9 @@ class _CreateTreePageState extends State<CreateTreePage> {
                   );
                 },
               ),
-              // Area dropdown (A - H)
-              const SizedBox(height: 16),
 
-              TextFormField(
-                controller: plantingDateController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Planting Date',
-                  suffixIcon: Icon(Icons.calendar_today),
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-                readOnly: true,
-                onTap: () async {
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime.now(),
-                  );
-                  if (pickedDate != null) {
-                    plantingDateController.text = DateFormat(
-                      'yyyy-MM-dd',
-                    ).format(pickedDate);
-                  }
-                },
-                validator:
-                    (value) =>
-                        value == null || value.isEmpty
-                            ? 'Please pick a date'
-                            : null,
-              ),
+              
+              
               const SizedBox(height: 16),
 
               TextFormField(
@@ -916,9 +914,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
                   decimal: true,
                 ),
                 inputFormatters: [DecimalTextInputFormatter(decimalRange: 2)],
-                validator:
-                    (value) =>
-                        value == null || value.isEmpty ? 'Enter height' : null,
+                validator: (value) => null,
               ),
               const SizedBox(height: 16),
 
@@ -935,11 +931,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
                   decimal: true,
                 ),
                 inputFormatters: [DecimalTextInputFormatter(decimalRange: 2)],
-                validator:
-                    (value) =>
-                        value == null || value.isEmpty ? 'Enter width' : null,
+                validator: (value) => null,
               ),
-               const SizedBox(height: 16),
+
+              const SizedBox(height: 16),
               
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -993,6 +988,36 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 keyboardType: TextInputType.number,
                 validator: (value) => null,
               ),
+
+              // Area dropdown (A - H)
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: plantingDateController,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Planting Date',
+                  suffixIcon: Icon(Icons.calendar_today),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                readOnly: true,
+                onTap: () async {
+                  final pickedDate = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now(),
+                    firstDate: DateTime(2000),
+                    lastDate: DateTime.now(),
+                  );
+                  if (pickedDate != null) {
+                    plantingDateController.text = DateFormat(
+                      'yyyy-MM-dd',
+                    ).format(pickedDate);
+                  }
+                },
+                validator: (value) => null,
+              ),
+               
               const SizedBox(height: 16),
 
               TextFormField(
@@ -1004,11 +1029,32 @@ class _CreateTreePageState extends State<CreateTreePage> {
                   fillColor: Colors.white,
                 ),
                 keyboardType: TextInputType.number,
-                validator:
-                    (value) =>
-                        value == null || value.isEmpty
-                            ? 'Enter flowering period'
-                            : null,
+                validator: (value) => null,
+              ),
+              const SizedBox(height: 16),
+
+              // Flowering status dropdown (A, B, C, D, X)
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final menuWidth = constraints.maxWidth;
+                  return SizedBox(
+                    width: double.infinity,
+                    child: DropdownMenu<String>(
+                      width: max(menuWidth, 240),
+                      menuHeight: 220,
+                      initialSelection: selectedFloweringStatus,
+                      label: const Text('Flowering Status'),
+                      dropdownMenuEntries: ['A', 'B', 'C', 'D', 'X']
+                          .map((v) => DropdownMenuEntry(value: v, label: v))
+                          .toList(),
+                      onSelected: (String? v) {
+                        setState(() {
+                          selectedFloweringStatus = v;
+                        });
+                      },
+                    ),
+                  );
+                },
               ),
               const SizedBox(height: 16),
 
@@ -1058,10 +1104,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              // const SizedBox(height: 16),
 
               // Image preview moved to bottom so image is last in the input order
-              _buildImagePreview(),
+              // _buildImagePreview(),
 
               const SizedBox(height: 24),
 
@@ -1100,6 +1146,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
           ),
         ),
       ),
+      
     );
   }
 

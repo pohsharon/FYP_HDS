@@ -16,6 +16,7 @@ class TreeApi {
     required double height,
     required double diameter,
     required String floweringPeriod,
+    String? floweringStatus,
     File? imageFile,
     double? latitude,
     double? longitude,
@@ -32,6 +33,9 @@ class TreeApi {
     request.fields['height'] = height.toString();
     request.fields['diameter'] = diameter.toString();
     request.fields['flowering_period'] = floweringPeriod;
+    if (floweringStatus != null && floweringStatus.isNotEmpty) {
+      request.fields['flowering_status'] = floweringStatus;
+    }
 
     // Optional location and metadata
     if (latitude != null) request.fields['latitude'] = latitude.toString();
@@ -331,8 +335,12 @@ class TreeApi {
     required double height,
     required double diameter,
     required String floweringPeriod,
+    String? floweringStatus,
     double? latitude,
     double? longitude,
+    String? area,
+    int? terrace,
+    int? waterValve,
     File? imageFile,
   }) async {
     final uri = Uri.parse("${Config.apiBaseUrl}/trees/$id");
@@ -344,6 +352,12 @@ class TreeApi {
     request.fields['height'] = height.toString();
     request.fields['diameter'] = diameter.toString();
     request.fields['flowering_period'] = floweringPeriod;
+    if (floweringStatus != null && floweringStatus.isNotEmpty) {
+      request.fields['flowering_status'] = floweringStatus;
+    }
+    if (area != null && area.isNotEmpty) request.fields['area'] = area;
+    if (terrace != null) request.fields['terrace'] = terrace.toString();
+    if (waterValve != null) request.fields['water_valve'] = waterValve.toString();
   // Preserve latitude/longitude when provided (some backends treat
   // missing coords as zero/null). Only send if non-null.
   if (latitude != null) request.fields['latitude'] = latitude.toString();
@@ -395,8 +409,12 @@ class TreeApi {
     required double height,
     required double diameter,
     required String floweringPeriod,
+    String? floweringStatus,
     double? latitude,
     double? longitude,
+    String? area,
+    int? terrace,
+    int? waterValve,
     File? imageFile,
   }) async {
     final uri = Uri.parse("${Config.apiBaseUrl}/trees/uuid/$uuid");
@@ -408,6 +426,12 @@ class TreeApi {
     request.fields['height'] = height.toString();
     request.fields['diameter'] = diameter.toString();
     request.fields['flowering_period'] = floweringPeriod;
+    if (floweringStatus != null && floweringStatus.isNotEmpty) {
+      request.fields['flowering_status'] = floweringStatus;
+    }
+    if (area != null && area.isNotEmpty) request.fields['area'] = area;
+    if (terrace != null) request.fields['terrace'] = terrace.toString();
+    if (waterValve != null) request.fields['water_valve'] = waterValve.toString();
 
   if (latitude != null) request.fields['latitude'] = latitude.toString();
   if (longitude != null) request.fields['longitude'] = longitude.toString();
