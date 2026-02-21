@@ -156,6 +156,42 @@ class _TreePageState extends State<TreePage> {
     }
   }
 
+  /// Fetch labels for a list of trees (limited to first 30) and attach
+  /// them into each tree map as `'labels'` so UI can render color dots.
+  Future<void> _attachLabelsToTrees(List<Map<String, dynamic>> trees) async {
+    final limit = 30;
+    final subset = trees.take(limit).toList();
+
+    await Future.wait(subset.map((t) async {
+      try {
+        final idVal = t['id'] ?? t['uuid'];
+        if (idVal == null) return;
+        final idStr = idVal.toString();
+        if (int.tryParse(idStr) == null) return; // server expects numeric id
+
+        final resp = await TreeApi.getTreeLabels(treeId: idStr);
+        List<Map<String, dynamic>> found = [];
+        if (resp.containsKey('data')) {
+          final d = resp['data'];
+          if (d is Map && d.containsKey('labels')) {
+            final labs = d['labels'];
+            if (labs is List) {
+              found = labs.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
+            }
+          } else if (d is List) {
+            found = d.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
+          }
+        }
+
+        if (found.isNotEmpty) {
+          t['labels'] = found;
+        }
+      } catch (_) {
+        // ignore individual failures
+      }
+    }));
+  }
+
   @override
   void dispose() {
     _connectivitySub?.cancel();
@@ -351,6 +387,9 @@ class _TreePageState extends State<TreePage> {
 
             return parseSeq(b).compareTo(parseSeq(a));
           });
+          // Try to attach labels (so label color dots can render). Limit to first 30 trees.
+          // Fire-and-forget attach labels so UI can render color dots when available.
+          _attachLabelsToTrees(unique).catchError((_) {});
 
           _filteredTrees = unique;
           _allTrees = unique;
@@ -1710,29 +1749,51 @@ Widget _buildActiveFilters() {
                   const SizedBox(height: 4),
                   Row(
                     children: [
-                      Text(
-                        type,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 11,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      // NOTE: Temporarily hiding the Unsynced badge while tree sync
-                      // is being debugged. Re-enable by restoring the conditional
-                      // `if (synced == 0)` block when tree sync is fixed.
-                      const Text(
-                        "•",
-                        style: TextStyle(color: Colors.grey, fontSize: 11),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        displayDate,
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 11,
-                        ),
-                      ),
+                      Builder(builder: (ctx) {
+                        final fs = (tree['flowering_status'] ?? '-').toString().toUpperCase();
+                        Color statusCol;
+                        switch (fs) {
+                          case 'A':
+                            statusCol = Colors.green;
+                            break;
+                          case 'B':
+                            statusCol = Colors.lightGreen;
+                            break;
+                          case 'C':
+                            statusCol = Colors.orange;
+                            break;
+                          case 'D':
+                            statusCol = Colors.redAccent;
+                            break;
+                          case 'X':
+                            statusCol = Colors.grey;
+                            break;
+                          default:
+                            statusCol = Colors.grey.shade400;
+                        }
+
+                        final area = tree['area'] ?? '-';
+                        final terrace = tree['terrace']?.toString() ?? '-';
+                        final valve = tree['water_valve']?.toString() ?? '-';
+
+                        return Row(
+                          children: [
+                            Text(
+                              fs,
+                              style: TextStyle(
+                                color: statusCol,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '$area, $terrace ($valve)',
+                              style: const TextStyle(color: Colors.grey, fontSize: 11),
+                            ),
+                          ],
+                        );
+                      }),
                     ],
                   ),
                 ],

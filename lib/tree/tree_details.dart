@@ -39,7 +39,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   bool _isOnline = true;
   String _floweringPeriod = '-';
   // Labels attached to this tree (temporary in-memory list)
-  List<String> labels = [];
+  List<Map<String, dynamic>> labels = [];
 
   Map<String, dynamic> _normalizeTree(Map<String, dynamic> src) {
     final normalized = Map<String, dynamic>.from(src);
@@ -75,16 +75,87 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
   }
 
   void _showAddLabelSheet(BuildContext context) {
+    // kept for compatibility; prefer calling with uuid in build
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder:
-          (_) => AddLabelSheet(
-            onLabelAdded: (label) => setState(() => labels.add(label)),
-          ),
+      builder: (_) => AddLabelSheet(
+        onLabelAdded: (labelMap) => setState(() => labels.add(labelMap)),
+      ),
+    );
+  }
+
+  void _showAddLabelSheetForTree(BuildContext context, String treeUuid) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => AddLabelSheet(
+        treeUuid: treeUuid,
+        existingLabels: labels,
+        onLabelAdded: (labelMap) async {
+          // attach via API then refresh labels
+          try {
+            // Resolve numeric tree id; server expects numeric bigint id, not UUID.
+            String? numericId;
+            try {
+              final localId = tree?['id'] ?? tree?['tree_id'];
+              if (localId != null) {
+                final s = localId.toString();
+                if (int.tryParse(s) != null) numericId = s;
+              }
+            } catch (_) {}
+
+            if (numericId == null) {
+              try {
+                final srv = await TreeApi.getTreeByUuid(treeUuid);
+                Map<String, dynamic>? tmap;
+                if (srv is Map && srv.containsKey('data')) {
+                  final d = srv['data'];
+                  if (d is Map) tmap = Map<String, dynamic>.from(d);
+                } else if (srv is Map) {
+                  tmap = Map<String, dynamic>.from(srv);
+                }
+                if (tmap != null && tmap.containsKey('id')) {
+                  final sid = tmap['id']?.toString();
+                  if (sid != null && int.tryParse(sid) != null) numericId = sid;
+                }
+              } catch (_) {}
+            }
+
+            Map<String, dynamic> attached = {};
+            if (numericId != null) {
+              attached = await TreeApi.attachLabel(
+                treeId: numericId,
+                label: labelMap['label'] ?? labelMap['name'] ?? '',
+                color: labelMap['color']?.toString(),
+              );
+            } else {
+              // No numeric id available (likely offline-created tree). Persist locally and skip server attach.
+              attached = Map<String, dynamic>.from(labelMap);
+            }
+            // If server returned label object, use it; else use provided map
+            Map<String, dynamic> useMap = {};
+            if (attached.containsKey('data')) {
+              final d = attached['data'];
+              if (d is Map && d.containsKey('label')) {
+                useMap = Map<String, dynamic>.from(d['label']);
+              }
+            }
+            if (useMap.isEmpty) useMap = Map<String, dynamic>.from(labelMap);
+            setState(() => labels.add(useMap));
+          } catch (e) {
+            print('⚠️ Failed to attach label: $e');
+            // fallback: still add locally
+            setState(() => labels.add(Map<String, dynamic>.from(labelMap)));
+          }
+        },
+      ),
     );
   }
 
@@ -147,6 +218,12 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
         isLoading = false;
       });
 
+        // Load labels for this tree
+        try {
+          final uuidStr = (data['uuid'] ?? widget.treeID).toString();
+          await _loadTreeLabels(uuidStr);
+        } catch (_) {}
+
       // Fetch flowering period from dedicated endpoint
       _fetchFloweringPeriod((data['uuid'] ?? widget.treeID).toString());
 
@@ -184,6 +261,12 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
           tree = _normalizeTree(Map<String, dynamic>.from(data));
           isLoading = false;
         });
+
+        // Load labels for this tree
+        try {
+          final uuidStr = (data['uuid'] ?? widget.treeID).toString();
+          await _loadTreeLabels(uuidStr);
+        } catch (_) {}
 
         // Fetch flowering period from dedicated endpoint
         _fetchFloweringPeriod((data['uuid'] ?? widget.treeID).toString());
@@ -247,6 +330,12 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
               tree = _normalizeTree(localMap);
               isLoading = false;
             });
+
+            // Load labels (from local DB may not be available; try server)
+            try {
+              final uuidStr = (localMap['uuid'] as String?) ?? widget.treeID;
+              await _loadTreeLabels(uuidStr);
+            } catch (_) {}
 
             // Fetch flowering period from dedicated endpoint
             _fetchFloweringPeriod(
@@ -414,6 +503,74 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
       }
     } catch (e) {
       print('❌ Failed to merge cached growth: $e');
+    }
+  }
+
+  Future<void> _loadTreeLabels(String treeUuid) async {
+    try {
+      // Attempt to resolve a numeric tree id. Some local rows only have UUIDs
+      // (offline-created). The labels endpoint expects a numeric id (bigint).
+      String? numericId;
+
+      try {
+        final localId = tree?['id'] ?? tree?['tree_id'];
+        if (localId != null) {
+          final s = localId.toString();
+          if (int.tryParse(s) != null) numericId = s;
+        }
+      } catch (_) {}
+
+      // If we don't have a numeric id locally, try fetching the server record
+      // by UUID to obtain its numeric id. If that fails, skip the server call.
+      if (numericId == null) {
+        try {
+          final srv = await TreeApi.getTreeByUuid(treeUuid);
+          Map<String, dynamic>? tmap;
+          if (srv is Map && srv.containsKey('data')) {
+            final d = srv['data'];
+            if (d is Map) tmap = Map<String, dynamic>.from(d);
+          } else if (srv is Map) {
+            tmap = Map<String, dynamic>.from(srv);
+          }
+
+          if (tmap != null && tmap.containsKey('id')) {
+            final sid = tmap['id']?.toString();
+            if (sid != null && int.tryParse(sid) != null) numericId = sid;
+          }
+        } catch (_) {
+          // ignore - we will simply not call the labels endpoint when numeric id unavailable
+        }
+      }
+
+      if (numericId == null) {
+        // No numeric id available: avoid calling the server with a UUID
+        return;
+      }
+
+      final resp = await TreeApi.getTreeLabels(treeId: numericId);
+      List<Map<String, dynamic>> found = [];
+
+      if (resp.containsKey('data')) {
+        final d = resp['data'];
+        if (d is Map && d.containsKey('labels')) {
+          final labs = d['labels'];
+          if (labs is List) {
+            found = labs.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
+          }
+        } else if (d is List) {
+          found = d.map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
+        }
+      } else if (resp.containsKey('labels') && resp['labels'] is List) {
+        found = (resp['labels'] as List).map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
+      }
+
+      if (mounted) {
+        setState(() {
+          labels = found;
+        });
+      }
+    } catch (e) {
+      print('⚠️ Failed to load tree labels: $e');
     }
   }
 
@@ -769,8 +926,8 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                                     ],
                                   ),
                                   TextButton.icon(
-                                    onPressed:
-                                        () => _showAddLabelSheet(context),
+                                        onPressed:
+                                            () => _showAddLabelSheetForTree(context, uuid),
                                     icon: const Icon(
                                       Icons.add,
                                       size: 14,
@@ -797,29 +954,22 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                               const SizedBox(height: 8),
                               labels.isEmpty
                                   ? const Text(
-                                    "No labels yet",
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 12,
-                                    ),
-                                  )
+                                      "No labels yet",
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 12,
+                                      ),
+                                    )
                                   : Wrap(
-                                    spacing: 6,
-                                    runSpacing: 6,
-                                    children:
-                                        labels
-                                            .map(
-                                              (label) => _LabelChip(
-                                                label: label,
-                                                onDelete:
-                                                    () => setState(
-                                                      () =>
-                                                          labels.remove(label),
-                                                    ),
-                                              ),
-                                            )
-                                            .toList(),
-                                  ),
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: labels.map((labelMap) {
+                                        return _LabelChip(
+                                          labelMap: labelMap,
+                                          onDelete: () => setState(() => labels.remove(labelMap)),
+                                        );
+                                      }).toList(),
+                                    ),
                             ],
                           ),
                         ),
@@ -909,8 +1059,11 @@ class _InfoCard extends StatelessWidget {
 
 /// Bottom sheet to add a label
 class AddLabelSheet extends StatefulWidget {
-  final void Function(String) onLabelAdded;
-  const AddLabelSheet({required this.onLabelAdded});
+  /// treeUuid can be provided so that parent can attach via API.
+  final String? treeUuid;
+  final List<Map<String, dynamic>>? existingLabels;
+  final void Function(Map<String, dynamic>) onLabelAdded;
+  const AddLabelSheet({required this.onLabelAdded, this.treeUuid, this.existingLabels});
 
   @override
   State<AddLabelSheet> createState() => _AddLabelSheetState();
@@ -918,11 +1071,49 @@ class AddLabelSheet extends StatefulWidget {
 
 class _AddLabelSheetState extends State<AddLabelSheet> {
   final TextEditingController _ctrl = TextEditingController();
+  List<Map<String, dynamic>> _allLabels = [];
+  List<Map<String, dynamic>> _available = [];
+  String? _selectedColor;
+
+  final List<String> _presetColors = [
+    '#FF5733', // orange
+    '#2ECC71', // green
+    '#3498DB', // blue
+    '#9B59B6', // purple
+    '#F1C40F', // yellow
+    '#FFFFFF', // white
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchAllLabels();
+  }
 
   @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchAllLabels() async {
+    try {
+      final resp = await TreeApi.getLabels();
+      List<Map<String, dynamic>> found = [];
+      if (resp.containsKey('data') && resp['data'] is List) {
+        found = (resp['data'] as List).map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e)).toList();
+      }
+
+      setState(() {
+        _allLabels = found;
+        _available = _allLabels.where((l) {
+          final lid = l['id']?.toString();
+          return !(widget.existingLabels ?? []).any((el) => (el['id']?.toString() ?? '') == (lid ?? ''));
+        }).toList();
+      });
+    } catch (e) {
+      print('⚠️ Failed to fetch labels list: $e');
+    }
   }
 
   @override
@@ -943,19 +1134,66 @@ class _AddLabelSheetState extends State<AddLabelSheet> {
             style: TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
+
+          if (_available.isNotEmpty) ...[
+            const Text('Select from existing labels', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _available.map((l) {
+                final colorHex = l['color']?.toString();
+                final bg = _parseColor(colorHex);
+                final txt = (l['label'] ?? l['name'] ?? '').toString();
+                final txtColor = (bg.computeLuminance() < 0.5) ? Colors.white : Colors.black87;
+                return ActionChip(
+                  label: Text(txt, style: TextStyle(color: txtColor)),
+                  backgroundColor: bg,
+                  onPressed: () {
+                    widget.onLabelAdded(Map<String, dynamic>.from(l));
+                    Navigator.pop(context);
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          const Text('Or create a new label', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 8),
           TextField(
             controller: _ctrl,
-            decoration: const InputDecoration(hintText: 'Enter label'),
-            onSubmitted: (v) => _submit(),
+            decoration: const InputDecoration(hintText: 'Enter label name'),
+            onSubmitted: (_) => _submit(),
           ),
+          const SizedBox(height: 8),
+          const Text('Pick a color (optional)', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: _presetColors.map((hex) {
+              final c = _parseColor(hex);
+              final selected = _selectedColor == hex;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedColor = hex),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: c,
+                    border: Border.all(color: selected ? AppColors.hunterGreen : Colors.grey.shade300, width: selected ? 2 : 1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel'),
-              ),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
               const SizedBox(width: 8),
               ElevatedButton(onPressed: _submit, child: const Text('Add')),
             ],
@@ -966,27 +1204,65 @@ class _AddLabelSheetState extends State<AddLabelSheet> {
     );
   }
 
+  Color _parseColor(String? hex, {Color fallback = Colors.grey}) {
+    if (hex == null) return fallback;
+    try {
+      var h = hex.trim();
+      if (h.startsWith('#')) h = h.substring(1);
+      if (h.length == 3) h = h.split('').map((c) => '$c$c').join();
+      final v = int.parse(h, radix: 16);
+      return Color(0xFF000000 | v);
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   void _submit() {
     final v = _ctrl.text.trim();
-    if (v.isNotEmpty) {
-      widget.onLabelAdded(v);
-      Navigator.pop(context);
-    }
+    if (v.isEmpty) return;
+    final labelMap = {
+      'label': v,
+      'name': v,
+      if (_selectedColor != null) 'color': _selectedColor,
+    };
+    widget.onLabelAdded(Map<String, dynamic>.from(labelMap));
+    Navigator.pop(context);
   }
 }
 
 class _LabelChip extends StatelessWidget {
-  final String label;
+  final Map<String, dynamic> labelMap;
   final VoidCallback? onDelete;
-  const _LabelChip({required this.label, this.onDelete});
+  const _LabelChip({required this.labelMap, this.onDelete});
+
+  Color _parseColor(String? hex, {Color fallback = Colors.grey}) {
+    if (hex == null) return fallback;
+    try {
+      var h = hex.trim();
+      if (h.startsWith('#')) h = h.substring(1);
+      if (h.length == 3) {
+        h = h.split('').map((c) => '$c$c').join();
+      }
+      final v = int.parse(h, radix: 16);
+      return Color(0xFF000000 | v);
+    } catch (_) {
+      return fallback;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final name = (labelMap['label'] ?? labelMap['name'] ?? '').toString();
+    final colorHex = labelMap['color']?.toString();
+    final bg = _parseColor(colorHex, fallback: Colors.white);
+    // choose text color based on luminance
+    final textColor = (bg.computeLuminance() < 0.5) ? Colors.white : Colors.black87;
+
     return Chip(
-      label: Text(label),
+      label: Text(name, style: TextStyle(color: textColor)),
       deleteIcon: const Icon(Icons.close, size: 18),
       onDeleted: onDelete,
-      backgroundColor: Colors.white,
+      backgroundColor: bg,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
         side: BorderSide(color: AppColors.gray400),

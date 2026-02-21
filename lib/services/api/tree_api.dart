@@ -569,6 +569,153 @@ class TreeApi {
     }
   }
 
+  /// Attach a label to a tree (server-side endpoint must accept JSON body with `label` and optional `color`).
+  static Future<Map<String, dynamic>> attachLabel({
+    required String treeId,
+    required String label,
+    String? color,
+  }) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final uri = Uri.parse("${Config.apiBaseUrl}/trees/$treeId/labels");
+      final response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+        body: jsonEncode({
+          'label': label,
+          if (color != null) 'color': color,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+
+      final body = response.body;
+      // Print server response for debugging (helps surface 500 errors)
+      print('❌ attachLabel failed (status ${response.statusCode}): $body');
+
+      try {
+        final data = jsonDecode(body);
+        throw Exception(data['message'] ?? 'Failed to attach label: $body');
+      } catch (_) {
+        throw Exception('Failed to attach label (status ${response.statusCode}): $body');
+      }
+    } catch (e) {
+      throw Exception('Error attaching label: $e');
+    }
+  }
+
+  /// Fetch labels attached to a specific tree
+  /// Endpoint: GET /api/trees/{id}/labels
+  static Future<Map<String, dynamic>> getTreeLabels({
+    required String treeId,
+  }) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final uri = Uri.parse("${Config.apiBaseUrl}/trees/$treeId/labels");
+      final response = await http.get(
+        uri,
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+
+      final body = response.body;
+      print('❌ getTreeLabels failed (status ${response.statusCode}): $body');
+      try {
+        final data = jsonDecode(body);
+        throw Exception(data['message'] ?? 'Failed to fetch tree labels: $body');
+      } catch (_) {
+        throw Exception('Failed to fetch tree labels (status ${response.statusCode}): $body');
+      }
+    } catch (e) {
+      throw Exception('Error fetching tree labels: $e');
+    }
+  }
+
+  /// Fetch all available labels from the server
+  /// Endpoint: GET /api/labels
+  static Future<Map<String, dynamic>> getLabels() async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final uri = Uri.parse("${Config.apiBaseUrl}/labels");
+      final response = await http.get(
+        uri,
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+
+      final body = response.body;
+      print('❌ getLabels failed (status ${response.statusCode}): $body');
+      try {
+        final data = jsonDecode(body);
+        throw Exception(data['message'] ?? 'Failed to fetch labels: $body');
+      } catch (_) {
+        throw Exception('Failed to fetch labels (status ${response.statusCode}): $body');
+      }
+    } catch (e) {
+      throw Exception('Error fetching labels: $e');
+    }
+  }
+
+  /// Detach/delete a label from a tree
+  /// Endpoint: DELETE /api/trees/{treeId}/labels/{labelId}
+  static Future<void> deleteTreeLabel({
+    required String treeId,
+    required String labelId,
+  }) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final uri = Uri.parse("${Config.apiBaseUrl}/trees/$treeId/labels/$labelId");
+      final response = await http.delete(
+        uri,
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return;
+      }
+
+      final body = response.body;
+      print('❌ deleteTreeLabel failed (status ${response.statusCode}): $body');
+      try {
+        final data = jsonDecode(body);
+        throw Exception(data['message'] ?? 'Failed to delete tree label: $body');
+      } catch (_) {
+        throw Exception('Failed to delete tree label (status ${response.statusCode}): $body');
+      }
+    } catch (e) {
+      throw Exception('Error deleting tree label: $e');
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> fetchEvents() async {
     try {
       SharedPreferences prefs = await SharedPreferences.getInstance();
