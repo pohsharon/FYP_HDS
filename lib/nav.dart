@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/tree/tree_list.dart';
 import 'package:fyp_hbs/QR.dart';
-import 'package:fyp_hbs/fruit/fruit_list.dart';
+import 'package:fyp_hbs/harvest/harvest_list.dart';
+
 
 class Nav extends StatefulWidget {
   const Nav({super.key});
@@ -14,9 +15,11 @@ class Nav extends StatefulWidget {
 class _NavState extends State<Nav> {
   int _selectedIndex = 0;
 
-  static const List<Widget> _pages = <Widget>[
-    TreePage(),
-    FruitPage()
+  // Use an instance-level list so hot-reload or runtime changes don't
+  // accidentally leave this in an inconsistent const state.
+  final List<Widget> _pages = <Widget>[
+    const TreePage(),
+    const HarvestPage(),
   ];
 
   final Color activeColor = AppColors.mossGreen;
@@ -35,7 +38,8 @@ class _NavState extends State<Nav> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_selectedIndex],
+      // Guard access to the pages list in case its length changes at runtime.
+      body: _pages.length > _selectedIndex ? _pages[_selectedIndex] : _pages.first,
       backgroundColor: AppColors.background,
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.gray500,
@@ -53,10 +57,9 @@ class _NavState extends State<Nav> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: <Widget>[
-              // _buildTabIcon(Icons.home, 'Home', 0),
               _buildTabIcon(Icons.nature, 'Tree', 0),
               const SizedBox(width: 48), 
-              _buildTabIcon(Icons.bar_chart, 'Fruit', 1),
+              _buildTabIcon(Icons.bar_chart, 'Harvest', 1),
             ],
           ),
         ),

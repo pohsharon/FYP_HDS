@@ -328,6 +328,125 @@ class TreeApi {
     }
   }
 
+  /// Get the latest flowering status observation for a tree.
+  /// Endpoint: GET /api/trees/{id}/flowering-status
+  /// Returns a JSON object with `success` and `data` (see API contract).
+  static Future<Map<String, dynamic>> getTreeFloweringStatus(String id) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    // Ensure we call the endpoint with a numeric tree ID. If a UUID was
+    // provided, try to resolve the numeric ID via `getTreeByUuid`.
+    String resolvedId = id;
+    if (int.tryParse(resolvedId) == null) {
+      try {
+        final srv = await getTreeByUuid(resolvedId);
+        Map<String, dynamic>? tmap;
+        if (srv is Map && srv.containsKey('data')) {
+          final d = srv['data'];
+          if (d is Map) tmap = Map<String, dynamic>.from(d);
+        } else if (srv is Map) {
+          tmap = Map<String, dynamic>.from(srv);
+        }
+        if (tmap != null && tmap.containsKey('id')) {
+          final sid = tmap['id']?.toString();
+          if (sid != null && int.tryParse(sid) != null) resolvedId = sid;
+        }
+      } catch (_) {
+        // If resolution fails, keep original value — the server will return an error.
+      }
+    }
+
+    final url = "${Config.apiBaseUrl}/trees/$resolvedId/flowering-status";
+    final headers = {
+      "Accept": "application/json",
+      if (token != null) "Authorization": 'Bearer $token',
+    };
+
+    // Debug: print request info to help diagnose server 500s (remove in production)
+    print('TreeApi.getTreeFloweringStatus --> GET $url');
+    print('Headers: $headers');
+
+    final response = await http.get(Uri.parse(url), headers: headers);
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      // Include response body in exception to aid debugging (server message or stack)
+      String body = response.body;
+      try {
+        final data = jsonDecode(body);
+        final message = (data is Map && data.containsKey('message')) ? data['message'] : body;
+        throw Exception('Failed to fetch flowering status (status ${response.statusCode}): $message');
+      } catch (_) {
+        throw Exception('Failed to fetch flowering status (status ${response.statusCode}): $body');
+      }
+    }
+  }
+
+  /// Add a flowering status observation for a tree.
+  /// Endpoint: POST /api/trees/{id}/observations
+  /// Body: { "harvest_uuid": "<uuid>", "flowering_status": "A|B|C|D|X" }
+  static Future<Map<String, dynamic>> addTreeFloweringObservation({
+    required String id,
+    required String harvestUuid,
+    required String floweringStatus,
+  }) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    // Resolve numeric id if caller passed a UUID
+    String resolvedId = id;
+    if (int.tryParse(resolvedId) == null) {
+      try {
+        final srv = await getTreeByUuid(resolvedId);
+        Map<String, dynamic>? tmap;
+        if (srv is Map && srv.containsKey('data')) {
+          final d = srv['data'];
+          if (d is Map) tmap = Map<String, dynamic>.from(d);
+        } else if (srv is Map) {
+          tmap = Map<String, dynamic>.from(srv);
+        }
+        if (tmap != null && tmap.containsKey('id')) {
+          final sid = tmap['id']?.toString();
+          if (sid != null && int.tryParse(sid) != null) resolvedId = sid;
+        }
+      } catch (_) {}
+    }
+
+    final uri = Uri.parse("${Config.apiBaseUrl}/trees/$resolvedId/observations");
+    final response = await http.post(
+      uri,
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        if (token != null) "Authorization": 'Bearer $token',
+      },
+      body: jsonEncode({
+        'harvest_uuid': harvestUuid,
+        'flowering_status': floweringStatus,
+      }),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    // Debug: print request/response to help diagnose 422 or other errors
+    try {
+      print('TreeApi.addTreeFloweringObservation --> POST $uri');
+      print('Request body: ${jsonEncode({'harvest_uuid': harvestUuid, 'flowering_status': floweringStatus})}');
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+    } catch (_) {}
+
+    try {
+      final data = jsonDecode(response.body);
+      final message = (data is Map && data.containsKey('message')) ? data['message'] : data.toString();
+      throw Exception('Failed to add flowering observation (status ${response.statusCode}): $message');
+    } catch (_) {
+      throw Exception('Failed to add flowering observation (status ${response.statusCode}): ${response.body}');
+    }
+  }
+
   static Future<Map<String, dynamic>> updateTree({
     required String id,
     required String speciesId,
@@ -680,6 +799,41 @@ class TreeApi {
     }
   }
 
+  /// Fetch trees attached to a specific label
+  /// Endpoint: GET /api/labels/{labelId}/trees
+  static Future<Map<String, dynamic>> getTreesByLabel({
+    required String labelId,
+  }) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final uri = Uri.parse("${Config.apiBaseUrl}/labels/$labelId/trees");
+      final response = await http.get(
+        uri,
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+
+      final body = response.body;
+      print('❌ getTreesByLabel failed (status ${response.statusCode}): $body');
+      try {
+        final data = jsonDecode(body);
+        throw Exception(data['message'] ?? 'Failed to fetch trees by label: $body');
+      } catch (_) {
+        throw Exception('Failed to fetch trees by label (status ${response.statusCode}): $body');
+      }
+    } catch (e) {
+      throw Exception('Error fetching trees by label: $e');
+    }
+  }
+
   /// Detach/delete a label from a tree
   /// Endpoint: DELETE /api/trees/{treeId}/labels/{labelId}
   static Future<void> deleteTreeLabel({
@@ -772,6 +926,150 @@ class TreeApi {
       }
     } catch (e) {
       throw Exception("Error: ${e.toString()}");
+    }
+  }
+
+  /// Add a harvest record for a tree.
+  /// Endpoint: POST /api/trees/{id}/harvest-records
+  /// Accepts optional fields: harvest_uuid (uuid), harvest_date (date),
+  /// num_of_fruits (integer), weight (numeric), spoilt (boolean).
+  static Future<Map<String, dynamic>> addHarvestRecord({
+    required String id,
+    String? harvestUuid,
+    String? harvestDate,
+    int? numOfFruits,
+    double? weight,
+    bool? spoilt,
+  }) async {
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      // Resolve numeric id if caller passed a UUID
+      String resolvedId = id;
+      if (int.tryParse(resolvedId) == null) {
+        try {
+          final srv = await getTreeByUuid(resolvedId);
+          Map<String, dynamic>? tmap;
+          if (srv is Map && srv.containsKey('data')) {
+            final d = srv['data'];
+            if (d is Map) tmap = Map<String, dynamic>.from(d);
+          } else if (srv is Map) {
+            tmap = Map<String, dynamic>.from(srv);
+          }
+          if (tmap != null && tmap.containsKey('id')) {
+            final sid = tmap['id']?.toString();
+            if (sid != null && int.tryParse(sid) != null) resolvedId = sid;
+          }
+        } catch (_) {}
+      }
+
+      final uri = Uri.parse("${Config.apiBaseUrl}/trees/$resolvedId/harvest-records");
+
+      final Map<String, dynamic> payload = {};
+      if (harvestUuid != null) payload['harvest_uuid'] = harvestUuid;
+      if (harvestDate != null) payload['harvest_date'] = harvestDate;
+      if (numOfFruits != null) payload['num_of_fruits'] = numOfFruits;
+      if (weight != null) payload['weight'] = weight;
+      if (spoilt != null) payload['spoilt'] = spoilt;
+
+      final response = await http.post(
+        uri,
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          if (token != null) "Authorization": 'Bearer $token',
+        },
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+
+      // Debug prints to aid diagnosing 422/validation errors
+      try {
+        print('TreeApi.addHarvestRecord --> POST $uri');
+        print('Request body: ${jsonEncode(payload)}');
+        print('Response status: ${response.statusCode}');
+        print('Response body: ${response.body}');
+      } catch (_) {}
+
+      try {
+        final data = jsonDecode(response.body);
+        final message = (data is Map && data.containsKey('message')) ? data['message'] : data.toString();
+        throw Exception('Failed to add harvest record (status ${response.statusCode}): $message');
+      } catch (_) {
+        throw Exception('Failed to add harvest record (status ${response.statusCode}): ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Error adding harvest record: $e');
+    }
+  }
+
+  /// Fetch harvest records for a tree.
+  /// Endpoint: GET /api/trees/{id}/harvest-records
+  /// Returns a Map with `success` and `data` containing `tree_id`, `tree_uuid`,
+  /// `harvest_records` list and `pagination` meta (matches server shape).
+  static Future<Map<String, dynamic>> fetchHarvestRecords({
+    required String id,
+    int page = 1,
+  }) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    // Resolve numeric id if caller passed a UUID
+    String resolvedId = id;
+    if (int.tryParse(resolvedId) == null) {
+      try {
+        final srv = await getTreeByUuid(resolvedId);
+        Map<String, dynamic>? tmap;
+        if (srv is Map && srv.containsKey('data')) {
+          final d = srv['data'];
+          if (d is Map) tmap = Map<String, dynamic>.from(d);
+        } else if (srv is Map) {
+          tmap = Map<String, dynamic>.from(srv);
+        }
+        if (tmap != null && tmap.containsKey('id')) {
+          final sid = tmap['id']?.toString();
+          if (sid != null && int.tryParse(sid) != null) resolvedId = sid;
+        }
+      } catch (_) {}
+    }
+
+    final uri = Uri.parse("${Config.apiBaseUrl}/trees/$resolvedId/harvest-records?page=$page");
+
+    final response = await http.get(
+      uri,
+      headers: {
+        "Accept": "application/json",
+        if (token != null) "Authorization": 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) return decoded;
+        return {'success': true, 'data': decoded};
+      } catch (e) {
+        throw Exception('Failed to parse harvest records: ${e.toString()}');
+      }
+    }
+
+    // Debug: surface server response for easier diagnosis
+    try {
+      print('TreeApi.fetchHarvestRecords --> GET $uri');
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+    } catch (_) {}
+
+    try {
+      final decoded = jsonDecode(response.body);
+      final message = (decoded is Map && decoded.containsKey('message')) ? decoded['message'] : response.body;
+      throw Exception('Failed to fetch harvest records (status ${response.statusCode}): $message');
+    } catch (_) {
+      throw Exception('Failed to fetch harvest records (status ${response.statusCode})');
     }
   }
 }

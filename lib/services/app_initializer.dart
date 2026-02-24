@@ -327,13 +327,13 @@ class AppInitializer {
         if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
 
         // Fetch and cache fruits for offline use
-        try {
-          final remoteFruits = await FruitApi.fetchFruits();
-          final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
-          await fruitDB.cacheRemoteFruits(fruitModels);
-        } catch (e) {
-            _log('❌ Error fetching fruits: $e');
-        }
+        // try {
+        //   final remoteFruits = await FruitApi.fetchFruits();
+        //   final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
+        //   await fruitDB.cacheRemoteFruits(fruitModels);
+        // } catch (e) {
+        //     _log('❌ Error fetching fruits: $e');
+        // }
 
         if (_abortSyncRequested) throw Exception('Sync aborted due to connectivity loss');
 
@@ -593,13 +593,13 @@ class AppInitializer {
         await treeDB.cacheRemoteTrees(trees);
         if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
         // Fetch and cache fruits for offline use
-        try {
-          final remoteFruits = await FruitApi.fetchFruits();
-          final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
-          await fruitDB.cacheRemoteFruits(fruitModels);
-        } catch (e) {
-          _log('❌ Error caching fruits: $e');
-        }
+        // try {
+        //   final remoteFruits = await FruitApi.fetchFruits();
+        //   final fruitModels = remoteFruits.map((f) => FruitModel.fromMap(f)).toList();
+        //   await fruitDB.cacheRemoteFruits(fruitModels);
+        // } catch (e) {
+        //   _log('❌ Error caching fruits: $e');
+        // }
         if (_abortSyncRequested) throw Exception('Init aborted due to connectivity loss');
         // Fetch and cache health records in bulk, then group per-tree before caching
         try {

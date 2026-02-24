@@ -878,20 +878,17 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                                 label: "Water Valve",
                                 value: waterValve,
                               ),
-                              _InfoCard(
-                                label: "Planting Date",
-                                value: treeDate,
-                              ),
+                              // _InfoCard(
+                              //   label: "Planting Date",
+                              //   value: treeDate,
+                              // ),
                               _InfoCard(
                                 label: "Flowering Period",
                                 value: floweringPeriod,
                               ),
-                              _InfoCard(
-                                label: "Flowering Status",
-                                value: flowering_status,
-                              ),
+                             
                               _InfoCard(label: "Height", value: "$height ft"),
-                              _InfoCard(label: "Diameter", value: "$width ft"),
+                              _InfoCard(label: "Diameter", value: "$width inch"),
                             ],
                           ),
                         ),
@@ -966,7 +963,69 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                                       children: labels.map((labelMap) {
                                         return _LabelChip(
                                           labelMap: labelMap,
-                                          onDelete: () => setState(() => labels.remove(labelMap)),
+                                          onDelete: () async {
+                                            final confirmed = await showDialog<bool>(
+                                              context: context,
+                                              builder: (ctx) => AlertDialog(
+                                                title: const Text('Remove label'),
+                                                content: const Text('Are you sure you want to remove this label from the tree?'),
+                                                actions: [
+                                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                                                  TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Remove')),
+                                                ],
+                                              ),
+                                            );
+
+                                            if (confirmed != true) return;
+
+                                            // Attempt server-side delete if numeric tree id and label id available
+                                            try {
+                                              String? numericId;
+                                              try {
+                                                final localId = tree?['id'] ?? tree?['tree_id'];
+                                                if (localId != null) {
+                                                  final s = localId.toString();
+                                                  if (int.tryParse(s) != null) numericId = s;
+                                                }
+                                              } catch (_) {}
+
+                                              if (numericId == null) {
+                                                try {
+                                                  final uuid = (tree?['uuid'] ?? widget.treeID).toString();
+                                                  final srv = await TreeApi.getTreeByUuid(uuid);
+                                                  Map<String, dynamic>? tmap;
+                                                  if (srv is Map && srv.containsKey('data')) {
+                                                    final d = srv['data'];
+                                                    if (d is Map) tmap = Map<String, dynamic>.from(d);
+                                                  } else if (srv is Map) {
+                                                    tmap = Map<String, dynamic>.from(srv);
+                                                  }
+                                                  if (tmap != null && tmap.containsKey('id')) {
+                                                    final sid = tmap['id']?.toString();
+                                                    if (sid != null && int.tryParse(sid) != null) numericId = sid;
+                                                  }
+                                                } catch (_) {}
+                                              }
+
+                                              final labelId = labelMap['id']?.toString();
+                                              if (numericId != null && labelId != null && labelId.isNotEmpty) {
+                                                await TreeApi.deleteTreeLabel(treeId: numericId, labelId: labelId);
+                                                if (mounted) setState(() => labels.remove(labelMap));
+                                              } else {
+                                                // Fallback: remove locally when server-side delete not possible
+                                                if (mounted) setState(() => labels.remove(labelMap));
+                                              }
+                                            } catch (e) {
+                                              print('⚠️ Failed to delete label: $e');
+                                              try {
+                                                Flushbar(
+                                                  message: 'Failed to remove label: ${e.toString()}',
+                                                  backgroundColor: Colors.red.shade700,
+                                                  duration: const Duration(seconds: 3),
+                                                ).show(context);
+                                              } catch (_) {}
+                                            }
+                                          },
                                         );
                                       }).toList(),
                                     ),

@@ -269,6 +269,7 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
               if (snapshot.hasError) {
                 return Center(
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.error_outline, size: 64, color: AppColors.danger),
@@ -346,6 +347,7 @@ class _AgrochemicalTabPageState extends State<AgrochemicalTabPage> {
                 if (!hasAnyRecords) {
                   return Center(
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Container(

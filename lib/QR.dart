@@ -146,14 +146,14 @@ class _QRScannerPageState extends State<QRScannerPage> {
         final navigationTime = DateTime.now();
         // print('🚀 [NAVIGATION START] Navigating to FruitListFromQR at ${navigationTime.toIso8601String()}');
         
-        if (mounted) {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => FruitListFromQR(fruitUuid: foundFruit.uuid ?? uuid),
-            ),
-          );
-        }
+        // if (mounted) {
+        //   await Navigator.push(
+        //     context,
+        //     MaterialPageRoute(
+        //       builder: (_) => FruitListFromQR(fruitUuid: foundFruit.uuid ?? uuid),
+        //     ),
+        //   );
+        // }
         
         final navigationCompleteTime = DateTime.now();
         final navigationDuration = navigationCompleteTime.difference(navigationTime).inMilliseconds;

@@ -78,7 +78,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
   final TextEditingController latitudeController = TextEditingController();
   final TextEditingController longitudeController = TextEditingController();
 
-  String? selectedFloweringStatus;
+  // Flowering status removed — no longer tracked in the form
 
   String? selectedArea;
   String? previewTag;
@@ -126,7 +126,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
         }
 
         floweringPeriodController.text =
-            tree['flowering_period']?.toString() ?? '';
+          tree['flowering_period']?.toString() ?? '';
         selectedSpeciesId = tree['species']?['id']?.toString();
         _existingThumbnailPath = tree['thumbnail'];
         selectedArea = tree['area']?.toString();
@@ -134,7 +134,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
         waterValveController.text = tree['water_valve']?.toString() ?? '';
         latitudeController.text = tree['latitude']?.toString() ?? '';
         longitudeController.text = tree['longitude']?.toString() ?? '';
-        selectedFloweringStatus = tree['flowering_status']?.toString() ?? '';
+        // flowering status intentionally not prefilled (field removed)
       }
     });
   }
@@ -277,7 +277,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
             height: double.tryParse(heightController.text) ?? 0.0,
             diameter: double.tryParse(widthController.text) ?? 0.0,
             floweringPeriod: floweringPeriodController.text,
-            floweringStatus: selectedFloweringStatus,
             area: selectedArea,
             terrace: int.tryParse(terraceController.text),
             waterValve: int.tryParse(waterValveController.text),
@@ -298,7 +297,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 'flowering_period': int.tryParse(
                   floweringPeriodController.text,
                 ),
-                'flowering_status': selectedFloweringStatus,
                 'area': selectedArea,
                 'terrace': terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : null,
                 'water_valve': waterValveController.text.isNotEmpty ? int.tryParse(waterValveController.text) : null,
@@ -323,7 +321,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
                     ? double.tryParse(widget.tree!['longitude'].toString())
                     : null,
             floweringPeriod: floweringPeriodController.text,
-            floweringStatus: selectedFloweringStatus,
             area: selectedArea,
             terrace: terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : null,
             waterValve: waterValveController.text.isNotEmpty ? int.tryParse(waterValveController.text) : null,
@@ -345,7 +342,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 'flowering_period': int.tryParse(
                   floweringPeriodController.text,
                 ),
-                'flowering_status': widget.tree!['flowering_status'],
                 'area': selectedArea ?? widget.tree!['area'],
                 'terrace': terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : (widget.tree!['terrace'] is int ? widget.tree!['terrace'] : int.tryParse(widget.tree!['terrace']?.toString() ?? '')), 
                 'water_valve': waterValveController.text.isNotEmpty ? int.tryParse(waterValveController.text) : (widget.tree!['water_valve'] is int ? widget.tree!['water_valve'] : int.tryParse(widget.tree!['water_valve']?.toString() ?? '')),
@@ -413,7 +409,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
             'height': double.tryParse(heightController.text),
             'diameter': double.tryParse(widthController.text),
             'flowering_period': int.tryParse(floweringPeriodController.text),
-            'flowering_status': selectedFloweringStatus,
             'area': selectedArea,
             'terrace': terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : null,
             'water_valve': waterValveController.text.isNotEmpty ? int.tryParse(waterValveController.text) : null,
@@ -520,7 +515,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
             height: double.tryParse(heightController.text),
             diameter: double.tryParse(widthController.text),
             floweringPeriod: int.tryParse(floweringPeriodController.text),
-            floweringStatus: selectedFloweringStatus,
             synced: 0,
             imageFile: _selectedImage,
           );
@@ -922,7 +916,7 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 controller: widthController,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  labelText: 'Initial Diameter (ft)',
+                  labelText: 'Initial Diameter (inch)',
                   hintText: 'e.g. 1.6',
                   filled: true,
                   fillColor: Colors.white,
@@ -1030,31 +1024,6 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 ),
                 keyboardType: TextInputType.number,
                 validator: (value) => null,
-              ),
-              const SizedBox(height: 16),
-
-              // Flowering status dropdown (A, B, C, D, X)
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final menuWidth = constraints.maxWidth;
-                  return SizedBox(
-                    width: double.infinity,
-                    child: DropdownMenu<String>(
-                      width: max(menuWidth, 240),
-                      menuHeight: 220,
-                      initialSelection: selectedFloweringStatus,
-                      label: const Text('Flowering Status'),
-                      dropdownMenuEntries: ['A', 'B', 'C', 'D', 'X']
-                          .map((v) => DropdownMenuEntry(value: v, label: v))
-                          .toList(),
-                      onSelected: (String? v) {
-                        setState(() {
-                          selectedFloweringStatus = v;
-                        });
-                      },
-                    ),
-                  );
-                },
               ),
               const SizedBox(height: 16),
 

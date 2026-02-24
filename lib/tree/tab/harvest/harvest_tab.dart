@@ -2,13 +2,60 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
 import 'package:intl/intl.dart';
-import 'fruit_list.dart';
-import 'package:fyp_hbs/services/local database/fruit_db.dart';
-import 'package:fyp_hbs/services/local database/local_db.dart';
-import 'package:fyp_hbs/utils/connectivity_helper.dart';
-import 'package:fyp_hbs/fruit/create_fruit.dart';
 import 'package:another_flushbar/flushbar.dart';
 
+// ─── Design tokens ────────────────────────────────────────────────────────────
+class _HarvestTheme {
+  // Botanical palette
+  static const leafGreen    = Color(0xFF2D6A4F);
+  static const mossGreen    = Color(0xFF40916C);
+  static const mintFoam     = Color(0xFFD8F3DC);
+  static const cream        = Color(0xFFF9F5EE);
+  static const warmWhite    = Color(0xFFFFFDF8);
+  static const bark         = Color(0xFF6B4423);
+  static const amber        = Color(0xFFE9A849);
+  static const spoiltRed    = Color(0xFFD94F3D);
+  static const textDark     = Color(0xFF1B2D24);
+  static const textMid      = Color(0xFF4A6358);
+  static const textLight    = Color(0xFF8FAD9B);
+  static const divider      = Color(0xFFDEEDE5);
+  static const cardShadow   = Color(0x14000000);
+
+  // Flowering status chip colours
+  static Color statusColor(String s) {
+    switch (s.toUpperCase()) {
+      case 'A': return const Color(0xFF52B788);   // fresh green
+      case 'B': return const Color(0xFF74C69D);
+      case 'C': return const Color(0xFFB7E4C7);
+      case 'D': return const Color(0xFFE9C46A);   // amber
+      case 'X': return const Color(0xFFE07A5F);   // faded red
+      default:  return const Color(0xFFCED4DA);
+    }
+  }
+
+  static Color statusText(String s) {
+    switch (s.toUpperCase()) {
+      case 'A': case 'B': return Colors.white;
+      case 'C': return const Color(0xFF1B5E20);
+      case 'D': return const Color(0xFF7B5E00);
+      case 'X': return Colors.white;
+      default:  return const Color(0xFF495057);
+    }
+  }
+
+  static String statusDescription(String s) {
+    switch (s.toUpperCase()) {
+      case 'A': return '> 30';
+      case 'B': return '20 - 30';
+      case 'C': return '10 - 20';
+      case 'D': return '<10';
+      case 'X': return 'No flowering';
+      default:  return 'Unknown';
+    }
+  }
+}
+
+// ─── Widget ───────────────────────────────────────────────────────────────────
 class HarvestTabPage extends StatefulWidget {
   final String treeUuid;
   const HarvestTabPage({super.key, required this.treeUuid});
@@ -17,688 +64,891 @@ class HarvestTabPage extends StatefulWidget {
   State<HarvestTabPage> createState() => _HarvestTabPageState();
 }
 
-class _HarvestTabPageState extends State<HarvestTabPage> {
+class _HarvestTabPageState extends State<HarvestTabPage>
+    with SingleTickerProviderStateMixin {
+  Future<dynamic>? _statusFuture;
+  Future<dynamic>? _recordsFuture;
+  AnimationController? _fadeCtrl;
+  Animation<double> _fadeAnim = const AlwaysStoppedAnimation<double>(1.0);
 
-  Future<List<Map<String, dynamic>>> fetchHarvests() async {
-    final online = await ConnectivityHelper.hasInternetConnection();
-    final treeLocalFruits = await FruitDB().fetchFruitsByTree(widget.treeUuid);
-    final Set<String> localHarvestUuids = treeLocalFruits
-        .map((f) => (f.harvest_uuid ?? '').toString())
-        .where((s) => s.isNotEmpty)
-        .toSet();
-    
-    if (online) {
-      try {
-        final response = await TreeApi.getHarvestsByTreeId(widget.treeUuid);
-        final List<Map<String, dynamic>> filtered = [];
-        
-        for (final ev in response) {
-          try {
-            final String? evUuid = (ev['uuid'] ?? ev['id'] ?? ev['harvest_uuid'])?.toString();
-            final List<Map<String, dynamic>> eventFruits = [];
-            bool includesTree = false;
-            
-            if (ev['fruits'] is List) {
-              for (final f in ev['fruits']) {
-                try {
-                  final String fTree = (f['tree_uuid'] ?? '').toString();
-                  final String fHarvest = (f['harvest_uuid'] ?? '').toString();
-                  if (fTree == widget.treeUuid) {
-                    includesTree = true;
-                    eventFruits.add(Map<String, dynamic>.from(f));
-                  } else if (localHarvestUuids.contains(fHarvest)) {
-                    includesTree = true;
-                    eventFruits.add(Map<String, dynamic>.from(f));
-                  }
-                } catch (_) {}
-              }
-            }
-
-            if (!includesTree && evUuid != null && evUuid.isNotEmpty) {
-              if (localHarvestUuids.contains(evUuid)) {
-                final localMatches = treeLocalFruits.where((f) => (f.harvest_uuid ?? '') == evUuid).toList();
-                if (localMatches.isNotEmpty) {
-                  includesTree = true;
-                  for (final lm in localMatches) {
-                    eventFruits.add(lm.toMap());
-                  }
-                }
-              }
-            }
-
-            if (includesTree) {
-              filtered.add({
-                'uuid': evUuid ?? '',
-                'event_name': ev['event_name'] ?? ev['name'] ?? 'Harvest ${evUuid ?? ''}',
-                'start_date': ev['start_date'] ?? ev['begin_date'] ?? ev['created_at'] ?? '',
-                'end_date': ev['end_date'] ?? ev['finish_date'] ?? ev['harvested_at'] ?? '',
-                'fruits': eventFruits,
-              });
-            }
-          } catch (e) {
-            print('⚠️ fetchHarvests: malformed event skipped: $e');
-          }
-        }
-
-        return filtered;
-      } catch (e) {
-        print('⚠️ fetchHarvests: remote fetch failed, falling back to local cache: $e');
-      }
-    }
-
-    try {
-      final treeFruits = await FruitDB().fetchFruitsByTree(widget.treeUuid);
-      if (treeFruits.isEmpty) return <Map<String, dynamic>>[];
-
-      final Map<String, List<Map<String, dynamic>>> grouped = {};
-      for (final f in treeFruits) {
-        String rawHarvest = f.harvest_uuid ?? '';
-        String key;
-        if (rawHarvest.isNotEmpty && !rawHarvest.startsWith('gen_') && rawHarvest != 'unknown') {
-          key = rawHarvest;
-        } else {
-          final dateRaw = (f.harvested_at ?? f.created_at ?? '').toString();
-          String dateKey = '';
-          if (dateRaw.isNotEmpty) {
-            dateKey = dateRaw.contains('T') ? dateRaw.split('T').first : dateRaw;
-          }
-          if (dateKey.isEmpty) {
-            key = rawHarvest.isNotEmpty ? rawHarvest : 'unknown';
-          } else {
-            key = 'gen_$dateKey';
-          }
-        }
-
-        grouped.putIfAbsent(key, () => []).add(f.toMap());
-      }
-
-      final events = <Map<String, dynamic>>[];
-      final allKeys = grouped.keys.toList();
-      bool isReal(String k) => k != 'unknown' && !k.toString().startsWith('gen_');
-      allKeys.sort((a, b) {
-        final ra = isReal(a) ? 0 : 1;
-        final rb = isReal(b) ? 0 : 1;
-        if (ra != rb) return ra - rb;
-        return a.compareTo(b);
-      });
-
-      final realKeys = allKeys.where((k) => isReal(k)).toList();
-      if (realKeys.isNotEmpty) {
-        final firstReal = realKeys.first;
-        for (final k in List<String>.from(grouped.keys)) {
-          if (!isReal(k) && k != firstReal) {
-            final itemsToMove = grouped[k] ?? [];
-            grouped[firstReal] = (grouped[firstReal] ?? []) + itemsToMove;
-            grouped.remove(k);
-          }
-        }
-      }
-
-      final db = await LocalDB.getDatabase();
-      for (final harvestUuid in grouped.keys.toList()) {
-        final items = grouped[harvestUuid]!;
-        String displayName = '';
-
-        // Try to get event_name from harvest_events table first
-        if (harvestUuid != 'unknown' && !harvestUuid.toString().startsWith('gen_')) {
-          try {
-            final rows = await db.query(
-              'harvest_events',
-              columns: ['event_name', 'start_date', 'end_date'],
-              where: 'uuid = ?',
-              whereArgs: [harvestUuid],
-              limit: 1,
-            );
-            if (rows.isNotEmpty) {
-              final r = rows.first;
-              if (r['event_name'] != null && r['event_name'].toString().trim().isNotEmpty) {
-                displayName = r['event_name'].toString();
-              }
-            }
-          } catch (e) {
-            print('⚠️ harvest_tab: failed to read harvest_events for $harvestUuid: $e');
-          }
-        }
-
-        // If still empty and have fruits with event info, use that
-        if (displayName.isEmpty && items.isNotEmpty) {
-          final firstFruit = items.first;
-          if (firstFruit['event_name'] != null && firstFruit['event_name'].toString().trim().isNotEmpty) {
-            displayName = firstFruit['event_name'].toString();
-          }
-        }
-
-        // Fallback to generic name if still empty
-        if (displayName.isEmpty) {
-          displayName = 'Cached harvest ${harvestUuid.substring(0, harvestUuid.length > 8 ? 8 : harvestUuid.length)}';
-          print('⚠️ harvest_tab: using generic name for $harvestUuid');
-        }
-
-        events.add({
-          'uuid': harvestUuid,
-          'event_name': displayName,
-          'start_date': items.first['harvested_at'] ?? '',
-          'end_date': items.first['harvested_at'] ?? '',
-          'fruits': items,
-        });
-      }
-
-      return events;
-    } catch (e) {
-      print('⚠️ fetchHarvests fallback failed: $e');
-      return <Map<String, dynamic>>[];
-    }
+  @override
+  void initState() {
+    super.initState();
+    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _fadeAnim = CurvedAnimation(parent: _fadeCtrl!, curve: Curves.easeOut);
+    _fadeCtrl!.forward();
   }
 
-  String _formatDateRange(String? startDate, String? endDate) {
-    if (startDate == null || startDate.isEmpty) return '';
-    
+  @override
+  void dispose() {
+    _fadeCtrl?.dispose();
+    super.dispose();
+  }
+
+  // ── Status extraction (unchanged logic) ─────────────────────────────────────
+  String _extractStatus(dynamic d) {
     try {
-      final start = DateTime.parse(startDate);
-      final fmt = DateFormat('MMM dd');
-      
-      if (endDate == null || endDate.isEmpty) {
-        return '${fmt.format(start)}, ${start.year}';
+      if (d == null) return 'Unknown';
+      if (d is Map) {
+        if (d.containsKey('data')) {
+          final inner = d['data'];
+          if (inner is Map && inner.containsKey('flowering_status')) {
+            return inner['flowering_status']?.toString() ?? 'Unknown';
+          }
+          return inner?.toString() ?? 'Unknown';
+        }
+        if (d.containsKey('flowering_status')) return d['flowering_status']?.toString() ?? 'Unknown';
+        for (final v in d.values) { if (v is String) return v; }
+        return 'Unknown';
       }
-      
-      final end = DateTime.parse(endDate);
-      
-      // Same month and year
-      if (start.month == end.month && start.year == end.year) {
-        return '${DateFormat('MMM').format(start)} ${start.day}-${end.day}, ${start.year}';
-      }
-      
-      // Different months, same year
-      if (start.year == end.year) {
-        return '${fmt.format(start)} - ${fmt.format(end)}, ${start.year}';
-      }
-      
-      // Different years
-      return '${fmt.format(start)}, ${start.year} - ${fmt.format(end)}, ${end.year}';
-    } catch (e) {
-      return '';
-    }
+      if (d is List && d.isNotEmpty) return _extractStatus(d.first);
+      return d.toString();
+    } catch (_) { return 'Unknown'; }
+  }
+
+  // ── Records extraction ───────────────────────────────────────────────────────
+  List<dynamic> _extractRecords(dynamic data) {
+    final recData = data as Map<String, dynamic>?;
+    return recData != null && recData.containsKey('data') && recData['data'] is Map
+        ? (recData['data']['harvest_records'] as List<dynamic>?) ?? []
+        : (recData?['harvest_records'] as List<dynamic>?) ?? [];
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: fetchHarvests(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(
-            child: CircularProgressIndicator(
-              color: AppColors.hunterGreen,
-            ),
-          );
-        }
-        
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: Colors.red.shade300,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Error loading harvests',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.gray800,
+    return FadeTransition(
+      opacity: _fadeAnim,
+      child: Container(
+        color: _HarvestTheme.cream,
+        child: FutureBuilder<dynamic>(
+          future: _statusFuture ??= TreeApi.getTreeFloweringStatus(widget.treeUuid),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const _LoadingView();
+            }
+            if (snapshot.hasError) {
+              return _ErrorView(message: snapshot.error.toString());
+            }
+
+            final statusLabel = _extractStatus(snapshot.data);
+
+            return CustomScrollView(
+              slivers: [
+                // ── Flowering status hero card ─────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                    child: _FloweringStatusCard(
+                      status: statusLabel,
+                      onEdit: () => _onEditStatus(statusLabel),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${snapshot.error}',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.gray600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        
-        final harvests = snapshot.data ?? [];
-        
-        // Show empty state if no harvests
-        if (harvests.isEmpty) {
-          return SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // Add Fruit button
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppColors.hunterGreen.withOpacity(0.1),
-                          AppColors.mossGreen.withOpacity(0.05),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: AppColors.hunterGreen.withOpacity(0.3),
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () async {
-                          final hasInternet = await ConnectivityHelper.hasInternetConnection();
-                          if (!hasInternet) {
-                            if (mounted) {
-                              await Flushbar(
-                                message: 'Editing is disabled while offline',
-                                icon: const Icon(Icons.cloud_off, color: Colors.white),
-                                backgroundColor: Colors.orange.shade700,
-                                duration: const Duration(seconds: 2),
-                                borderRadius: BorderRadius.circular(12),
-                                margin: const EdgeInsets.all(12),
-                                flushbarPosition: FlushbarPosition.TOP,
-                              ).show(context);
-                            }
-                            return;
-                          }
-                          
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => CreateFruitPage(prefilledTreeUuid: widget.treeUuid),
-                            ),
-                          );
-                          if (result == true) {
-                            setState(() {});
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(16),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              // Icon container
-                              Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      AppColors.hunterGreen,
-                                      AppColors.mossGreen,
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.hunterGreen.withOpacity(0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.add_circle_outline,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              
-                              // Content
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Add New Fruit',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                        color: AppColors.hunterGreen,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Record a new fruit harvest',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: AppColors.gray600,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              
-                              // Arrow
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: AppColors.hunterGreen.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  Icons.arrow_forward,
-                                  size: 20,
-                                  color: AppColors.hunterGreen,
-                                ),
-                              ),
-                            ],
+                ),
+
+                // ── Section header ─────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 4, height: 22,
+                          decoration: BoxDecoration(
+                            color: _HarvestTheme.mossGreen,
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
-                      ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Harvest Records',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: _HarvestTheme.textDark,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const Spacer(),
+                        _AddRecordButton(onTap: () => _showAddRecordDialog(context)),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 32),
-                  
-                  // Empty state message
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: AppColors.gray200,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.inventory_2_outlined,
-                          size: 40,
-                          color: AppColors.gray600,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No harvest events yet',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.gray700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Tap the Add New Fruit button above to create your first harvest record',
-                        style: TextStyle(fontSize: 14, color: AppColors.gray600),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        return ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: harvests.length + 1,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            // Add Fruit button at the top
-            // Replace the Add Fruit button section in your itemBuilder with this:
+                ),
 
-// Add Fruit button at the top
-if (index == 0) {
-  return Container(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        colors: [
-          AppColors.hunterGreen.withOpacity(0.1),
-          AppColors.mossGreen.withOpacity(0.05),
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: AppColors.hunterGreen.withOpacity(0.3),
-        width: 1.5,
-      ),
-    ),
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () async {
-          final hasInternet = await ConnectivityHelper.hasInternetConnection();
-          if (!hasInternet) {
-            if (mounted) {
-              await Flushbar(
-                message: 'Editing is disabled while offline',
-                icon: const Icon(Icons.cloud_off, color: Colors.white),
-                backgroundColor: Colors.orange.shade700,
-                duration: const Duration(seconds: 2),
-                borderRadius: BorderRadius.circular(12),
-                margin: const EdgeInsets.all(12),
-                flushbarPosition: FlushbarPosition.TOP,
-              ).show(context);
-            }
-            return;
-          }
-          
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => CreateFruitPage(prefilledTreeUuid: widget.treeUuid),
-            ),
-          );
-          if (result == true) {
-            setState(() {});
-          }
-        },
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Icon container
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.hunterGreen,
-                      AppColors.mossGreen,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.hunterGreen.withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.add_circle_outline,
-                  color: Colors.white,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              
-              // Content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Add New Fruit',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: AppColors.hunterGreen,
+                // ── Harvest records timeline ───────────────────────────────
+                FutureBuilder<dynamic>(
+                  future: _recordsFuture ??= TreeApi.fetchHarvestRecords(id: widget.treeUuid),
+                  builder: (context, recSnap) {
+                    if (recSnap.connectionState == ConnectionState.waiting) {
+                      return const SliverToBoxAdapter(child: _LoadingView());
+                    }
+                    if (recSnap.hasError) {
+                      return SliverToBoxAdapter(
+                        child: _ErrorView(message: recSnap.error.toString()),
+                      );
+                    }
+
+                    final records = _extractRecords(recSnap.data);
+
+                    if (records.isEmpty) {
+                      return const SliverToBoxAdapter(child: _EmptyRecordsView());
+                    }
+
+                    return SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, i) => _TimelineRecordTile(
+                            record: records[i],
+                            isLast: i == records.length - 1,
+                            index: i,
+                          ),
+                          childCount: records.length,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Record a new fruit harvest',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.gray600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
-              ),
-              
-              // Arrow
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.hunterGreen.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(
-                  Icons.arrow_forward,
-                  size: 20,
-                  color: AppColors.hunterGreen,
-                ),
-              ),
-            ],
-          ),
+              ],
+            );
+          },
         ),
       ),
-    ),
-  );
-}
-            
-            final harvest = harvests[index - 1];
-            final eventName = harvest['event_name'] ?? 'Unknown Event';
-            final startDate = harvest['start_date'];
-            final endDate = harvest['end_date'];
-            final dateRange = _formatDateRange(startDate, endDate);
-            final fruitCount = (harvest['fruits'] as List?)?.length ?? 0;
-            
-            return Card(
-              color: AppColors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: AppColors.gray300, width: 1.5),
-              ),
-              elevation: 0,
-              child: InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => FruitListPage(
-                        treeUuid: widget.treeUuid,
-                        harvestUuid: harvest['uuid'] ?? harvest['harvest_uuid'] ?? '',
-                        eventName: harvest['event_name'],
+    );
+  }
+
+  // ── Edit status ─────────────────────────────────────────────────────────────
+  Future<void> _onEditStatus(String current) async {
+    final selected = await _showEditDialog(context, current);
+    if (selected == null || selected.isEmpty) return;
+
+    try {
+      String? harvestUuid;
+      try {
+        final events = await TreeApi.fetchEvents();
+        if (events.isNotEmpty) {
+          final active = events.firstWhere(
+            (e) {
+              final end = (e['end_date'] ?? e['ended_at'] ?? e['endDate']);
+              return end == null || (end is String && end.isEmpty);
+            },
+            orElse: () => events.first,
+          );
+          harvestUuid = (active['uuid'] ?? active['id'] ?? active['harvest_uuid'])?.toString();
+        }
+      } catch (_) {}
+
+      if (harvestUuid == null || harvestUuid.isEmpty) {
+        throw Exception('No active harvest event found for this tree');
+      }
+
+      await TreeApi.addTreeFloweringObservation(
+        id: widget.treeUuid,
+        harvestUuid: harvestUuid,
+        floweringStatus: selected,
+      );
+
+      setState(() { _statusFuture = TreeApi.getTreeFloweringStatus(widget.treeUuid); });
+      await Flushbar(
+        message: 'Flowering status updated',
+        duration: const Duration(seconds: 2),
+        flushbarPosition: FlushbarPosition.BOTTOM,
+      ).show(context);
+    } catch (e) {
+      await Flushbar(
+        message: 'Failed to save: $e',
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        flushbarPosition: FlushbarPosition.BOTTOM,
+      ).show(context);
+    }
+  }
+
+  // ── Add record bottom sheet ──────────────────────────────────────────────────
+  Future<void> _showAddRecordDialog(BuildContext context) async {
+    final dateController   = TextEditingController();
+    final numController    = TextEditingController();
+    final weightController = TextEditingController();
+    bool spoilt = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(builder: (ctx, setS) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: _HarvestTheme.warmWhite,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              left: 20, right: 20, top: 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Handle
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: _HarvestTheme.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(children: [
+                  Icon(Icons.grass_rounded, color: _HarvestTheme.mossGreen, size: 22),
+                  const SizedBox(width: 8),
+                  Text('Add Harvest Record', style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700,
+                    color: _HarvestTheme.textDark,
+                  )),
+                ]),
+                const SizedBox(height: 16),
+
+                _BottomSheetField(
+                  controller: dateController,
+                  label: 'Harvest date',
+                  icon: Icons.calendar_today_outlined,
+                  readOnly: true,
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      dateController.text = picked.toIso8601String();
+                    }
+                  },
+                ),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: _BottomSheetField(
+                    controller: numController,
+                    label: 'No. of fruits',
+                    icon: Icons.format_list_numbered_rounded,
+                    keyboardType: TextInputType.number,
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _BottomSheetField(
+                    controller: weightController,
+                    label: 'Weight (kg)',
+                    icon: Icons.scale_outlined,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  )),
+                ]),
+                const SizedBox(height: 6),
+
+                // Spoilt toggle
+                GestureDetector(
+                  onTap: () => setS(() => spoilt = !spoilt),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.symmetric(vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: spoilt
+                          ? _HarvestTheme.spoiltRed.withOpacity(0.08)
+                          : _HarvestTheme.mintFoam,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: spoilt ? _HarvestTheme.spoiltRed : _HarvestTheme.divider,
                       ),
                     ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [                                          
-                      // Content
-                      Expanded(
+                    child: Row(children: [
+                      Icon(
+                        spoilt ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded,
+                        color: spoilt ? _HarvestTheme.spoiltRed : _HarvestTheme.mossGreen,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        spoilt ? 'Marked as spoilt' : 'Not spoilt',
+                        style: TextStyle(
+                          color: spoilt ? _HarvestTheme.spoiltRed : _HarvestTheme.textMid,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      Switch.adaptive(
+                        value: spoilt,
+                        onChanged: (v) => setS(() => spoilt = v),
+                        activeColor: _HarvestTheme.spoiltRed,
+                      ),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text('Cancel', style: TextStyle(color: _HarvestTheme.textMid)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _HarvestTheme.leafGreen,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                    onPressed: () async {
+                      final date   = dateController.text.isNotEmpty ? dateController.text : null;
+                      final num    = int.tryParse(numController.text);
+                      final weight = double.tryParse(weightController.text);
+                      Navigator.pop(context);
+                    
+                      try {
+                        await TreeApi.addHarvestRecord(
+                          id: widget.treeUuid,
+                          harvestDate: date,
+                          numOfFruits: num,
+                          weight: weight,
+                          spoilt: spoilt,
+                        );
+                        setState(() {
+                          _recordsFuture = TreeApi.fetchHarvestRecords(id: widget.treeUuid);
+                        });
+                        await Flushbar(
+                          message: 'Record saved',
+                          duration: const Duration(seconds: 2),
+                          flushbarPosition: FlushbarPosition.BOTTOM,
+                        ).show(this.context);
+                      } catch (e) {
+                        await Flushbar(
+                          message: 'Failed: $e',
+                          backgroundColor: Colors.red.shade700,
+                          duration: const Duration(seconds: 3),
+                          flushbarPosition: FlushbarPosition.BOTTOM,
+                        ).show(this.context);
+                      }
+                    },
+                    child: const Text('Save record'),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  // ── Edit flowering status sheet ─────────────────────────────────────────────
+  Future<String?> _showEditDialog(BuildContext context, String current) {
+    final options = ['A', 'B', 'C', 'D', 'X'];
+    String selected = options.contains(current.toUpperCase()) ? current.toUpperCase() : options.first;
+
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) {
+        return StatefulBuilder(builder: (context, setS) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: _HarvestTheme.warmWhite,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                      color: _HarvestTheme.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(children: [
+                  Icon(Icons.local_florist_rounded, color: _HarvestTheme.mossGreen, size: 22),
+                  const SizedBox(width: 8),
+                  Text('Flowering Status', style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700,
+                    color: _HarvestTheme.textDark,
+                  )),
+                ]),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: options.map((s) {
+                    final isSelected = s == selected;
+                    return GestureDetector(
+                      onTap: () => setS(() => selected = s),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? _HarvestTheme.statusColor(s)
+                              : _HarvestTheme.mintFoam,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? _HarvestTheme.statusColor(s)
+                                : _HarvestTheme.divider,
+                            width: isSelected ? 2 : 1,
+                          ),
+                          boxShadow: isSelected
+                              ? [BoxShadow(color: _HarvestTheme.statusColor(s).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))]
+                              : [],
+                        ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
+                            Text(s, style: TextStyle(
+                              fontSize: 22, fontWeight: FontWeight.w800,
+                              color: isSelected
+                                  ? _HarvestTheme.statusText(s)
+                                  : _HarvestTheme.textMid,
+                            )),
+                            const SizedBox(height: 2),
                             Text(
-                              eventName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: AppColors.hunterGreen,
+                              _HarvestTheme.statusDescription(s),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isSelected
+                                    ? _HarvestTheme.statusText(s).withOpacity(0.85)
+                                    : _HarvestTheme.textLight,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (dateRange.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.calendar_today,
-                                    size: 14,
-                                    color: AppColors.gray500,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      dateRange,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: AppColors.gray600,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.inventory_2_outlined,
-                                  size: 14,
-                                  color: AppColors.gray500,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '$fruitCount ${fruitCount == 1 ? 'fruit' : 'fruits'}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: AppColors.gray600,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
                             ),
                           ],
                         ),
                       ),
-                      
-                      // Arrow
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.hunterGreen.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.arrow_forward_ios,
-                          size: 16,
-                          color: AppColors.hunterGreen,
-                        ),
-                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+                Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text('Cancel', style: TextStyle(color: _HarvestTheme.textMid)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _HarvestTheme.leafGreen,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                    onPressed: () => Navigator.pop(context, selected),
+                    child: const Text('Confirm'),
+                  ),
+                ]),
+              ],
+            ),
+          );
+        });
+      },
+    );
+  }
+}
+
+// ─── Sub-widgets ──────────────────────────────────────────────────────────────
+
+class _FloweringStatusCard extends StatelessWidget {
+  final String status;
+  final VoidCallback onEdit;
+  const _FloweringStatusCard({required this.status, required this.onEdit});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _HarvestTheme.statusColor(status);
+    final textColor = _HarvestTheme.statusText(status);
+    final desc = _HarvestTheme.statusDescription(status);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [BoxShadow(color: _HarvestTheme.cardShadow, blurRadius: 12, offset: Offset(0, 4))],
+      ),
+      child: Row(
+        children: [
+          // Colored accent strip + status badge
+          Container(
+            width: 80,
+            height: 88,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: const BorderRadius.horizontal(left: Radius.circular(16)),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Scale the status text down to fit available space
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(status, style: TextStyle(
+                    fontSize: 32, fontWeight: FontWeight.w900, color: textColor,
+                  )),
+                ),
+                const SizedBox(height: 4),
+                Flexible(
+                  child: Text(
+                    desc,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: textColor.withOpacity(0.85),
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Flowering Status', style: TextStyle(
+                  fontSize: 13, color: _HarvestTheme.textLight, fontWeight: FontWeight.w500,
+                )),
+                const SizedBox(height: 4),
+                Row(children: [
+                  Icon(Icons.local_florist_rounded, size: 16, color: _HarvestTheme.mossGreen),
+                  const SizedBox(width: 4),
+                  Text(desc, style: TextStyle(
+                    fontSize: 15, color: _HarvestTheme.textDark, fontWeight: FontWeight.w600,
+                  )),
+                ]),
+              ],
+            ),
+          ),
+
+          IconButton(
+            tooltip: 'Edit flowering status',
+            icon: Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: _HarvestTheme.mintFoam,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.edit_rounded, size: 18, color: _HarvestTheme.mossGreen),
+            ),
+            onPressed: onEdit,
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddRecordButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _AddRecordButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: _HarvestTheme.leafGreen,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [BoxShadow(
+            color: _HarvestTheme.leafGreen.withOpacity(0.3),
+            blurRadius: 8, offset: const Offset(0, 3),
+          )],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.add_rounded, size: 16, color: Colors.white),
+          const SizedBox(width: 4),
+          const Text('Add', style: TextStyle(
+            fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600,
+          )),
+        ]),
+      ),
+    );
+  }
+}
+
+class _TimelineRecordTile extends StatelessWidget {
+  final dynamic record;
+  final bool isLast;
+  final int index;
+  const _TimelineRecordTile({required this.record, required this.isLast, required this.index});
+
+  @override
+  Widget build(BuildContext context) {
+    final date = record['harvest_date'] != null
+        ? DateTime.tryParse(record['harvest_date'].toString())
+        : null;
+    final dateStr = date != null ? DateFormat.yMMMd().format(date) : '—';
+    final dayStr  = date != null ? DateFormat.d().format(date) : '—';
+    final monStr  = date != null ? DateFormat.MMM().format(date).toUpperCase() : '';
+    final num     = record['num_of_fruits']?.toString() ?? '—';
+    final weight  = record['weight'] != null ? '${record['weight']} kg' : '—';
+    final spoilt  = record['spoilt'] == true;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Timeline column
+          SizedBox(
+            width: 56,
+            child: Column(
+              children: [
+                Container(
+                  width: 48, height: 56,
+                  decoration: BoxDecoration(
+                    color: spoilt ? _HarvestTheme.spoiltRed.withOpacity(0.1) : _HarvestTheme.mintFoam,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: spoilt ? _HarvestTheme.spoiltRed.withOpacity(0.3) : _HarvestTheme.divider,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(dayStr, style: TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w800,
+                        color: spoilt ? _HarvestTheme.spoiltRed : _HarvestTheme.textDark,
+                        height: 1.1,
+                      )),
+                      Text(monStr, style: TextStyle(
+                        fontSize: 10, fontWeight: FontWeight.w600,
+                        color: spoilt ? _HarvestTheme.spoiltRed.withOpacity(0.8) : _HarvestTheme.mossGreen,
+                        letterSpacing: 0.5,
+                      )),
                     ],
                   ),
                 ),
+                if (!isLast)
+                  Expanded(
+                    child: Center(
+                      child: Container(
+                        width: 2,
+                        color: _HarvestTheme.divider,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // Record card
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: const [BoxShadow(
+                    color: _HarvestTheme.cardShadow, blurRadius: 8, offset: Offset(0, 2),
+                  )],
+                  border: Border.all(
+                    color: spoilt
+                        ? _HarvestTheme.spoiltRed.withOpacity(0.2)
+                        : _HarvestTheme.divider,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Text(dateStr, style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600,
+                          color: _HarvestTheme.textDark,
+                        )),
+                      ),
+                      if (spoilt)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _HarvestTheme.spoiltRed.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.warning_amber_rounded, size: 12, color: _HarvestTheme.spoiltRed),
+                            const SizedBox(width: 3),
+                            Text('Spoilt', style: TextStyle(
+                              fontSize: 11, color: _HarvestTheme.spoiltRed, fontWeight: FontWeight.w600,
+                            )),
+                          ]),
+                        ),
+                    ]),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      _StatChip(icon: Icons.eco_rounded, label: num, tooltip: 'Fruits'),
+                      const SizedBox(width: 8),
+                      _StatChip(icon: Icons.scale_outlined, label: weight, tooltip: 'Weight'),
+                    ]),
+                  ],
+                ),
               ),
-            );
-          },
-        );
-      },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String tooltip;
+  const _StatChip({required this.icon, required this.label, required this.tooltip});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: _HarvestTheme.mintFoam,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: _HarvestTheme.mossGreen),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(
+            fontSize: 12, color: _HarvestTheme.textMid, fontWeight: FontWeight.w600,
+          )),
+        ]),
+      ),
+    );
+  }
+}
+
+class _BottomSheetField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final bool readOnly;
+  final TextInputType? keyboardType;
+  final VoidCallback? onTap;
+
+  const _BottomSheetField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.readOnly = false,
+    this.keyboardType,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      readOnly: readOnly,
+      keyboardType: keyboardType,
+      onTap: onTap,
+      style: TextStyle(fontSize: 14, color: _HarvestTheme.textDark),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(fontSize: 13, color: _HarvestTheme.textLight),
+        prefixIcon: Icon(icon, size: 18, color: _HarvestTheme.mossGreen),
+        filled: true,
+        fillColor: _HarvestTheme.mintFoam,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: _HarvestTheme.divider),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: _HarvestTheme.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: _HarvestTheme.mossGreen, width: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadingView extends StatelessWidget {
+  const _LoadingView();
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.all(40),
+      child: Center(
+        child: CircularProgressIndicator(color: _HarvestTheme.mossGreen),
+      ),
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+  const _ErrorView({required this.message});
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 40, color: _HarvestTheme.spoiltRed),
+          const SizedBox(height: 8),
+          Text(message, textAlign: TextAlign.center,
+            style: TextStyle(color: _HarvestTheme.textMid, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyRecordsView extends StatelessWidget {
+  const _EmptyRecordsView();
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 32),
+      child: Column(children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: _HarvestTheme.mintFoam,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.eco_rounded, size: 36, color: _HarvestTheme.mossGreen),
+        ),
+        const SizedBox(height: 14),
+        Text('No harvest records yet', style: TextStyle(
+          fontSize: 15, fontWeight: FontWeight.w600, color: _HarvestTheme.textDark,
+        )),
+        const SizedBox(height: 4),
+        Text('Tap "Add" to log the first harvest for this tree.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: _HarvestTheme.textLight)),
+      ]),
     );
   }
 }
