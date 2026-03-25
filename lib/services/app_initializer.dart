@@ -2,10 +2,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:flutter/material.dart';
 import '../models/tree_model.dart';
-import '../models/fruit_model.dart';
 import '../repositories/tree_repository.dart';
 import 'api/tree_api.dart';
-import 'api/fruit_api.dart';
 import 'api/tree_growth_api.dart';
 import 'api/health_api.dart';
 import 'api/agrochemical_api.dart';
@@ -120,17 +118,14 @@ class AppInitializer {
       // Count unsynced trees
       try {
         final treeDB = TreeDB();
-        final unsyncedTrees = await treeDB.fetchUnsyncedTrees();
-        // print('🌳 Unsynced Trees: ${unsyncedTrees.length}');
+        await treeDB.fetchUnsyncedTrees();
       } catch (e) {
         print('⚠️ Error counting pending trees: $e');
       }
 
       // Count unsynced fruits
       try {
-        final fruitDB = FruitDB();
-        final unsyncedFruits = await fruitDB.getUnsyncedFruits();
-        // print('🍎 Unsynced Fruits: ${unsyncedFruits.length}');
+        await FruitDB().getUnsyncedFruits();
       } catch (e) {
         print('⚠️ Error counting pending fruits: $e');
       }
@@ -138,8 +133,7 @@ class AppInitializer {
       // Count unsynced health records
       try {
         final healthDB = HealthDB();
-        final unsyncedHealth = await healthDB.fetchUnsyncedHealths();
-        // print('❤️ Unsynced Health Records: ${unsyncedHealth.length}');
+        await healthDB.fetchUnsyncedHealths();
       } catch (e) {
         print('⚠️ Error counting pending health records: $e');
       }
@@ -147,8 +141,7 @@ class AppInitializer {
       // Count unsynced agrochemical records
       try {
         final agroDB = AgroDB();
-        final unsyncedAgro = await agroDB.fetchUnsyncedAgrochemicals();
-        // print('🧪 Unsynced Agrochemical Records: ${unsyncedAgro.length}');
+        await agroDB.fetchUnsyncedAgrochemicals();
       } catch (e) {
         print('⚠️ Error counting pending agrochemical records: $e');
       }
@@ -156,8 +149,7 @@ class AppInitializer {
       // Count unsynced growth records
       try {
         final growthDB = GrowthDB();
-        final unsyncedGrowth = await growthDB.fetchUnsyncedGrowths();
-        // print('📈 Unsynced Growth Records: ${unsyncedGrowth.length}');
+        await growthDB.fetchUnsyncedGrowths();
       } catch (e) {
         print('⚠️ Error counting pending growth records: $e');
       }
@@ -165,8 +157,7 @@ class AppInitializer {
       // Count unsynced disease records
       try {
         final diseaseDB = DiseaseDB();
-        final unsyncedDisease = await diseaseDB.fetchUnsyncedDiseases();
-        // print('🦠 Unsynced Disease Records: ${unsyncedDisease.length}');
+        await diseaseDB.fetchUnsyncedDiseases();
       } catch (e) {
         print('⚠️ Error counting pending disease records: $e');
       }
@@ -263,7 +254,6 @@ class AppInitializer {
 
     final online = await ConnectivityHelper.hasInternetConnection();
     final treeDB = TreeDB();
-    final fruitDB = FruitDB();
     final growthDB = GrowthDB();
 
     final nowStamp = DateTime.now().toIso8601String();
@@ -535,7 +525,6 @@ class AppInitializer {
     final online = await ConnectivityHelper.hasInternetConnection();
   // Local DB instance will be fetched where needed
     final treeDB = TreeDB();
-    final fruitDB = FruitDB();
     final growthDB = GrowthDB();
     List<TreeModel> trees = [];
 

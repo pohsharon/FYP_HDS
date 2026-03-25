@@ -146,7 +146,7 @@ class HealthDB {
       await db.insert('health_record', u, conflictAlgorithm: ConflictAlgorithm.replace);
     }
 
-    final total = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM health_record'));
+    await db.rawQuery('SELECT COUNT(*) FROM health_record');
   }
 
   /// Replace tree_uuid for health rows when an offline-created tree gets a

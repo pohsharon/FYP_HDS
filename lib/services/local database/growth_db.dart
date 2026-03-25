@@ -121,7 +121,7 @@ class GrowthDB{
     final db = await LocalDB.getDatabase();
 
     try {
-      final before = await db.query('tree_growth');
+      await db.query('tree_growth');
     } catch (e) {
       print('⚠️ cacheRemoteGrowths: failed to dump before rows: $e');
     }
@@ -189,9 +189,7 @@ class GrowthDB{
       );
     }
 
-    final total = Sqflite.firstIntValue(
-      await db.rawQuery('SELECT COUNT(*) FROM tree_growth'),
-    );
+    await db.rawQuery('SELECT COUNT(*) FROM tree_growth');
   }
 
   /// Replace tree_uuid for growth rows when an offline-created tree receives

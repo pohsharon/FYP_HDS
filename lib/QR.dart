@@ -8,7 +8,7 @@ import 'package:qr_code_tools/qr_code_tools.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/services/local database/fruit_db.dart';
 import 'package:fyp_hbs/services/local database/tree_db.dart';
-import 'package:fyp_hbs/fruit/fruit_list.dart';
+// import 'package:fyp_hbs/fruit/fruit_list.dart'; // unused import, navigation currently commented
 
 class QRScannerPage extends StatefulWidget {
   const QRScannerPage({super.key});
@@ -68,8 +68,7 @@ class _QRScannerPageState extends State<QRScannerPage> {
   }
 
   Future<void> _handleScannedUUID(String scannedData) async {
-    final scanTime = DateTime.now();
-    
+    // scan timestamp removed (unused)
     // Extract UUID from URL if scanned data contains domain
     String uuid = scannedData;
     if (scannedData.contains('http://') || scannedData.contains('https://')) {
@@ -101,19 +100,13 @@ class _QRScannerPageState extends State<QRScannerPage> {
     
     try {
       // First, check if this UUID is a tree (using cached database)
-      final validationStartTime = DateTime.now();
-      // print('🔎 [VALIDATION START] Tree database search started at ${validationStartTime.toIso8601String()}');
       
       final treeIndex = _cachedTrees.indexWhere((t) => t.uuid == uuid);
 
       if (treeIndex >= 0 && mounted) {
         // Found in tree database - navigate to tree details
-        final foundTime = DateTime.now();
-        final searchDuration = foundTime.difference(validationStartTime).inMilliseconds;
-        // print('✅ [TREE FOUND] Found in tree database after ${searchDuration}ms at ${foundTime.toIso8601String()}');
+        // timing metrics removed (unused)
         
-        final navigationTime = DateTime.now();
-        // print('🚀 [NAVIGATION START] Navigating to TreeDetailsPage at ${navigationTime.toIso8601String()}');
         
         if (mounted) {
           await Navigator.push(
@@ -122,29 +115,18 @@ class _QRScannerPageState extends State<QRScannerPage> {
           );
         }
         
-        final navigationCompleteTime = DateTime.now();
-        final navigationDuration = navigationCompleteTime.difference(navigationTime).inMilliseconds;
-        // print('✅ [NAVIGATION COMPLETE] Directed to tree details in ${navigationDuration}ms at ${navigationCompleteTime.toIso8601String()}');
-        // print('📊 [TOTAL TIME] From scan to navigation: ${navigationCompleteTime.difference(scanTime).inMilliseconds}ms');
+        // navigation timing removed (unused)
         return;
       }
 
       // Second, check if this UUID is a fruit (using cached database)
-      final fruitSearchStart = DateTime.now();
-      // print('🔎 [VALIDATION CONTINUE] Fruit database search started at ${fruitSearchStart.toIso8601String()}');
       
       // Check only the fruit's own uuid field
       final fruitIndex = _cachedFruits.indexWhere((f) => f.uuid == uuid);
 
       if (fruitIndex >= 0 && mounted) {
         // Found in fruit database - navigate to FruitList and show details
-        final foundTime = DateTime.now();
-        final searchDuration = foundTime.difference(fruitSearchStart).inMilliseconds;
-        // print('✅ [FRUIT FOUND] Found in fruit database after ${searchDuration}ms at ${foundTime.toIso8601String()}');
-        
-        final foundFruit = _cachedFruits[fruitIndex];
-        final navigationTime = DateTime.now();
-        // print('🚀 [NAVIGATION START] Navigating to FruitListFromQR at ${navigationTime.toIso8601String()}');
+        // timing and intermediate variables removed (unused)
         
         // if (mounted) {
         //   await Navigator.push(
@@ -155,17 +137,12 @@ class _QRScannerPageState extends State<QRScannerPage> {
         //   );
         // }
         
-        final navigationCompleteTime = DateTime.now();
-        final navigationDuration = navigationCompleteTime.difference(navigationTime).inMilliseconds;
-        // print('✅ [NAVIGATION COMPLETE] Directed to fruit details in ${navigationDuration}ms at ${navigationCompleteTime.toIso8601String()}');
-        // print('📊 [TOTAL TIME] From scan to navigation: ${navigationCompleteTime.difference(scanTime).inMilliseconds}ms');
+        // navigation timing removed (unused)
         return;
       }
 
       // UUID not found in either database
-      final notFoundTime = DateTime.now();
-      final totalValidationTime = notFoundTime.difference(validationStartTime).inMilliseconds;
-      // print('❌ [NOT FOUND] UUID not found in any database after ${totalValidationTime}ms at ${notFoundTime.toIso8601String()}');
+      // not-found timing removed (unused)
       
       if (mounted) {
         await Flushbar(
@@ -177,8 +154,6 @@ class _QRScannerPageState extends State<QRScannerPage> {
         ).show(context);
       }
     } catch (e) {
-      final errorTime = DateTime.now();
-      print('❌ [ERROR] Exception at ${errorTime.toIso8601String()}: $e');
       debugPrint('Error handling scanned UUID: $e');
       if (mounted) {
         await Flushbar(

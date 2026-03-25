@@ -147,7 +147,7 @@ class TreeDB{
     );
 
     // Step 2: Delete only synced ones WITHOUT pending updates/deletes
-    final deletedCount = await db.delete('trees', 
+    await db.delete('trees', 
       where: 'synced = ? AND pending_update = ? AND pending_delete = ?', 
       whereArgs: [1, 0, 0]);
 

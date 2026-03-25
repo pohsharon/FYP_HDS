@@ -40,7 +40,6 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
   // Label selection for applying to many trees
   List<Map<String, dynamic>> _labelOptions = [];
   String? _selectedLabelId;
-  int _labelTreesCount = 0;
   List<Map<String, dynamic>> _labelTrees = [];
   // Which trees under the selected label are chosen for applying the agrochemical
   Set<String> _selectedTreeUuids = {};
@@ -148,7 +147,6 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
 
   Future<void> _fetchTreesForLabel(String labelId) async {
   setState(() {
-    _labelTreesCount = 0;
     _labelTrees = [];
     _selectedTreeUuids = {};
   });
@@ -169,12 +167,11 @@ class _CreateAgrochemicalPageState extends State<CreateAgrochemicalPage> {
 
     setState(() {
       _labelTrees = trees;
-      _labelTreesCount = trees.length;
       _selectedTreeUuids =
-          trees.map((t) =>
-              (t['uuid'] ?? t['tree_uuid'] ?? t['id'] ?? '').toString())
-          .where((s) => s.isNotEmpty)
-          .toSet(); // default select all
+        trees.map((t) =>
+          (t['uuid'] ?? t['tree_uuid'] ?? t['id'] ?? '').toString())
+        .where((s) => s.isNotEmpty)
+        .toSet(); // default select all
     });
   } catch (e) {
     print('⚠️ Failed to fetch trees for label: $e');
@@ -731,7 +728,6 @@ Future<void> _showTreeSelectionDialog() async {
                                     // cleared label selection
                                     setState(() {
                                       _labelTrees = [];
-                                      _labelTreesCount = 0;
                                       _selectedTreeUuids = {};
                                     });
                                   }

@@ -8,15 +8,15 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/tree/map_individual_tree.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:fyp_hbs/tree/tab/growthlog/growthlog_tab.dart';
-import '../config.dart';
-import 'package:fyp_hbs/models/tree_model.dart';
-import 'package:fyp_hbs/models/tree_growth_model.dart';
-import 'package:fyp_hbs/services/local%20database/tree_db.dart';
+import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:fyp_hbs/services/local%20database/species_db.dart';
-import 'package:fyp_hbs/services/local%20database/growth_db.dart';
-import 'package:another_flushbar/flushbar.dart';
-import '../utils/connectivity_helper.dart';
+import 'package:fyp_hbs/services/local%20database/tree_db.dart';
+import 'package:fyp_hbs/models/tree_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fyp_hbs/models/tree_growth_model.dart';
+import 'package:fyp_hbs/services/local%20database/growth_db.dart';
+import '../config.dart';
+import 'package:another_flushbar/flushbar.dart';
 
 class TreeDetailsPage extends StatefulWidget {
   final String treeID;

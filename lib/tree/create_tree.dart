@@ -128,6 +128,15 @@ class _CreateTreePageState extends State<CreateTreePage> {
         floweringPeriodController.text =
           tree['flowering_period']?.toString() ?? '';
         selectedSpeciesId = tree['species']?['id']?.toString();
+        // Prefill speciesController so the DropdownMenu shows the current species name
+        try {
+          final found = speciesList.firstWhere(
+            (s) => s['id'].toString() == selectedSpeciesId,
+          );
+          speciesController.text = found['name']?.toString() ?? '';
+        } catch (_) {
+          speciesController.text = '';
+        }
         _existingThumbnailPath = tree['thumbnail'];
         selectedArea = tree['area']?.toString();
         terraceController.text = tree['terrace']?.toString() ?? '';
@@ -852,8 +861,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
                       // ensure popup has a reasonable minimum width on larger screens
                       width: max(menuWidth, 240),
                       controller: speciesController,
-                      requestFocusOnTap: !isEditing,
-                      enabled: !isEditing,
+                      requestFocusOnTap: true,
+                      enabled: true,
                       initialSelection: selectedSpeciesId,
                       label: const Text('Species'),
                       menuHeight: 300,
@@ -866,26 +875,22 @@ class _CreateTreePageState extends State<CreateTreePage> {
                                 ),
                               )
                               .toList(),
-                      onSelected:
-                          isEditing
-                              ? null
-                              : (String? v) {
-                                if (v == null) return;
-                                setState(() {
-                                  selectedSpeciesId = v;
-                                  try {
-                                    final found = speciesList.firstWhere(
-                                      (s) => s['id'].toString() == v,
-                                    );
-                                    speciesController.text =
-                                        found['name']?.toString() ?? '';
-                                  } catch (_) {
-                                    speciesController.text = '';
-                                  }
-                                  // update preview when species changes
-                                  if (!isEditing) _deriveTagPreview();
-                                });
-                              },
+                      onSelected: (String? v) {
+                        if (v == null) return;
+                        setState(() {
+                          selectedSpeciesId = v;
+                          try {
+                            final found = speciesList.firstWhere(
+                              (s) => s['id'].toString() == v,
+                            );
+                            speciesController.text = found['name']?.toString() ?? '';
+                          } catch (_) {
+                            speciesController.text = '';
+                          }
+                          // update preview when species changes (only relevant when creating)
+                          if (widget.tree == null) _deriveTagPreview();
+                        });
+                      },
                     ),
                   );
                 },
@@ -984,33 +989,33 @@ class _CreateTreePageState extends State<CreateTreePage> {
               ),
 
               // Area dropdown (A - H)
-              const SizedBox(height: 16),
+              // const SizedBox(height: 16),
 
-              TextFormField(
-                controller: plantingDateController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: 'Planting Date',
-                  suffixIcon: Icon(Icons.calendar_today),
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-                readOnly: true,
-                onTap: () async {
-                  final pickedDate = await showDatePicker(
-                    context: context,
-                    initialDate: DateTime.now(),
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime.now(),
-                  );
-                  if (pickedDate != null) {
-                    plantingDateController.text = DateFormat(
-                      'yyyy-MM-dd',
-                    ).format(pickedDate);
-                  }
-                },
-                validator: (value) => null,
-              ),
+              // TextFormField(
+              //   controller: plantingDateController,
+              //   decoration: const InputDecoration(
+              //     border: OutlineInputBorder(),
+              //     labelText: 'Planting Date',
+              //     suffixIcon: Icon(Icons.calendar_today),
+              //     filled: true,
+              //     fillColor: Colors.white,
+              //   ),
+              //   readOnly: true,
+              //   onTap: () async {
+              //     final pickedDate = await showDatePicker(
+              //       context: context,
+              //       initialDate: DateTime.now(),
+              //       firstDate: DateTime(2000),
+              //       lastDate: DateTime.now(),
+              //     );
+              //     if (pickedDate != null) {
+              //       plantingDateController.text = DateFormat(
+              //         'yyyy-MM-dd',
+              //       ).format(pickedDate);
+              //     }
+              //   },
+              //   validator: (value) => null,
+              // ),
                
               const SizedBox(height: 16),
 

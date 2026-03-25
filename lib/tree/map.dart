@@ -80,13 +80,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
     
     try {
       // print('🗺️ [MAP] Starting to fetch tree markers from API...');
-      final startTime = DateTime.now();
+      // timing removed: start timestamp unused
       
       final response = await TreeApi.fetchAllTrees();
       final treeList = response['data']['data'] as List<dynamic>;
       
-      final fetchTime = DateTime.now().difference(startTime).inMilliseconds;
-      // print('🗺️ [MAP] API returned ${treeList.length} trees in ${fetchTime}ms');
+      // timing removed: fetch duration unused in production
 
       final markers = treeList.map<Map<String, dynamic>>((tree) {
         final treeMap = tree as Map<String, dynamic>;

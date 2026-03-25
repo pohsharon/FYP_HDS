@@ -8,8 +8,8 @@ class Config {
     // } else {
       // return "http://192.168.1.20:8000/api"; // Default for other platforms (Mac, Windows)
     // }
-    return "http://192.168.8.121:8080/api"; //Android real device
-    // return "https://app-hosbaduriansystem-dev-001-g5dwg4gpeqbfgqgy.southeastasia-01.azurewebsites.net/api";
+    // return "http://192.168.0.13:8080/api"; //Android real device
+    return "https://app-hosbaduriansystem-dev-001-g5dwg4gpeqbfgqgy.southeastasia-01.azurewebsites.net/api";
   }
 
   // No change in Supabase

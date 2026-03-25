@@ -7,19 +7,7 @@ import 'package:another_flushbar/flushbar.dart';
 // ─── Design tokens ────────────────────────────────────────────────────────────
 class _HarvestTheme {
   // Botanical palette
-  static const leafGreen    = Color(0xFF2D6A4F);
-  static const mossGreen    = Color(0xFF40916C);
-  static const mintFoam     = Color(0xFFD8F3DC);
-  static const cream        = Color(0xFFF9F5EE);
-  static const warmWhite    = Color(0xFFFFFDF8);
-  static const bark         = Color(0xFF6B4423);
-  static const amber        = Color(0xFFE9A849);
-  static const spoiltRed    = Color(0xFFD94F3D);
-  static const textDark     = Color(0xFF1B2D24);
-  static const textMid      = Color(0xFF4A6358);
-  static const textLight    = Color(0xFF8FAD9B);
-  static const divider      = Color(0xFFDEEDE5);
-  static const cardShadow   = Color(0x14000000);
+  // colors now referenced directly from AppColors in the file
 
   // Flowering status chip colours
   static Color statusColor(String s) {
@@ -64,24 +52,18 @@ class HarvestTabPage extends StatefulWidget {
   State<HarvestTabPage> createState() => _HarvestTabPageState();
 }
 
-class _HarvestTabPageState extends State<HarvestTabPage>
-    with SingleTickerProviderStateMixin {
+class _HarvestTabPageState extends State<HarvestTabPage> {
   Future<dynamic>? _statusFuture;
   Future<dynamic>? _recordsFuture;
-  AnimationController? _fadeCtrl;
-  Animation<double> _fadeAnim = const AlwaysStoppedAnimation<double>(1.0);
 
   @override
   void initState() {
     super.initState();
-    _fadeCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
-    _fadeAnim = CurvedAnimation(parent: _fadeCtrl!, curve: Curves.easeOut);
-    _fadeCtrl!.forward();
+    // simplified: no entry animation
   }
 
   @override
   void dispose() {
-    _fadeCtrl?.dispose();
     super.dispose();
   }
 
@@ -108,32 +90,35 @@ class _HarvestTabPageState extends State<HarvestTabPage>
 
   // ── Records extraction ───────────────────────────────────────────────────────
   List<dynamic> _extractRecords(dynamic data) {
-    final recData = data as Map<String, dynamic>?;
-    return recData != null && recData.containsKey('data') && recData['data'] is Map
-        ? (recData['data']['harvest_records'] as List<dynamic>?) ?? []
-        : (recData?['harvest_records'] as List<dynamic>?) ?? [];
+    // Expect either { data: [ ... ] } or a top-level list
+    if (data is Map) {
+      if (data['data'] is List) return List<dynamic>.from(data['data']);
+      if (data['data'] is Map && data['data']['harvest_records'] is List) return List<dynamic>.from(data['data']['harvest_records']);
+      if (data['harvest_records'] is List) return List<dynamic>.from(data['harvest_records']);
+      return [];
+    }
+    if (data is List) return data;
+    return [];
   }
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fadeAnim,
-      child: Container(
-        color: _HarvestTheme.cream,
-        child: FutureBuilder<dynamic>(
-          future: _statusFuture ??= TreeApi.getTreeFloweringStatus(widget.treeUuid),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const _LoadingView();
-            }
-            if (snapshot.hasError) {
-              return _ErrorView(message: snapshot.error.toString());
-            }
+    return Container(
+      color: AppColors.white,
+      child: FutureBuilder<dynamic>(
+        future: _statusFuture ??= TreeApi.getTreeFloweringStatus(widget.treeUuid),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const _LoadingView();
+          }
+          if (snapshot.hasError) {
+            return _ErrorView(message: snapshot.error.toString());
+          }
 
-            final statusLabel = _extractStatus(snapshot.data);
+          final statusLabel = _extractStatus(snapshot.data);
 
-            return CustomScrollView(
-              slivers: [
+          return CustomScrollView(
+            slivers: [
                 // ── Flowering status hero card ─────────────────────────────
                 SliverToBoxAdapter(
                   child: Padding(
@@ -154,7 +139,7 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                         Container(
                           width: 4, height: 22,
                           decoration: BoxDecoration(
-                            color: _HarvestTheme.mossGreen,
+                          color: AppColors.mossGreen,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -164,7 +149,7 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
-                            color: _HarvestTheme.textDark,
+                          color: AppColors.textDark,
                             letterSpacing: -0.3,
                           ),
                         ),
@@ -213,7 +198,6 @@ class _HarvestTabPageState extends State<HarvestTabPage>
             );
           },
         ),
-      ),
     );
   }
 
@@ -222,46 +206,15 @@ class _HarvestTabPageState extends State<HarvestTabPage>
     final selected = await _showEditDialog(context, current);
     if (selected == null || selected.isEmpty) return;
 
-    try {
-      String? harvestUuid;
-      try {
-        final events = await TreeApi.fetchEvents();
-        if (events.isNotEmpty) {
-          final active = events.firstWhere(
-            (e) {
-              final end = (e['end_date'] ?? e['ended_at'] ?? e['endDate']);
-              return end == null || (end is String && end.isEmpty);
-            },
-            orElse: () => events.first,
-          );
-          harvestUuid = (active['uuid'] ?? active['id'] ?? active['harvest_uuid'])?.toString();
-        }
-      } catch (_) {}
-
-      if (harvestUuid == null || harvestUuid.isEmpty) {
-        throw Exception('No active harvest event found for this tree');
-      }
-
-      await TreeApi.addTreeFloweringObservation(
-        id: widget.treeUuid,
-        harvestUuid: harvestUuid,
-        floweringStatus: selected,
-      );
-
-      setState(() { _statusFuture = TreeApi.getTreeFloweringStatus(widget.treeUuid); });
-      await Flushbar(
-        message: 'Flowering status updated',
-        duration: const Duration(seconds: 2),
-        flushbarPosition: FlushbarPosition.BOTTOM,
-      ).show(context);
-    } catch (e) {
-      await Flushbar(
-        message: 'Failed to save: $e',
-        backgroundColor: Colors.red.shade700,
-        duration: const Duration(seconds: 3),
-        flushbarPosition: FlushbarPosition.BOTTOM,
-      ).show(context);
-    }
+    // Simplified: update local UI only (no event discovery or network call).
+    setState(() {
+      _statusFuture = Future.value({'data': {'flowering_status': selected}});
+    });
+    await Flushbar(
+      message: 'Flowering status updated (local)',
+      duration: const Duration(seconds: 2),
+      flushbarPosition: FlushbarPosition.BOTTOM,
+    ).show(context);
   }
 
   // ── Add record bottom sheet ──────────────────────────────────────────────────
@@ -279,7 +232,7 @@ class _HarvestTabPageState extends State<HarvestTabPage>
         return StatefulBuilder(builder: (ctx, setS) {
           return Container(
             decoration: const BoxDecoration(
-              color: _HarvestTheme.warmWhite,
+              color: AppColors.warmWhite,
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
             padding: EdgeInsets.only(
@@ -295,18 +248,18 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                   child: Container(
                     width: 40, height: 4,
                     decoration: BoxDecoration(
-                      color: _HarvestTheme.divider,
+                      color: AppColors.divider,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
                 Row(children: [
-                  Icon(Icons.grass_rounded, color: _HarvestTheme.mossGreen, size: 22),
+                  Icon(Icons.grass_rounded, color: AppColors.mossGreen, size: 22),
                   const SizedBox(width: 8),
                   Text('Add Harvest Record', style: TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w700,
-                    color: _HarvestTheme.textDark,
+                    color: AppColors.textDark,
                   )),
                 ]),
                 const SizedBox(height: 16),
@@ -354,25 +307,25 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      color: spoilt
-                          ? _HarvestTheme.spoiltRed.withOpacity(0.08)
-                          : _HarvestTheme.mintFoam,
+                        color: spoilt
+                          ? AppColors.spoiltRed.withOpacity(0.08)
+                          : AppColors.mintFoam,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: spoilt ? _HarvestTheme.spoiltRed : _HarvestTheme.divider,
+                        color: spoilt ? AppColors.spoiltRed : AppColors.divider,
                       ),
                     ),
                     child: Row(children: [
                       Icon(
                         spoilt ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded,
-                        color: spoilt ? _HarvestTheme.spoiltRed : _HarvestTheme.mossGreen,
+                        color: spoilt ? AppColors.spoiltRed : AppColors.mossGreen,
                         size: 20,
                       ),
                       const SizedBox(width: 10),
                       Text(
                         spoilt ? 'Marked as spoilt' : 'Not spoilt',
                         style: TextStyle(
-                          color: spoilt ? _HarvestTheme.spoiltRed : _HarvestTheme.textMid,
+                          color: spoilt ? AppColors.spoiltRed : AppColors.textMid,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -380,7 +333,7 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                       Switch.adaptive(
                         value: spoilt,
                         onChanged: (v) => setS(() => spoilt = v),
-                        activeColor: _HarvestTheme.spoiltRed,
+                        activeColor: AppColors.spoiltRed,
                       ),
                     ]),
                   ),
@@ -390,12 +343,12 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                 Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: Text('Cancel', style: TextStyle(color: _HarvestTheme.textMid)),
+                    child: Text('Cancel', style: TextStyle(color: AppColors.textMid)),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _HarvestTheme.leafGreen,
+                      backgroundColor: AppColors.leafGreen,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -456,7 +409,7 @@ class _HarvestTabPageState extends State<HarvestTabPage>
         return StatefulBuilder(builder: (context, setS) {
           return Container(
             decoration: const BoxDecoration(
-              color: _HarvestTheme.warmWhite,
+              color: AppColors.warmWhite,
               borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
             ),
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -468,18 +421,18 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                   child: Container(
                     width: 40, height: 4,
                     decoration: BoxDecoration(
-                      color: _HarvestTheme.divider,
+                      color: AppColors.divider,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
                 const SizedBox(height: 16),
                 Row(children: [
-                  Icon(Icons.local_florist_rounded, color: _HarvestTheme.mossGreen, size: 22),
+                  Icon(Icons.local_florist_rounded, color: AppColors.mossGreen, size: 22),
                   const SizedBox(width: 8),
                   Text('Flowering Status', style: TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w700,
-                    color: _HarvestTheme.textDark,
+                    color: AppColors.textDark,
                   )),
                 ]),
                 const SizedBox(height: 14),
@@ -494,17 +447,17 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                         duration: const Duration(milliseconds: 180),
                         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                         decoration: BoxDecoration(
-                          color: isSelected
+                            color: isSelected
                               ? _HarvestTheme.statusColor(s)
-                              : _HarvestTheme.mintFoam,
+                              : AppColors.mintFoam,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: isSelected
-                                ? _HarvestTheme.statusColor(s)
-                                : _HarvestTheme.divider,
+                          color: isSelected
+                            ? _HarvestTheme.statusColor(s)
+                            : AppColors.divider,
                             width: isSelected ? 2 : 1,
                           ),
-                          boxShadow: isSelected
+                            boxShadow: isSelected
                               ? [BoxShadow(color: _HarvestTheme.statusColor(s).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))]
                               : [],
                         ),
@@ -515,7 +468,7 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                               fontSize: 22, fontWeight: FontWeight.w800,
                               color: isSelected
                                   ? _HarvestTheme.statusText(s)
-                                  : _HarvestTheme.textMid,
+                                  : AppColors.textMid,
                             )),
                             const SizedBox(height: 2),
                             Text(
@@ -524,7 +477,7 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                                 fontSize: 11,
                                 color: isSelected
                                     ? _HarvestTheme.statusText(s).withOpacity(0.85)
-                                    : _HarvestTheme.textLight,
+                                    : AppColors.textLight,
                               ),
                             ),
                           ],
@@ -537,12 +490,12 @@ class _HarvestTabPageState extends State<HarvestTabPage>
                 Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: Text('Cancel', style: TextStyle(color: _HarvestTheme.textMid)),
+                    child: Text('Cancel', style: TextStyle(color: AppColors.textMid)),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _HarvestTheme.leafGreen,
+                      backgroundColor: AppColors.leafGreen,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -577,7 +530,7 @@ class _FloweringStatusCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [BoxShadow(color: _HarvestTheme.cardShadow, blurRadius: 12, offset: Offset(0, 4))],
+        boxShadow: const [BoxShadow(color: AppColors.cardShadow, blurRadius: 12, offset: Offset(0, 4))],
       ),
       child: Row(
         children: [
@@ -624,14 +577,14 @@ class _FloweringStatusCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text('Flowering Status', style: TextStyle(
-                  fontSize: 13, color: _HarvestTheme.textLight, fontWeight: FontWeight.w500,
+                  fontSize: 13, color: AppColors.textLight, fontWeight: FontWeight.w500,
                 )),
                 const SizedBox(height: 4),
                 Row(children: [
-                  Icon(Icons.local_florist_rounded, size: 16, color: _HarvestTheme.mossGreen),
+                  Icon(Icons.local_florist_rounded, size: 16, color: AppColors.mossGreen),
                   const SizedBox(width: 4),
                   Text(desc, style: TextStyle(
-                    fontSize: 15, color: _HarvestTheme.textDark, fontWeight: FontWeight.w600,
+                    fontSize: 15, color: AppColors  .textDark, fontWeight: FontWeight.w600,
                   )),
                 ]),
               ],
@@ -643,10 +596,10 @@ class _FloweringStatusCard extends StatelessWidget {
             icon: Container(
               padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
-                color: _HarvestTheme.mintFoam,
+                color: AppColors.mintFoam,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(Icons.edit_rounded, size: 18, color: _HarvestTheme.mossGreen),
+              child: Icon(Icons.edit_rounded, size: 18, color: AppColors.mossGreen),
             ),
             onPressed: onEdit,
           ),
@@ -668,10 +621,10 @@ class _AddRecordButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: _HarvestTheme.leafGreen,
+          color: AppColors.leafGreen,
           borderRadius: BorderRadius.circular(10),
           boxShadow: [BoxShadow(
-            color: _HarvestTheme.leafGreen.withOpacity(0.3),
+                      color: AppColors.leafGreen.withOpacity(0.3),
             blurRadius: 8, offset: const Offset(0, 3),
           )],
         ),
@@ -717,10 +670,10 @@ class _TimelineRecordTile extends StatelessWidget {
                 Container(
                   width: 48, height: 56,
                   decoration: BoxDecoration(
-                    color: spoilt ? _HarvestTheme.spoiltRed.withOpacity(0.1) : _HarvestTheme.mintFoam,
+                    color: spoilt ? AppColors.spoiltRed.withOpacity(0.1) : AppColors.mintFoam,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: spoilt ? _HarvestTheme.spoiltRed.withOpacity(0.3) : _HarvestTheme.divider,
+                      color: spoilt ? AppColors.spoiltRed.withOpacity(0.3) : AppColors.divider,
                     ),
                   ),
                   child: Column(
@@ -728,12 +681,12 @@ class _TimelineRecordTile extends StatelessWidget {
                     children: [
                       Text(dayStr, style: TextStyle(
                         fontSize: 18, fontWeight: FontWeight.w800,
-                        color: spoilt ? _HarvestTheme.spoiltRed : _HarvestTheme.textDark,
+                        color: spoilt ? AppColors.spoiltRed : AppColors.textDark,
                         height: 1.1,
                       )),
                       Text(monStr, style: TextStyle(
                         fontSize: 10, fontWeight: FontWeight.w600,
-                        color: spoilt ? _HarvestTheme.spoiltRed.withOpacity(0.8) : _HarvestTheme.mossGreen,
+                        color: spoilt ? AppColors.spoiltRed.withOpacity(0.8) : AppColors.mossGreen,
                         letterSpacing: 0.5,
                       )),
                     ],
@@ -744,7 +697,7 @@ class _TimelineRecordTile extends StatelessWidget {
                     child: Center(
                       child: Container(
                         width: 2,
-                        color: _HarvestTheme.divider,
+                        color: AppColors.divider,
                       ),
                     ),
                   ),
@@ -764,12 +717,12 @@ class _TimelineRecordTile extends StatelessWidget {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: const [BoxShadow(
-                    color: _HarvestTheme.cardShadow, blurRadius: 8, offset: Offset(0, 2),
+                    color: AppColors.cardShadow, blurRadius: 8, offset: Offset(0, 2),
                   )],
                   border: Border.all(
                     color: spoilt
-                        ? _HarvestTheme.spoiltRed.withOpacity(0.2)
-                        : _HarvestTheme.divider,
+                        ? AppColors.spoiltRed.withOpacity(0.2)
+                        : AppColors.divider,
                   ),
                 ),
                 child: Column(
@@ -779,21 +732,21 @@ class _TimelineRecordTile extends StatelessWidget {
                       Expanded(
                         child: Text(dateStr, style: TextStyle(
                           fontSize: 14, fontWeight: FontWeight.w600,
-                          color: _HarvestTheme.textDark,
+                          color: AppColors.textDark,
                         )),
                       ),
                       if (spoilt)
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: _HarvestTheme.spoiltRed.withOpacity(0.1),
+                            color: AppColors.spoiltRed.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(Icons.warning_amber_rounded, size: 12, color: _HarvestTheme.spoiltRed),
+                            Icon(Icons.warning_amber_rounded, size: 12, color: AppColors.spoiltRed),
                             const SizedBox(width: 3),
                             Text('Spoilt', style: TextStyle(
-                              fontSize: 11, color: _HarvestTheme.spoiltRed, fontWeight: FontWeight.w600,
+                              fontSize: 11, color: AppColors.spoiltRed, fontWeight: FontWeight.w600,
                             )),
                           ]),
                         ),
@@ -828,14 +781,14 @@ class _StatChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
-          color: _HarvestTheme.mintFoam,
+          color: AppColors.mintFoam,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 13, color: _HarvestTheme.mossGreen),
+          Icon(icon, size: 13, color: AppColors.mossGreen),
           const SizedBox(width: 4),
           Text(label, style: TextStyle(
-            fontSize: 12, color: _HarvestTheme.textMid, fontWeight: FontWeight.w600,
+            fontSize: 12, color: AppColors.textMid, fontWeight: FontWeight.w600,
           )),
         ]),
       ),
@@ -867,25 +820,25 @@ class _BottomSheetField extends StatelessWidget {
       readOnly: readOnly,
       keyboardType: keyboardType,
       onTap: onTap,
-      style: TextStyle(fontSize: 14, color: _HarvestTheme.textDark),
+      style: TextStyle(fontSize: 14, color: AppColors.textDark),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(fontSize: 13, color: _HarvestTheme.textLight),
-        prefixIcon: Icon(icon, size: 18, color: _HarvestTheme.mossGreen),
+        labelStyle: TextStyle(fontSize: 13, color: AppColors.textLight),
+        prefixIcon: Icon(icon, size: 18, color: AppColors.mossGreen),
         filled: true,
-        fillColor: _HarvestTheme.mintFoam,
+        fillColor: AppColors.mintFoam,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: _HarvestTheme.divider),
+          borderSide: BorderSide(color: AppColors.divider),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: _HarvestTheme.divider),
+          borderSide: BorderSide(color: AppColors.divider),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: _HarvestTheme.mossGreen, width: 1.5),
+          borderSide: BorderSide(color: AppColors.mossGreen, width: 1.5),
         ),
       ),
     );
@@ -899,7 +852,7 @@ class _LoadingView extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.all(40),
       child: Center(
-        child: CircularProgressIndicator(color: _HarvestTheme.mossGreen),
+        child: CircularProgressIndicator(color: AppColors.mossGreen),
       ),
     );
   }
@@ -915,10 +868,10 @@ class _ErrorView extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline_rounded, size: 40, color: _HarvestTheme.spoiltRed),
+          Icon(Icons.error_outline_rounded, size: 40, color: AppColors.spoiltRed),
           const SizedBox(height: 8),
           Text(message, textAlign: TextAlign.center,
-            style: TextStyle(color: _HarvestTheme.textMid, fontSize: 13)),
+            style: TextStyle(color: AppColors.textMid, fontSize: 13)),
         ],
       ),
     );
@@ -935,19 +888,19 @@ class _EmptyRecordsView extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: _HarvestTheme.mintFoam,
+            color: AppColors.mintFoam,
             shape: BoxShape.circle,
           ),
-          child: Icon(Icons.eco_rounded, size: 36, color: _HarvestTheme.mossGreen),
+          child: Icon(Icons.eco_rounded, size: 36, color: AppColors.mossGreen),
         ),
         const SizedBox(height: 14),
         Text('No harvest records yet', style: TextStyle(
-          fontSize: 15, fontWeight: FontWeight.w600, color: _HarvestTheme.textDark,
+          fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textDark,
         )),
         const SizedBox(height: 4),
         Text('Tap "Add" to log the first harvest for this tree.',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13, color: _HarvestTheme.textLight)),
+          style: TextStyle(fontSize: 13, color: AppColors.textLight)),
       ]),
     );
   }

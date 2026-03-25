@@ -190,6 +190,44 @@ class TreeApi {
     }
   }
 
+  /// Search trees by query string using server-side search endpoint.
+  /// Endpoint: GET /trees/search?q=...&per_page=...&page=...
+  static Future<Map<String, dynamic>> searchTrees({
+    required String q,
+    int perPage = 10,
+    int page = 1,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    // If query empty, return empty data to match controller behaviour
+    if (q.trim().isEmpty) return {'success': true, 'data': []};
+
+    final uri = Uri.parse(
+      "${Config.apiBaseUrl}/trees/search?q=${Uri.encodeQueryComponent(q)}&per_page=$perPage&page=$page",
+    );
+
+    final response = await http.get(uri, headers: {
+      "Accept": "application/json",
+      if (token != null) "Authorization": "Bearer $token",
+    });
+
+    if (response.statusCode == 200) {
+      try {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (e) {
+        throw Exception('Invalid JSON from searchTrees: ${response.body}');
+      }
+    } else {
+      try {
+        final decoded = jsonDecode(response.body);
+        throw Exception(decoded['message'] ?? 'Failed to search trees');
+      } catch (_) {
+        throw Exception('Failed to search trees (status ${response.statusCode})');
+      }
+    }
+  }
+
   static Future<Map<String, dynamic>> fetchAllTrees() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');

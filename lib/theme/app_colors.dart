@@ -34,4 +34,18 @@ class AppColors {
   static const Color sage = Color(0xFFBCB88A); // Olive Green
   static const Color lightGreen = Color(0xFFE8F5ED); // Light Green
   static const Color background = Color(0xFFF9F9F9); // Background Color
+  // Harvest theme colors
+  static const Color leafGreen = Color(0xFF2D6A4F);
+  static const Color medGreen = Color(0xFF40916C);
+  static const Color mintFoam = Color(0xFFD8F3DC);
+  static const Color cream = Color(0xFFF9F5EE);
+  static const Color warmWhite = Color(0xFFFFFDF8);
+  static const Color bark = Color(0xFF6B4423);
+  static const Color amber = Color(0xFFE9A849);
+  static const Color spoiltRed = Color(0xFFD94F3D);
+  static const Color textDark = Color(0xFF1B2D24);
+  static const Color textMid = Color(0xFF4A6358);
+  static const Color textLight = Color(0xFF8FAD9B);
+  static const Color divider = Color(0xFFDEEDE5);
+  static const Color cardShadow = Color(0x14000000);
 }

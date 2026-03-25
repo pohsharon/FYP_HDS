@@ -23,33 +23,6 @@ class _LoginPageState extends State<LoginPage> {
   String? passwordError;
   String? globalError; // For credential / server errors
 
-  String? _sanitizeError(String? err) {
-    if (err == null) return null;
-    final lower = err.toLowerCase();
-    // Common noisy technical patterns we don't want to show to users.
-    final technical = [
-      'sqlstate',
-      'could not translate',
-      'could not resolve host',
-      'connection:',
-      'pg:',
-      'psql',
-      'nodename',
-      'servname',
-      'supabase',
-      'socket',
-    ];
-    for (final t in technical) {
-      if (lower.contains(t)) return 'No internet connection — please try again later.';
-    }
-    // Keep generic network messages as-is, but shorten long server traces.
-    if (lower.contains('network error') || lower.contains('failed') || lower.contains('timeout')) {
-      return 'Network error — please try again later.';
-    }
-    // Otherwise return original user-facing message
-    return err;
-  }
-
   void _validateFields() {
     setState(() {
       phoneError =
@@ -84,9 +57,6 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
     } catch (_) {
-      // If connectivity check itself fails, continue and let the login
-      // call surface errors. We still protect against the common offline case
-      // above.
     }
 
     try {
@@ -110,12 +80,12 @@ class _LoginPageState extends State<LoginPage> {
         );
       } else {
         setState(() {
-          globalError = _sanitizeError(response["message"] ?? "Invalid credentials");
+          globalError = "Invalid credentials";
         });
       }
     } catch (e) {
       setState(() {
-        globalError = _sanitizeError("Something went wrong. Please try again later.");
+        globalError = "Something went wrong. Please try again later.";
       });
     } finally {
       setState(() => _isLoading = false);
