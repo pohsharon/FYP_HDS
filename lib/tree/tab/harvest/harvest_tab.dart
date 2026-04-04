@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
+import 'package:fyp_hbs/services/local%20database/tree_db.dart';
+import 'package:fyp_hbs/services/api/harvest_api.dart';
 import 'package:intl/intl.dart';
 import 'package:another_flushbar/flushbar.dart';
 
@@ -46,7 +48,8 @@ class _HarvestTheme {
 // ─── Widget ───────────────────────────────────────────────────────────────────
 class HarvestTabPage extends StatefulWidget {
   final String treeUuid;
-  const HarvestTabPage({super.key, required this.treeUuid});
+  final String id;
+  const HarvestTabPage({super.key, required this.treeUuid, required this.id});
 
   @override
   State<HarvestTabPage> createState() => _HarvestTabPageState();
@@ -187,6 +190,14 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
                             record: records[i],
                             isLast: i == records.length - 1,
                             index: i,
+                            treeUuid: widget.treeUuid,
+                            onRefresh: () async {
+                              // parent will refresh the records list
+                              if (!mounted) return;
+                              setState(() {
+                                _recordsFuture = TreeApi.fetchHarvestRecords(id: widget.treeUuid);
+                              });
+                            },
                           ),
                           childCount: records.length,
                         ),
@@ -206,15 +217,67 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
     final selected = await _showEditDialog(context, current);
     if (selected == null || selected.isEmpty) return;
 
-    // Simplified: update local UI only (no event discovery or network call).
-    setState(() {
-      _statusFuture = Future.value({'data': {'flowering_status': selected}});
-    });
-    await Flushbar(
-      message: 'Flowering status updated (local)',
-      duration: const Duration(seconds: 2),
-      flushbarPosition: FlushbarPosition.BOTTOM,
-    ).show(context);
+    // Attempt to save observation to server. If it fails, fall back to local UI update.
+    try {
+      // Fetch active harvest and extract its uuid to include in the observation
+      String? activeHarvestUuid;
+      try {
+        final dynamic active = await HarvestApi.fetchActiveHarvest();
+        if (active is Map) {
+          activeHarvestUuid = (active['uuid'] ?? active['harvest_uuid'] ?? active['id'])?.toString();
+        }
+      } catch (e) {
+        // ignore - we'll surface a friendly error below if missing
+        // ignore: avoid_print
+        print('No active harvest found: $e');
+      }
+
+      if (activeHarvestUuid == null || activeHarvestUuid.isEmpty) {
+        await Flushbar(
+          message: 'No active harvest event found. Cannot save observation.',
+          icon: const Icon(Icons.error, color: Colors.white),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 3),
+          borderRadius: BorderRadius.circular(12),
+          margin: const EdgeInsets.all(12),
+          flushbarPosition: FlushbarPosition.TOP,
+        ).show(context);
+        return;
+      }
+
+      final resp = await TreeApi.addTreeFloweringObservation(
+        id: widget.treeUuid,
+        floweringStatus: selected,
+        harvestUuid: activeHarvestUuid,
+      );
+      // On success, refresh status from server response when available
+      setState(() {
+        _statusFuture = Future.value(resp);
+      });
+      await Flushbar(
+        message: 'Flowering status updated',
+        icon: const Icon(Icons.check_circle, color: Colors.white),
+        backgroundColor: Colors.green.shade700,
+        duration: const Duration(seconds: 2),
+        borderRadius: BorderRadius.circular(12),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
+    } catch (e) {
+      // Do not fallback to local. Show error and keep server state.
+      // Log the error for debugging.
+      // ignore: avoid_print
+      print('⚠️ Failed to save flowering status: $e');
+      await Flushbar(
+        message: 'Cannot save flowering status',
+        icon: const Icon(Icons.error, color: Colors.white),
+        backgroundColor: Colors.red.shade700,
+        duration: const Duration(seconds: 3),
+        borderRadius: BorderRadius.circular(12),
+        margin: const EdgeInsets.all(12),
+        flushbarPosition: FlushbarPosition.TOP,
+      ).show(context);
+    }
   }
 
   // ── Add record bottom sheet ──────────────────────────────────────────────────
@@ -270,14 +333,16 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
                   icon: Icons.calendar_today_outlined,
                   readOnly: true,
                   onTap: () async {
+                    final initial = DateTime.tryParse(dateController.text) ?? DateTime.now();
                     final picked = await showDatePicker(
                       context: context,
-                      initialDate: DateTime.now(),
+                      initialDate: initial,
                       firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
+                      lastDate: DateTime.now(),
                     );
                     if (picked != null) {
-                      dateController.text = picked.toIso8601String();
+                      // Store as date-only (YYYY-MM-DD) to avoid time portion
+                      dateController.text = picked.toIso8601String().split('T').first;
                     }
                   },
                 ),
@@ -358,22 +423,91 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
                       final num    = int.tryParse(numController.text);
                       final weight = double.tryParse(weightController.text);
                       Navigator.pop(context);
-                    
+
                       try {
-                        await TreeApi.addHarvestRecord(
-                          id: widget.treeUuid,
+                        // Fetch active harvest and extract its uuid
+                        String? activeHarvestUuid;
+                        try {
+                          final dynamic active = await HarvestApi.fetchActiveHarvest();
+                          if (active is Map) {
+                            activeHarvestUuid = (active['uuid'] ?? active['harvest_uuid'] ?? active['id'])?.toString();
+                          } else if (active is List && active.isNotEmpty) {
+                            final a = active.first;
+                            if (a is Map) activeHarvestUuid = (a['uuid'] ?? a['harvest_uuid'] ?? a['id'])?.toString();
+                          }
+                        } catch (e) {
+                          // ignore - we'll show an error below if missing
+                        }
+
+                        if (activeHarvestUuid == null || activeHarvestUuid.isEmpty) {
+                          await Flushbar(
+                            message: 'No active harvest event found. Cannot save record.',
+                            icon: const Icon(Icons.error, color: Colors.white),
+                            backgroundColor: Colors.red.shade700,
+                            duration: const Duration(seconds: 3),
+                            borderRadius: BorderRadius.circular(12),
+                            margin: const EdgeInsets.all(12),
+                            flushbarPosition: FlushbarPosition.TOP,
+                          ).show(this.context);
+                          return;
+                        }
+
+                        // Resolve server numeric tree ID: prefer widget.id (server-provided),
+                        // otherwise fetch from API using the UUID. This must be a numeric id.
+                        String serverId = widget.id;
+                        if (serverId.isEmpty || int.tryParse(serverId) == null) {
+                          try {
+                            final srv = await TreeApi.getTreeByUuid(widget.treeUuid);
+                            Map<String, dynamic>? tmap;
+                            if (srv is Map && srv.containsKey('data')) {
+                              final d = srv['data'];
+                              if (d is Map) tmap = Map<String, dynamic>.from(d);
+                            } else if (srv is Map) {
+                              tmap = Map<String, dynamic>.from(srv);
+                            }
+                            if (tmap != null && tmap.containsKey('id')) {
+                              final sid = tmap['id']?.toString();
+                              if (sid != null && sid.isNotEmpty) serverId = sid;
+                            }
+                          } catch (_) {}
+                        }
+
+                        // If we still don't have a numeric server id, abort — server expects numeric `id`.
+                        if (serverId.isEmpty || int.tryParse(serverId) == null) {
+                          await Flushbar(
+                            message: 'Could not resolve server numeric tree id. Cannot save record.',
+                            icon: const Icon(Icons.error, color: Colors.white),
+                            backgroundColor: Colors.red.shade700,
+                            duration: const Duration(seconds: 3),
+                            borderRadius: BorderRadius.circular(12),
+                            margin: const EdgeInsets.all(12),
+                            flushbarPosition: FlushbarPosition.TOP,
+                          ).show(this.context);
+                          return;
+                        }
+
+                        final resp = await HarvestApi.createHarvestRecord(
+                          treeId: serverId,
+                          harvestUuid: activeHarvestUuid,
                           harvestDate: date,
                           numOfFruits: num,
                           weight: weight,
                           spoilt: spoilt,
                         );
+
+                        // Refresh using the server numeric id (required by backend)
                         setState(() {
-                          _recordsFuture = TreeApi.fetchHarvestRecords(id: widget.treeUuid);
+                          _recordsFuture = TreeApi.fetchHarvestRecords(id: serverId);
                         });
+
                         await Flushbar(
                           message: 'Record saved',
+                          icon: const Icon(Icons.check_circle, color: Colors.white),
+                          backgroundColor: Colors.green.shade700,
                           duration: const Duration(seconds: 2),
-                          flushbarPosition: FlushbarPosition.BOTTOM,
+                          borderRadius: BorderRadius.circular(12),
+                          margin: const EdgeInsets.all(12),
+                          flushbarPosition: FlushbarPosition.TOP,
                         ).show(this.context);
                       } catch (e) {
                         await Flushbar(
@@ -644,7 +778,9 @@ class _TimelineRecordTile extends StatelessWidget {
   final dynamic record;
   final bool isLast;
   final int index;
-  const _TimelineRecordTile({required this.record, required this.isLast, required this.index});
+  final String treeUuid;
+  final Future<void> Function()? onRefresh;
+  const _TimelineRecordTile({required this.record, required this.isLast, required this.index, required this.treeUuid, this.onRefresh});
 
   @override
   Widget build(BuildContext context) {
@@ -711,7 +847,191 @@ class _TimelineRecordTile extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
-              child: Container(
+              child: GestureDetector(
+                onTap: () async {
+                  // Show options: Edit / Delete
+                  final harvestUuid = (record['uuid'] ?? record['harvest_uuid'] ?? record['id'])?.toString();
+                  await showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    builder: (ctx) {
+                      final rawDate = record['harvest_date']?.toString() ?? '';
+                      final dateOnly = (rawDate.isNotEmpty && rawDate.length >= 10) ? rawDate.substring(0, 10) : rawDate;
+                      final dateController = TextEditingController(text: dateOnly);
+                      final numController = TextEditingController(text: record['num_of_fruits']?.toString() ?? '');
+                      final weightController = TextEditingController(text: record['weight']?.toString() ?? '');
+                      bool spoilt = record['spoilt'] == true;
+
+                      return StatefulBuilder(builder: (c, setS) {
+                        return SingleChildScrollView(
+                          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: const BoxDecoration(
+                              color: AppColors.warmWhite,
+                              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                            ),
+                            child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            Row(children: [
+                              Expanded(child: Text('Edit harvest', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textDark))),
+                              IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                            ]),
+                            const SizedBox(height: 8),
+                            _BottomSheetField(controller: dateController, label: 'Harvest date', icon: Icons.calendar_today_outlined, readOnly: true, onTap: () async {
+                              final picked = await showDatePicker(context: context, initialDate: DateTime.tryParse(dateController.text) ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime.now());
+                              if (picked != null) dateController.text = picked.toIso8601String().split('T').first;
+                            }),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(child: _BottomSheetField(controller: numController, label: 'No. of fruits', icon: Icons.format_list_numbered_rounded, keyboardType: TextInputType.number)),
+                              const SizedBox(width: 8),
+                              Expanded(child: _BottomSheetField(controller: weightController, label: 'Weight (kg)', icon: Icons.scale_outlined, keyboardType: const TextInputType.numberWithOptions(decimal: true))),
+                            ]),
+                            const SizedBox(height: 8),
+                            GestureDetector(
+                              onTap: () => setS(() => spoilt = !spoilt),
+                              child: Container(
+                                margin: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: spoilt ? AppColors.spoiltRed.withOpacity(0.08) : AppColors.mintFoam,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: spoilt ? AppColors.spoiltRed : AppColors.divider),
+                                ),
+                                child: Row(children: [
+                                  Icon(spoilt ? Icons.warning_amber_rounded : Icons.check_circle_outline_rounded, color: spoilt ? AppColors.spoiltRed : AppColors.mossGreen),
+                                  const SizedBox(width: 8),
+                                  Text(spoilt ? 'Marked as spoilt' : 'Not spoilt', style: TextStyle(color: spoilt ? AppColors.spoiltRed : AppColors.textMid)),
+                                  const Spacer(),
+                                  Switch.adaptive(value: spoilt, onChanged: (v) => setS(() => spoilt = v), activeColor: AppColors.spoiltRed),
+                                ]),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                              TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textMid))),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: AppColors.leafGreen),
+                                onPressed: () async {
+                                  Navigator.pop(ctx);
+                                  try {
+                                    // Resolve numeric tree ID if a UUID was provided
+                                    String resolvedId = treeUuid;
+                                    if (int.tryParse(resolvedId) == null) {
+                                      try {
+                                        final localId = await TreeDB().getIdByUuid(resolvedId);
+                                        if (localId != null && int.tryParse(localId) != null) resolvedId = localId;
+                                      } catch (_) {}
+                                    }
+                                    if (int.tryParse(resolvedId) == null) {
+                                      try {
+                                        final localId = await TreeDB().getIdByUuid(resolvedId);
+                                        if (localId != null && int.tryParse(localId) != null) resolvedId = localId;
+                                      } catch (_) {}
+                                    }
+
+                                    final payload = {
+                                      'harvest_date': dateController.text.isNotEmpty ? dateController.text : null,
+                                      'num_of_fruits': int.tryParse(numController.text),
+                                      'weight': double.tryParse(weightController.text),
+                                      'spoilt': spoilt,
+                                    };
+                                    print('UpdateHarvestRecord -> treeId=$resolvedId harvestUuid=$harvestUuid payload=$payload');
+                                    final resp = await HarvestApi.updateHarvestRecord(
+                                      treeId: resolvedId,
+                                      harvestUuid: harvestUuid ?? '',
+                                      harvestDate: dateController.text.isNotEmpty ? DateTime.parse(dateController.text) : null,
+                                      numOfFruits: int.tryParse(numController.text),
+                                      weight: double.tryParse(weightController.text),
+                                      spoilt: spoilt,
+                                    );
+                                    print('UpdateHarvestRecord response: $resp');
+                                    if (onRefresh != null) await onRefresh!();
+                                    await Flushbar(
+                                      message: 'Record updated',
+                                      icon: const Icon(Icons.check_circle, color: Colors.white),
+                                      backgroundColor: Colors.green.shade700,
+                                      duration: const Duration(seconds: 2),
+                                      borderRadius: BorderRadius.circular(12),
+                                      margin: const EdgeInsets.all(12),
+                                      flushbarPosition: FlushbarPosition.TOP,
+                                    ).show(context);
+                                  } catch (e) {
+                                    // Log error for debugging
+                                    print('Update failed: $e');
+                                    await Flushbar(
+                                      message: 'Update failed: $e',
+                                      icon: const Icon(Icons.error, color: Colors.white),
+                                      backgroundColor: Colors.red.shade700,
+                                      duration: const Duration(seconds: 3),
+                                      borderRadius: BorderRadius.circular(8),
+                                      margin: const EdgeInsets.all(12),
+                                      flushbarPosition: FlushbarPosition.TOP,
+                                    ).show(context);
+                                  }
+                                },
+                                child: const Text('Save'),
+                              ),
+                            ]),
+                            const SizedBox(height: 8),
+                            Row(children: [
+                              Expanded(child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                                onPressed: () async {
+                                  final confirm = await showDialog<bool>(context: context, builder: (dctx) => AlertDialog(title: const Text('Confirm delete'), content: const Text('Delete this harvest record?'), actions: [TextButton(onPressed: () => Navigator.of(dctx).pop(false), child: const Text('Cancel')), ElevatedButton(onPressed: () => Navigator.of(dctx).pop(true), child: const Text('Delete'))]));
+                                  if (confirm == true) {
+                                    Navigator.pop(ctx);
+                                    try {
+                                      String resolvedId = treeUuid;
+                                      if (int.tryParse(resolvedId) == null) {
+                                      try {
+                                        final localId = await TreeDB().getIdByUuid(resolvedId);
+                                        if (localId != null && int.tryParse(localId) != null) resolvedId = localId;
+                                      } catch (_) {}
+                                    }
+
+                                      print('DeleteHarvestRecord -> treeId=$resolvedId harvestUuid=$harvestUuid');
+                                      final dresp = await HarvestApi.deleteHarvestRecord(treeId: resolvedId, harvestUuid: harvestUuid ?? '');
+                                      print('DeleteHarvestRecord response: $dresp');
+                                      if (onRefresh != null) await onRefresh!();
+                                      await Flushbar(
+                                        message: 'Record deleted',
+                                        icon: const Icon(Icons.check_circle, color: Colors.white),
+                                        backgroundColor: Colors.green.shade700,
+                                        duration: const Duration(seconds: 2),
+                                        borderRadius: BorderRadius.circular(12),
+                                        margin: const EdgeInsets.all(12),
+                                        flushbarPosition: FlushbarPosition.TOP,
+                                      ).show(context);
+                                    } catch (e) {
+                                      print('Delete failed: $e');
+                                      await Flushbar(
+                                        message: 'Delete failed: $e',
+                                        icon: const Icon(Icons.error, color: Colors.white),
+                                        backgroundColor: Colors.red.shade700,
+                                        duration: const Duration(seconds: 3),
+                                        borderRadius: BorderRadius.circular(8),
+                                        margin: const EdgeInsets.all(12),
+                                        flushbarPosition: FlushbarPosition.TOP,
+                                      ).show(context);
+                                    }
+                                  }
+                                },
+                                child: const Text('Delete record'),
+                              )),
+                            ]),
+                          ]),
+                          ),
+                        );
+                      });
+                    },
+                  );
+                },
+                child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -762,6 +1082,7 @@ class _TimelineRecordTile extends StatelessWidget {
               ),
             ),
           ),
+          )
         ],
       ),
     );

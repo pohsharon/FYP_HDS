@@ -1073,7 +1073,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                     _loadTreeDetails();
                   },
                 ),
-                HarvestTabPage(treeUuid: uuid),
+                HarvestTabPage(treeUuid: uuid, id: tree?['id']?.toString() ?? ''),
               ],
             ),
           ),

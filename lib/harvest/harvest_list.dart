@@ -7,6 +7,7 @@ import 'package:fyp_hbs/authentication/login.dart';
 import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import '../services/api/harvest_api.dart';
+import 'package:fyp_hbs/tree/tree_details.dart';
 
 class HarvestPage extends StatefulWidget {
   const HarvestPage({super.key});
@@ -148,6 +149,8 @@ class _HarvestPageState extends State<HarvestPage> {
   Map<String, dynamic>? _summary;
   bool _loadingSummary = true;
   String _period = 'day'; // 'day' | 'week' | 'season'
+  DateTime _selectedDay = DateTime.now();
+  DateTime _selectedWeekDate = DateTime.now();
   List<Map<String, dynamic>> _details = [];
   bool _loadingDetails = true;
   String? _lastRangeRaw;
@@ -169,9 +172,15 @@ class _HarvestPageState extends State<HarvestPage> {
     try {
       Map<String, dynamic> data;
       if (period == 'day') {
-        data = await HarvestApi.fetchDaySummary();
+        // Fetch range for the selected day so user can pick arbitrary dates
+        final d = _formatDate(_selectedDay);
+        data = await HarvestApi.fetchDaySummary(date: d);
       } else if (period == 'week') {
-        data = await HarvestApi.fetchWeekSummary();
+        // Calculate week range based on the selected week date
+        final wd = _selectedWeekDate.weekday; // 1 = Monday
+        final monday = _selectedWeekDate.subtract(Duration(days: wd - 1));
+        final sunday = monday.add(const Duration(days: 6));
+        data = await HarvestApi.fetchWeekSummary(from: _formatDate(monday), to: _formatDate(sunday));
       } else {
         data = await HarvestApi.fetchSeasonSummary();
       }
@@ -188,13 +197,13 @@ class _HarvestPageState extends State<HarvestPage> {
       final now = DateTime.now();
 
       if (period == 'day') {
-        // today
-        from = _formatDate(now);
+        // selected day
+        from = _formatDate(_selectedDay);
         to = from;
       } else if (period == 'week') {
-        // week: Monday -> Sunday
-        final wd = now.weekday; // 1 = Monday
-        final monday = now.subtract(Duration(days: wd - 1));
+        // week: Monday -> Sunday based on the selected week date
+        final wd = _selectedWeekDate.weekday; // 1 = Monday
+        final monday = _selectedWeekDate.subtract(Duration(days: wd - 1));
         final sunday = monday.add(const Duration(days: 6));
         from = _formatDate(monday);
         to = _formatDate(sunday);
@@ -259,6 +268,70 @@ class _HarvestPageState extends State<HarvestPage> {
           child: Column(
             children: [
               _buildPeriodSelector(),
+              if (_period == 'day')
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Date: ${_formatDate(_selectedDay)}',
+                          style: TextStyle(color: AppColors.gray800, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.calendar_today_outlined),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _selectedDay,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime.now(),
+                          );
+                          if (picked != null && picked != _selectedDay) {
+                            setState(() {
+                              _selectedDay = picked;
+                              _loadingSummary = true;
+                            });
+                            await _loadSummary('day');
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              if (_period == 'week')
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Week of: ${_formatDate(_selectedWeekDate.subtract(Duration(days: _selectedWeekDate.weekday - 1)))}',
+                          style: TextStyle(color: AppColors.gray800, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.calendar_today_outlined),
+                        onPressed: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _selectedWeekDate,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime.now(),
+                          );
+                          if (picked != null && picked != _selectedWeekDate) {
+                            setState(() {
+                              _selectedWeekDate = picked;
+                              _loadingSummary = true;
+                            });
+                            await _loadSummary('week');
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 12),
               _buildSummaryCard(),
               const SizedBox(height: 18),
@@ -291,13 +364,18 @@ class _HarvestPageState extends State<HarvestPage> {
                           itemBuilder: (context, index) {
                             final item = _details[index];
                             final tag =
-                                item['tree_tag']?.toString() ??
-                                item['tree_uuid']?.toString() ??
-                                'Unknown';
+                              item['tree_tag']?.toString() ??
+                              item['tree_uuid']?.toString() ??
+                              'Unknown';
+                            final treeUuid = item['tree_uuid']?.toString() ?? '';
                             final spoiltWeight =
-                                item['spoilt_weight']?.toString() ?? '0';
+                              item['spoilt_weight']?.toString() ?? '0';
                             final notSpoiltWeight =
-                                item['not_spoilt_weight']?.toString() ?? '0';
+                              item['not_spoilt_weight']?.toString() ?? '0';
+                            // Consider this record spoilt when spoilt weight > 0
+                            final spoilW = double.tryParse(spoiltWeight) ?? 0.0;
+                            final notSpoilW = double.tryParse(notSpoiltWeight) ?? 0.0;
+                            final isSpoilt = spoilW > 0 && notSpoilW == 0;
                             final spoiltFruits =
                                 int.tryParse(
                                   item['spoilt_fruits']?.toString() ?? '0',
@@ -309,49 +387,144 @@ class _HarvestPageState extends State<HarvestPage> {
                                 ) ??
                                 0;
                             final totalFruits = spoiltFruits + notSpoiltFruits;
-                            final weight =
-                                double.tryParse(notSpoiltWeight) ?? 0.0;
 
-                            return Card(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: AppColors.hunterGreen,
-                                  child: Text(
-                                    tag.split('-').last,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
+                            // Build separate cards when both spoilt and not-spoilt weights exist
+                            final List<Widget> cards = [];
+
+                            if (notSpoilW > 0 || (spoilW == 0 && notSpoilW == 0)) {
+                              // Not-spoilt card (or fallback when both zero)
+                              cards.add(Card(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: AppColors.hunterGreen,
+                                    child: Text(
+                                      tag.split('-').last,
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
                                     ),
                                   ),
+                                  title: Text(
+                                    tag,
+                                    style: TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                  onTap: () async {
+                                    if (treeUuid.isNotEmpty) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => TreeDetailsPage(treeID: treeUuid),
+                                        ),
+                                      );
+                                    } else {
+                                      await Flushbar(
+                                        message: 'Tree details unavailable',
+                                        icon: const Icon(Icons.info, color: Colors.white),
+                                        backgroundColor: Colors.orange.shade700,
+                                        duration: const Duration(seconds: 2),
+                                        borderRadius: BorderRadius.circular(12),
+                                        margin: const EdgeInsets.all(12),
+                                        flushbarPosition: FlushbarPosition.TOP,
+                                      ).show(context);
+                                    }
+                                  },
+                                  trailing: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        '${notSpoilW.toStringAsFixed(2)} kg',
+                                        style: TextStyle(
+                                          color: AppColors.hunterGreen,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${notSpoiltFruits} fruits',
+                                        style: TextStyle(
+                                          color: AppColors.gray600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                                title: Text(
-                                  tag,
-                                  style: TextStyle(fontWeight: FontWeight.w600),
+                              ));
+                            }
+
+                            if (spoilW > 0) {
+                              // Spoilt card
+                              cards.add(Card(
+                                color: AppColors.dangerLight,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
-                                trailing: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      '${weight.toStringAsFixed(2)} kg',
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: AppColors.hunterGreen,
+                                    child: Text(
+                                      tag.split('-').last,
                                       style: TextStyle(
-                                        color: AppColors.hunterGreen,
-                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        fontSize: 12,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '$totalFruits fruits',
-                                      style: TextStyle(
-                                        color: AppColors.gray600,
+                                  ),
+                                  title: Text(
+                                    '$tag (Spoilt)',
+                                    style: TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                  onTap: () async {
+                                    if (treeUuid.isNotEmpty) {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => TreeDetailsPage(treeID: treeUuid),
+                                        ),
+                                      );
+                                    } else {
+                                      await Flushbar(
+                                        message: 'Tree details unavailable',
+                                        icon: const Icon(Icons.info, color: Colors.white),
+                                        backgroundColor: Colors.orange.shade700,
+                                        duration: const Duration(seconds: 2),
+                                        borderRadius: BorderRadius.circular(12),
+                                        margin: const EdgeInsets.all(12),
+                                        flushbarPosition: FlushbarPosition.TOP,
+                                      ).show(context);
+                                    }
+                                  },
+                                  trailing: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        '${spoilW.toStringAsFixed(2)} kg',
+                                        style: TextStyle(
+                                          color: Colors.red,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${spoiltFruits} fruits',
+                                        style: TextStyle(
+                                          color: AppColors.gray600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                              ));
+                            }
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: cards,
                             );
                           },
                         ),

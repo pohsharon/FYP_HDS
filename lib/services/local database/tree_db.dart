@@ -103,6 +103,25 @@ class TreeDB{
     return await db.delete('trees', where: 'uuid = ?', whereArgs: [uuid]);
   }
 
+  /// Return the local numeric `id` for a tree given its `uuid`, or null
+  /// if no local row exists. The returned id is the value stored in the
+  /// `id` column (primary key) and is returned as a String for convenience
+  /// when the caller expects an id suitable for API endpoints.
+  Future<String?> getIdByUuid(String uuid) async {
+    final db = await LocalDB.getDatabase();
+    try {
+      final res = await db.query('trees', columns: ['id'], where: 'uuid = ?', whereArgs: [uuid], limit: 1);
+      if (res.isNotEmpty) {
+        final idVal = res.first['id'];
+        if (idVal == null) return null;
+        return idVal.toString();
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<int> updateTreeByUuid(
     String uuid,
     Map<String, dynamic> changes, {

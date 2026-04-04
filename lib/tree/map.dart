@@ -30,12 +30,12 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   Animation<double>? _fabAnimation;
 
   final LatLngBounds farmBounds = LatLngBounds(
-    const LatLng(3.126, 101.646),
-    const LatLng(3.133, 101.654),
+    // const LatLng(3.126, 101.646),
+    // const LatLng(3.133, 101.654),
     // const LatLng(3.110831, 101.626978), //299
     // const LatLng(3.130831, 101.646978), //299
-    // const LatLng(6.36800, 100.38200), // Farm
-    // const LatLng(6.39000, 100.42000), // Farm
+    const LatLng(6.36800, 100.38200), // Farm
+    const LatLng(6.39000, 100.42000), // Farm
   );
 
   @override
@@ -77,15 +77,18 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
   Future<void> _fetchTreeMarkers() async {
     setState(() => _isLoading = true);
-    
+
     try {
-      // print('🗺️ [MAP] Starting to fetch tree markers from API...');
-      // timing removed: start timestamp unused
-      
-      final response = await TreeApi.fetchAllTrees();
-      final treeList = response['data']['data'] as List<dynamic>;
-      
-      // timing removed: fetch duration unused in production
+      // Limit to first page to avoid long-running full aggregation
+      final response = await TreeApi.fetchTrees(page: 1);
+      List<dynamic> treeList = [];
+      if (response['data'] is Map) {
+        final d = response['data'];
+        if (d is Map && d.containsKey('data')) treeList = d['data'];
+        else if (d is List) treeList = d;
+      } else if (response['data'] is List) {
+        treeList = response['data'];
+      }
 
       final markers = treeList.map<Map<String, dynamic>>((tree) {
         final treeMap = tree as Map<String, dynamic>;
@@ -102,6 +105,21 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
       
       // Filter to only show trees with valid coordinates
       final validMarkers = markers.where((m) => m['has_valid_coords'] as bool).toList();
+      if (validMarkers.isEmpty) {
+        if (mounted) setState(() {
+          treesWithLocation = [];
+          _isLoading = false;
+        });
+        await Flushbar(
+          message: 'No saved tree locations found',
+          backgroundColor: Colors.orange.shade700,
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.all(12),
+          borderRadius: BorderRadius.circular(12),
+          flushbarPosition: FlushbarPosition.TOP,
+        ).show(context);
+        return;
+      }
       // print('🗺️ [MAP] Valid markers with coordinates: ${validMarkers.length}/${markers.length}');
 
       if (mounted) {
@@ -112,11 +130,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
         // print('✅ [MAP] Markers rendered: ${validMarkers.length} trees shown on map');
       }
     } catch (e) {
-      // print('⚠️ [MAP] API fetch failed: $e, falling back to local database');
+      // Fall back to local DB if API fetch fails
       try {
         final local = await TreeDB().fetchAllTrees();
-        // print('🗺️ [MAP] Found ${local.length} trees in local database');
-        
         final markers = local.map<Map<String, dynamic>>((t) {
           final lat = t.latitude;
           final lng = t.longitude;
@@ -128,16 +144,29 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             'has_valid_coords': lat != null && lng != null && lat != 0.0 && lng != 0.0,
           };
         }).toList();
-        
+
         final validMarkers = markers.where((m) => m['has_valid_coords'] as bool).toList();
-        // print('🗺️ [MAP] Valid local markers: ${validMarkers.length}/${markers.length}');
+        if (validMarkers.isEmpty) {
+          if (mounted) setState(() {
+            treesWithLocation = [];
+            _isLoading = false;
+          });
+          await Flushbar(
+            message: 'No saved tree locations found',
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 2),
+            margin: const EdgeInsets.all(12),
+            borderRadius: BorderRadius.circular(12),
+            flushbarPosition: FlushbarPosition.TOP,
+          ).show(context);
+          return;
+        }
 
         if (mounted) {
           setState(() {
             treesWithLocation = validMarkers;
             _isLoading = false;
           });
-          // print('✅ [MAP] Markers rendered from local: ${validMarkers.length} trees shown');
         }
       } catch (localErr) {
         print('❌ [MAP] Local database also failed: $localErr');
@@ -702,11 +731,10 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
             options: MapOptions(
               initialCenter: initialLocation,
               initialZoom: 16,
+              minZoom: 12,
+              maxZoom: 19,
               cameraConstraint: CameraConstraint.contain(
-                bounds: LatLngBounds(
-                  const LatLng(0.85, 99.5), // Southwest corner of Malaysia
-                  const LatLng(7.0, 119.0), // Northeast corner of Malaysia
-                ),
+                bounds: farmBounds,
               ),
             ),
             children: [

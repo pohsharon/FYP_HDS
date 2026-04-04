@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
+import 'package:fyp_hbs/tree/map.dart';
 import 'package:fyp_hbs/widgets/persistent_appbar.dart';
 import 'package:another_flushbar/flushbar.dart';
 import 'package:fyp_hbs/authentication/reset_password.dart';
@@ -198,6 +199,23 @@ class _TreePageState extends State<TreePage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
+                  GestureDetector(
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const MapPage()),
+                      );
+                    },
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: AppColors.pakistanGreen,
+                        shape: BoxShape.circle,
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: const Icon(Icons.location_on, color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _searchController,

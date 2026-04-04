@@ -301,8 +301,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
                     serverTree['id']?.toString(),
                 'species_id': selectedSpeciesId,
                 'planted_at': plantingDateController.text,
-                'height': double.tryParse(heightController.text),
-                'diameter': double.tryParse(widthController.text),
+                'height': double.tryParse(heightController.text) ?? 0.0,
+                'diameter': double.tryParse(widthController.text) ?? 0.0,
                 'flowering_period': int.tryParse(
                   floweringPeriodController.text,
                 ),
@@ -321,14 +321,16 @@ class _CreateTreePageState extends State<CreateTreePage> {
             plantedAt: plantingDateController.text,
             height: double.tryParse(heightController.text) ?? 0.0,
             diameter: double.tryParse(widthController.text) ?? 0.0,
-            latitude:
-                (widget.tree != null && widget.tree!['latitude'] != null)
-                    ? double.tryParse(widget.tree!['latitude'].toString())
-                    : null,
-            longitude:
-                (widget.tree != null && widget.tree!['longitude'] != null)
-                    ? double.tryParse(widget.tree!['longitude'].toString())
-                    : null,
+            latitude: latitudeController.text.isNotEmpty
+              ? double.tryParse(latitudeController.text)
+              : ((widget.tree != null && widget.tree!['latitude'] != null)
+                ? double.tryParse(widget.tree!['latitude'].toString())
+                : null),
+            longitude: longitudeController.text.isNotEmpty
+              ? double.tryParse(longitudeController.text)
+              : ((widget.tree != null && widget.tree!['longitude'] != null)
+                ? double.tryParse(widget.tree!['longitude'].toString())
+                : null),
             floweringPeriod: floweringPeriodController.text,
             area: selectedArea,
             terrace: terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : null,
@@ -346,8 +348,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 'tree_tag': widget.tree!['tree_tag'],
                 'species_id': selectedSpeciesId,
                 'planted_at': plantingDateController.text,
-                'height': double.tryParse(heightController.text),
-                'diameter': double.tryParse(widthController.text),
+                'height': double.tryParse(heightController.text) ?? 0.0,
+                'diameter': double.tryParse(widthController.text) ?? 0.0,
                 'flowering_period': int.tryParse(
                   floweringPeriodController.text,
                 ),
@@ -355,8 +357,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 'terrace': terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : (widget.tree!['terrace'] is int ? widget.tree!['terrace'] : int.tryParse(widget.tree!['terrace']?.toString() ?? '')), 
                 'water_valve': waterValveController.text.isNotEmpty ? int.tryParse(waterValveController.text) : (widget.tree!['water_valve'] is int ? widget.tree!['water_valve'] : int.tryParse(widget.tree!['water_valve']?.toString() ?? '')),
                 'thumbnail': widget.tree!['thumbnail'],
-                'latitude': widget.tree!['latitude'],
-                'longitude': widget.tree!['longitude'],
+                'latitude': latitudeController.text.isNotEmpty ? double.tryParse(latitudeController.text) : widget.tree!['latitude'],
+                'longitude': longitudeController.text.isNotEmpty ? double.tryParse(longitudeController.text) : widget.tree!['longitude'],
               },
             );
           } catch (e) {
@@ -415,8 +417,10 @@ class _CreateTreePageState extends State<CreateTreePage> {
                 "Offline-${DateTime.now().millisecondsSinceEpoch}",
             'species_id': selectedSpeciesId!,
             'planted_at': plantingDateController.text,
-            'height': double.tryParse(heightController.text),
-            'diameter': double.tryParse(widthController.text),
+            'height': double.tryParse(heightController.text) ?? 0.0,
+            'diameter': double.tryParse(widthController.text) ?? 0.0,
+            'latitude': double.tryParse(latitudeController.text),
+            'longitude': double.tryParse(longitudeController.text),
             'flowering_period': int.tryParse(floweringPeriodController.text),
             'area': selectedArea,
             'terrace': terraceController.text.isNotEmpty ? int.tryParse(terraceController.text) : null,
@@ -436,8 +440,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
             final growth = TreeGrowthModel(
               uuid: const Uuid().v4(),
               treeUuid: uuidExisting,
-              height: double.tryParse(heightController.text),
-              diameter: double.tryParse(widthController.text),
+              height: double.tryParse(heightController.text) ?? 0.0,
+              diameter: double.tryParse(widthController.text) ?? 0.0,
               createdAt: growthTimestamp.toIso8601String(),
               synced: 0,
               pendingUpdate: 0,
@@ -521,8 +525,8 @@ class _CreateTreePageState extends State<CreateTreePage> {
             treeTag: derivedTag,
             speciesId: selectedSpeciesId!,
             plantedAt: plantingDateController.text.isNotEmpty ? DateTime.parse(plantingDateController.text) : null,
-            height: double.tryParse(heightController.text),
-            diameter: double.tryParse(widthController.text),
+            height: double.tryParse(heightController.text) ?? 0.0,
+            diameter: double.tryParse(widthController.text) ?? 0.0,
             floweringPeriod: int.tryParse(floweringPeriodController.text),
             synced: 0,
             imageFile: _selectedImage,

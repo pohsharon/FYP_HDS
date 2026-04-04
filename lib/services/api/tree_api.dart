@@ -426,12 +426,12 @@ class TreeApi {
   /// Body: { "harvest_uuid": "<uuid>", "flowering_status": "A|B|C|D|X" }
   static Future<Map<String, dynamic>> addTreeFloweringObservation({
     required String id,
-    required String harvestUuid,
+    String? harvestUuid,
     required String floweringStatus,
   }) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
-    // Resolve numeric id if caller passed a UUID
+    // If caller provided a UUID, resolve it to the numeric id expected by the API
     String resolvedId = id;
     if (int.tryParse(resolvedId) == null) {
       try {
@@ -447,10 +447,15 @@ class TreeApi {
           final sid = tmap['id']?.toString();
           if (sid != null && int.tryParse(sid) != null) resolvedId = sid;
         }
-      } catch (_) {}
+      } catch (e) {
+        print('TreeApi.addTreeFloweringObservation: failed to resolve UUID to id: $e');
+      }
     }
 
     final uri = Uri.parse("${Config.apiBaseUrl}/trees/$resolvedId/observations");
+    final bodyMap = <String, dynamic>{'flowering_status': floweringStatus};
+    if (harvestUuid != null && harvestUuid.isNotEmpty) bodyMap['harvest_uuid'] = harvestUuid;
+
     final response = await http.post(
       uri,
       headers: {
@@ -458,10 +463,7 @@ class TreeApi {
         "Accept": "application/json",
         if (token != null) "Authorization": 'Bearer $token',
       },
-      body: jsonEncode({
-        'harvest_uuid': harvestUuid,
-        'flowering_status': floweringStatus,
-      }),
+      body: jsonEncode(bodyMap),
     );
 
     if (response.statusCode == 200 || response.statusCode == 201) {
@@ -469,11 +471,7 @@ class TreeApi {
     }
 
     // Debug: print request/response to help diagnose 422 or other errors
-    try {
-      print('TreeApi.addTreeFloweringObservation --> POST $uri');
-      print('Request body: ${jsonEncode({'harvest_uuid': harvestUuid, 'flowering_status': floweringStatus})}');
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
+    try {    
     } catch (_) {}
 
     try {
@@ -971,79 +969,79 @@ class TreeApi {
   /// Endpoint: POST /api/trees/{id}/harvest-records
   /// Accepts optional fields: harvest_uuid (uuid), harvest_date (date),
   /// num_of_fruits (integer), weight (numeric), spoilt (boolean).
-  static Future<Map<String, dynamic>> addHarvestRecord({
-    required String id,
-    String? harvestUuid,
-    String? harvestDate,
-    int? numOfFruits,
-    double? weight,
-    bool? spoilt,
-  }) async {
-    try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token');
+  // static Future<Map<String, dynamic>> addHarvestRecord({
+  //   required String id,
+  //   String? harvestUuid,
+  //   String? harvestDate,
+  //   int? numOfFruits,
+  //   double? weight,
+  //   bool? spoilt,
+  // }) async {
+  //   try {
+  //     SharedPreferences prefs = await SharedPreferences.getInstance();
+  //     final token = prefs.getString('token');
 
-      // Resolve numeric id if caller passed a UUID
-      String resolvedId = id;
-      if (int.tryParse(resolvedId) == null) {
-        try {
-          final srv = await getTreeByUuid(resolvedId);
-          Map<String, dynamic>? tmap;
-          if (srv is Map && srv.containsKey('data')) {
-            final d = srv['data'];
-            if (d is Map) tmap = Map<String, dynamic>.from(d);
-          } else if (srv is Map) {
-            tmap = Map<String, dynamic>.from(srv);
-          }
-          if (tmap != null && tmap.containsKey('id')) {
-            final sid = tmap['id']?.toString();
-            if (sid != null && int.tryParse(sid) != null) resolvedId = sid;
-          }
-        } catch (_) {}
-      }
+  //     // Resolve numeric id if caller passed a UUID
+  //     String resolvedId = id;
+  //     if (int.tryParse(resolvedId) == null) {
+  //       try {
+  //         final srv = await getTreeByUuid(resolvedId);
+  //         Map<String, dynamic>? tmap;
+  //         if (srv is Map && srv.containsKey('data')) {
+  //           final d = srv['data'];
+  //           if (d is Map) tmap = Map<String, dynamic>.from(d);
+  //         } else if (srv is Map) {
+  //           tmap = Map<String, dynamic>.from(srv);
+  //         }
+  //         if (tmap != null && tmap.containsKey('id')) {
+  //           final sid = tmap['id']?.toString();
+  //           if (sid != null && int.tryParse(sid) != null) resolvedId = sid;
+  //         }
+  //       } catch (_) {}
+  //     }
 
-      final uri = Uri.parse("${Config.apiBaseUrl}/trees/$resolvedId/harvest-records");
+  //     final uri = Uri.parse("${Config.apiBaseUrl}/trees/$resolvedId/harvest-records");
 
-      final Map<String, dynamic> payload = {};
-      if (harvestUuid != null) payload['harvest_uuid'] = harvestUuid;
-      if (harvestDate != null) payload['harvest_date'] = harvestDate;
-      if (numOfFruits != null) payload['num_of_fruits'] = numOfFruits;
-      if (weight != null) payload['weight'] = weight;
-      if (spoilt != null) payload['spoilt'] = spoilt;
+  //     final Map<String, dynamic> payload = {};
+  //     if (harvestUuid != null) payload['harvest_uuid'] = harvestUuid;
+  //     if (harvestDate != null) payload['harvest_date'] = harvestDate;
+  //     if (numOfFruits != null) payload['num_of_fruits'] = numOfFruits;
+  //     if (weight != null) payload['weight'] = weight;
+  //     if (spoilt != null) payload['spoilt'] = spoilt;
 
-      final response = await http.post(
-        uri,
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          if (token != null) "Authorization": 'Bearer $token',
-        },
-        body: jsonEncode(payload),
-      );
+  //     final response = await http.post(
+  //       uri,
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         "Accept": "application/json",
+  //         if (token != null) "Authorization": 'Bearer $token',
+  //       },
+  //       body: jsonEncode(payload),
+  //     );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
+  //     if (response.statusCode == 200 || response.statusCode == 201) {
+  //       return jsonDecode(response.body) as Map<String, dynamic>;
+  //     }
 
-      // Debug prints to aid diagnosing 422/validation errors
-      try {
-        print('TreeApi.addHarvestRecord --> POST $uri');
-        print('Request body: ${jsonEncode(payload)}');
-        print('Response status: ${response.statusCode}');
-        print('Response body: ${response.body}');
-      } catch (_) {}
+  //     // Debug prints to aid diagnosing 422/validation errors
+  //     try {
+  //       print('TreeApi.addHarvestRecord --> POST $uri');
+  //       print('Request body: ${jsonEncode(payload)}');
+  //       print('Response status: ${response.statusCode}');
+  //       print('Response body: ${response.body}');
+  //     } catch (_) {}
 
-      try {
-        final data = jsonDecode(response.body);
-        final message = (data is Map && data.containsKey('message')) ? data['message'] : data.toString();
-        throw Exception('Failed to add harvest record (status ${response.statusCode}): $message');
-      } catch (_) {
-        throw Exception('Failed to add harvest record (status ${response.statusCode}): ${response.body}');
-      }
-    } catch (e) {
-      throw Exception('Error adding harvest record: $e');
-    }
-  }
+  //     try {
+  //       final data = jsonDecode(response.body);
+  //       final message = (data is Map && data.containsKey('message')) ? data['message'] : data.toString();
+  //       throw Exception('Failed to add harvest record (status ${response.statusCode}): $message');
+  //     } catch (_) {
+  //       throw Exception('Failed to add harvest record (status ${response.statusCode}): ${response.body}');
+  //     }
+  //   } catch (e) {
+  //     throw Exception('Error adding harvest record: $e');
+  //   }
+  // }
 
   /// Fetch harvest records for a tree.
   /// Endpoint: GET /api/trees/{id}/harvest-records

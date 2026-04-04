@@ -33,8 +33,8 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
   bool _isSaving = false; // ✅ track saving state
 
   final LatLngBounds farmBounds = LatLngBounds(
-    const LatLng(3.126, 101.646),
-    const LatLng(3.133, 101.654),
+    const LatLng(6.36800, 100.38200), // Farm
+    const LatLng(6.39000, 100.42000),
   );
 
   @override
@@ -45,7 +45,7 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
       _locationNotSaved = true;
     }
     _getCurrentLocation();
-    
+
     // Set fallback location after first frame to avoid MapController errors
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setFallbackLocation();
@@ -76,11 +76,8 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
       final Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      
-      final LatLng realLocation = LatLng(
-        position.latitude,
-        position.longitude,
-      );
+
+      final LatLng realLocation = LatLng(position.latitude, position.longitude);
 
       if (mounted) {
         setState(() {
@@ -95,28 +92,31 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
           accuracy: LocationAccuracy.best,
           distanceFilter: 1, // Update every 1 meter for smooth tracking
         ),
-      ).listen((Position position) {
-        final LatLng newLocation = LatLng(
-          position.latitude,
-          position.longitude,
-        );
+      ).listen(
+        (Position position) {
+          final LatLng newLocation = LatLng(
+            position.latitude,
+            position.longitude,
+          );
 
-        // Extract heading/bearing from GPS movement
-        if (position.heading >= 0) {
-          if (mounted) {
-            setState(() {
-              _heading = position.heading;
-            });
+          // Extract heading/bearing from GPS movement
+          if (position.heading >= 0) {
+            if (mounted) {
+              setState(() {
+                _heading = position.heading;
+              });
+            }
           }
-        }
 
-        // Update location marker only, don't move the camera
-        if (mounted) {
-          setState(() => _currentLocation = newLocation);
-        }
-      }, onError: (e) {
-        debugPrint('❌ Location stream error: $e');
-      });
+          // Update location marker only, don't move the camera
+          if (mounted) {
+            setState(() => _currentLocation = newLocation);
+          }
+        },
+        onError: (e) {
+          debugPrint('❌ Location stream error: $e');
+        },
+      );
     } catch (e) {
       debugPrint("❌ Error getting location: $e");
     }
@@ -157,7 +157,9 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
 
   Future<void> _saveTreeLocation() async {
     if (_currentLocation == null) {
-      final overlayContext = Navigator.of(context, rootNavigator: true).overlay?.context ?? context;
+      final overlayContext =
+          Navigator.of(context, rootNavigator: true).overlay?.context ??
+          context;
       Flushbar(
         message: "Current location not detected yet.",
         duration: const Duration(seconds: 3),
@@ -193,7 +195,9 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
 
       Navigator.pop(context, true);
     } catch (e) {
-      final overlayContext = Navigator.of(context, rootNavigator: true).overlay?.context ?? context;
+      final overlayContext =
+          Navigator.of(context, rootNavigator: true).overlay?.context ??
+          context;
       Flushbar(
         message: "Failed to save location: $e",
         duration: const Duration(seconds: 3),
@@ -212,9 +216,14 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
     final bool treeHasLocation =
         widget.treeLatitude != 0.0 && widget.treeLongitude != 0.0;
 
-    final LatLng initialLocation = treeHasLocation
+    final LatLng initialLocation =
+      treeHasLocation
         ? LatLng(widget.treeLatitude, widget.treeLongitude)
         : (_currentLocation ?? const LatLng(3.120821, 101.636978));
+
+    // Compute bottom offset for save button to avoid overflow with
+    // keyboards and bottom safe area (e.g., iPhone home indicator).
+    final double saveButtonBottom = MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 20;
 
     return Scaffold(
       appBar: AppBar(
@@ -249,11 +258,10 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
             options: MapOptions(
               initialCenter: initialLocation,
               initialZoom: 18,
+              minZoom: 12,
+              maxZoom: 19,
               cameraConstraint: CameraConstraint.contain(
-                bounds: LatLngBounds(
-                  const LatLng(0.85, 99.5), // Southwest corner of Malaysia
-                  const LatLng(7.0, 119.0), // Northeast corner of Malaysia
-                ),
+                bounds: farmBounds,
               ),
             ),
             children: [
@@ -348,8 +356,10 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
               right: 0,
               child: Center(
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.orange.shade700,
                     borderRadius: BorderRadius.circular(12),
@@ -383,7 +393,7 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
           // 💾 Save Tree Location button
           if (_locationNotSaved)
             Positioned(
-              bottom: 100,
+              bottom: saveButtonBottom,
               left: 20,
               right: 20,
               child: ElevatedButton(
@@ -394,8 +404,10 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.hunterGreen,
                   foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 16,
+                    horizontal: 16,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -487,10 +499,7 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
                     SizedBox(width: 4),
                     Text(
                       'OpenStreetMap',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.black54,
-                      ),
+                      style: TextStyle(fontSize: 11, color: Colors.black54),
                     ),
                   ],
                 ),
@@ -522,16 +531,9 @@ class _MapIndividualTreePageState extends State<MapIndividualTreePage> {
             height: 48,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.grey.shade200,
-                width: 1,
-              ),
+              border: Border.all(color: Colors.grey.shade200, width: 1),
             ),
-            child: Icon(
-              icon,
-              color: AppColors.pakistanGreen,
-              size: 24,
-            ),
+            child: Icon(icon, color: AppColors.pakistanGreen, size: 24),
           ),
         ),
       ),
