@@ -618,6 +618,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
     }
 
     final String treeTag = tree!['tree_tag'] ?? 'Unknown';
+    final String treeId = tree!['id']?.toString() ?? '';
     final String treeType = tree!['species']?['name'] ?? 'Unknown Type';
     final rawPlanted = tree!['planted_at'] ?? '';
     final String treeDate =
@@ -1073,7 +1074,8 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                     _loadTreeDetails();
                   },
                 ),
-                HarvestTabPage(treeUuid: uuid, id: tree?['id']?.toString() ?? ''),
+                
+                HarvestTabPage(treeUuid: uuid, id: treeId),
               ],
             ),
           ),

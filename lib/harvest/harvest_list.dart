@@ -190,7 +190,7 @@ class _HarvestPageState extends State<HarvestPage> {
         _loadingDetails = true;
         _details = [];
       });
-
+    
       // determine range to fetch details for from state
       String from = '';
       String to = '';
@@ -566,9 +566,29 @@ class _HarvestPageState extends State<HarvestPage> {
 
   Widget _buildSummaryCard() {
     final data = _summary ?? {};
-    final totals = data['totals'] ?? {};
-    final spoiltWeight = (totals['spoilt_weight'] ?? '0').toString();
-    final notSpoiltWeight = (totals['not_spoilt_weight'] ?? '0').toString();
+    // Normalize totals map from possible response shapes: {totals: {...}} or {data: {totals: {...}}}
+    Map<String, dynamic> totals = {};
+    try {
+      if (data['totals'] is Map) totals = Map<String, dynamic>.from(data['totals']);
+      else if (data['data'] is Map && data['data']['totals'] is Map) totals = Map<String, dynamic>.from(data['data']['totals']);
+    } catch (_) {
+      totals = {};
+    }
+
+    String _formatWeight(dynamic v) {
+      if (v == null) return '0.00';
+      if (v is num) return v.toStringAsFixed(2);
+      final s = v.toString();
+      try {
+        final d = double.parse(s);
+        return d.toStringAsFixed(2);
+      } catch (_) {
+        return s;
+      }
+    }
+
+    final spoiltWeight = _formatWeight(totals['spoilt_weight']);
+    final notSpoiltWeight = _formatWeight(totals['not_spoilt_weight']);
     final spoiltFruits = (totals['spoilt_fruits'] ?? 0).toString();
     final notSpoiltFruits = (totals['not_spoilt_fruits'] ?? 0).toString();
 
