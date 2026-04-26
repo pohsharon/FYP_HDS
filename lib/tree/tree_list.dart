@@ -11,6 +11,7 @@ import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
+import '../config.dart';
 import 'package:intl/intl.dart';
 
 class TreePage extends StatefulWidget {
@@ -35,7 +36,6 @@ class _TreePageState extends State<TreePage> {
   @override
   void initState() {
     super.initState();
-    // Only trigger search on Enter/Submit. Keep listener to reset when cleared.
     _searchController.addListener(() {
       if (_searchController.text.trim().isEmpty) {
         _allTreesCache = null;
@@ -75,7 +75,6 @@ class _TreePageState extends State<TreePage> {
         };
       }).toList();
 
-      // Append or set depending on page
       setState(() {
         if (_page == 1) {
           _trees = cleaned;
@@ -83,12 +82,10 @@ class _TreePageState extends State<TreePage> {
           _trees.addAll(cleaned);
         }
         _filtered = List.from(_trees);
-        // If returned fewer items than a full page, assume no more pages
         if (cleaned.isEmpty) _hasMore = false;
       });
       if (cleaned.isNotEmpty) _page += 1;
     } catch (e) {
-      // on error, show empty list (only clear on first page)
       setState(() {
         if (_page == 1) {
           _trees = [];
@@ -107,7 +104,8 @@ class _TreePageState extends State<TreePage> {
     if (!_scrollController.hasClients) return;
     final threshold = 200.0;
     final pos = _scrollController.position;
-    if (pos.pixels >= pos.maxScrollExtent - threshold && !_isLoadingMore && !_isLoading && _hasMore) {
+    if (pos.pixels >= pos.maxScrollExtent - threshold &&
+        !_isLoadingMore && !_isLoading && _hasMore) {
       _loadMore();
     }
   }
@@ -126,8 +124,6 @@ class _TreePageState extends State<TreePage> {
       return;
     }
 
-    // For global search, fetch all trees (server-side pagination aggregated)
-    // and cache the result to avoid repeated heavy requests.
     () async {
       if (!mounted) return;
       setState(() => _isLoading = true);
@@ -136,7 +132,8 @@ class _TreePageState extends State<TreePage> {
         if (_allTreesCache != null && _lastSearchQuery == query) {
           source = _allTreesCache!;
         } else {
-          final resp = await TreeApi.searchTrees(q: query, perPage: 200, page: 1);
+          final resp =
+              await TreeApi.searchTrees(q: query, perPage: 200, page: 1);
           List<dynamic> raw = [];
           if (resp['data'] is Map) raw = resp['data']['data'] ?? [];
           else if (resp['data'] is List) raw = resp['data'];
@@ -157,13 +154,11 @@ class _TreePageState extends State<TreePage> {
           _lastSearchQuery = query;
         }
 
-        // Server-side search already returned matched items; use them directly.
-        final results = source;
-        // Debug: print counts to help diagnose missing items
         // ignore: avoid_print
-        print('Tree search: query="$query" -> server returned ${source.length} items; client-filter skip');
+        print(
+            'Tree search: query="$query" -> server returned ${source.length} items; client-filter skip');
         if (!mounted) return;
-        setState(() => _filtered = results);
+        setState(() => _filtered = source);
       } catch (e) {
         if (!mounted) return;
         setState(() => _filtered = []);
@@ -212,7 +207,8 @@ class _TreePageState extends State<TreePage> {
                         shape: BoxShape.circle,
                       ),
                       padding: const EdgeInsets.all(8),
-                      child: const Icon(Icons.location_on, color: Colors.white),
+                      child:
+                          const Icon(Icons.location_on, color: Colors.white),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -226,7 +222,8 @@ class _TreePageState extends State<TreePage> {
                         prefixIcon: const Icon(Icons.search),
                         filled: true,
                         fillColor: AppColors.white,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 0),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(30),
                           borderSide: BorderSide(
@@ -249,7 +246,8 @@ class _TreePageState extends State<TreePage> {
                     onTap: () async {
                       final result = await Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const CreateTreePage()),
+                        MaterialPageRoute(
+                            builder: (_) => const CreateTreePage()),
                       );
                       if (result != null) _fetchTrees(refresh: true);
                     },
@@ -273,12 +271,13 @@ class _TreePageState extends State<TreePage> {
                         color: AppColors.hunterGreen,
                       ),
                     )
-                      : _filtered.isEmpty
+                  : _filtered.isEmpty
                       ? Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.search_off, size: 48, color: AppColors.gray400),
+                              Icon(Icons.search_off,
+                                  size: 48, color: AppColors.gray400),
                               const SizedBox(height: 12),
                               Text(
                                 'No trees found',
@@ -294,19 +293,23 @@ class _TreePageState extends State<TreePage> {
                       : ListView.builder(
                           controller: _scrollController,
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          itemCount: _filtered.length + (_isLoadingMore ? 1 : 0),
+                          itemCount: _filtered.length +
+                              (_isLoadingMore ? 1 : 0),
                           itemBuilder: (context, index) {
                             if (index < _filtered.length) {
                               final tree = _filtered[index];
                               return _buildTreeCard(context, tree: tree);
                             }
                             return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 12),
                               child: Center(
                                 child: SizedBox(
                                   width: 24,
                                   height: 24,
-                                  child: CircularProgressIndicator(color: AppColors.hunterGreen, strokeWidth: 2.5),
+                                  child: CircularProgressIndicator(
+                                      color: AppColors.hunterGreen,
+                                      strokeWidth: 2.5),
                                 ),
                               ),
                             );
@@ -331,16 +334,24 @@ class _TreePageState extends State<TreePage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              contentPadding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 0),
+              contentPadding: const EdgeInsets.only(
+                  left: 20, right: 20, top: 10, bottom: 0),
               leading: Icon(Icons.lock, color: AppColors.gray700),
-              title: Text('Change Password', style: TextStyle(color: AppColors.gray700)),
+              title: Text('Change Password',
+                  style: TextStyle(color: AppColors.gray700)),
               onTap: () async {
-                final hasInternet = await ConnectivityHelper.hasInternetConnection();
+                final hasInternet =
+                    await ConnectivityHelper.hasInternetConnection();
                 if (hasInternet) {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ResetPasswordPage(fromSettings: true)));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              const ResetPasswordPage(fromSettings: true)));
                 } else {
                   await Flushbar(
-                    message: 'Changing password requires internet connection',
+                    message:
+                        'Changing password requires internet connection',
                     icon: const Icon(Icons.cloud_off, color: Colors.white),
                     backgroundColor: Colors.orange.shade700,
                     duration: const Duration(seconds: 2),
@@ -352,7 +363,8 @@ class _TreePageState extends State<TreePage> {
               },
             ),
             ListTile(
-              contentPadding: const EdgeInsets.only(left: 20, right: 20, top: 0, bottom: 20),
+              contentPadding: const EdgeInsets.only(
+                  left: 20, right: 20, top: 0, bottom: 20),
               leading: const Icon(Icons.logout),
               title: const Text('Logout'),
               onTap: () async {
@@ -360,10 +372,17 @@ class _TreePageState extends State<TreePage> {
                   context: context,
                   builder: (context) => AlertDialog(
                     title: const Text('Confirm Logout'),
-                    content: const Text('Are you sure you want to logout?'),
+                    content:
+                        const Text('Are you sure you want to logout?'),
                     actions: [
-                      TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
-                      ElevatedButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Logout')),
+                      TextButton(
+                          onPressed: () =>
+                              Navigator.of(context).pop(false),
+                          child: const Text('Cancel')),
+                      ElevatedButton(
+                          onPressed: () =>
+                              Navigator.of(context).pop(true),
+                          child: const Text('Logout')),
                     ],
                   ),
                 );
@@ -374,7 +393,8 @@ class _TreePageState extends State<TreePage> {
                     if (ok) {
                       await Flushbar(
                         message: 'Logged out',
-                        icon: const Icon(Icons.check_circle, color: Colors.white),
+                        icon: const Icon(Icons.check_circle,
+                            color: Colors.white),
                         backgroundColor: Colors.green.shade700,
                         duration: const Duration(seconds: 2),
                         borderRadius: BorderRadius.circular(12),
@@ -384,7 +404,8 @@ class _TreePageState extends State<TreePage> {
                     } else {
                       await Flushbar(
                         message: 'Logging out',
-                        icon: const Icon(Icons.info, color: Colors.white),
+                        icon:
+                            const Icon(Icons.info, color: Colors.white),
                         backgroundColor: Colors.orange.shade700,
                         duration: const Duration(seconds: 2),
                         borderRadius: BorderRadius.circular(12),
@@ -393,11 +414,15 @@ class _TreePageState extends State<TreePage> {
                       ).show(context);
                     }
 
-                    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginPage()), (route) => false);
+                    Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(
+                            builder: (_) => const LoginPage()),
+                        (route) => false);
                   } catch (e) {
                     await Flushbar(
                       message: 'Logout failed: $e',
-                      icon: const Icon(Icons.error, color: Colors.white),
+                      icon:
+                          const Icon(Icons.error, color: Colors.white),
                       backgroundColor: Colors.red.shade700,
                       duration: const Duration(seconds: 3),
                       borderRadius: BorderRadius.circular(12),
@@ -414,54 +439,184 @@ class _TreePageState extends State<TreePage> {
     );
   }
 
-  Widget _buildTreeCard(BuildContext context, {required Map<String, dynamic> tree}) {
+  // ── Tree card (redesigned) ─────────────────────────────────────────────────
+
+  Widget _buildTreeCard(BuildContext context,
+      {required Map<String, dynamic> tree}) {
     final String tag = tree['tree_tag'] ?? 'Tree';
     final String rawDate = tree['planted_at']?.toString() ?? '';
     String displayDate = rawDate;
     if (rawDate.isNotEmpty) {
       try {
         final dt = DateTime.parse(rawDate);
-        displayDate = DateFormat('yyyy-MM-dd').format(dt);
+        displayDate = DateFormat('d MMM yyyy').format(dt);
       } catch (_) {
         if (rawDate.contains('T')) displayDate = rawDate.split('T').first;
       }
     }
-    final String uuid = tree['uuid']?.toString() ?? tree['id']?.toString() ?? '';
+    final String uuid =
+        tree['uuid']?.toString() ?? tree['id']?.toString() ?? '';
+    final String species =
+        tree['species']?['name']?.toString() ?? 'Unknown species';
+    final String status = tree['flowering_status']?.toString() ?? '-';
+    final String qrData = uuid.isNotEmpty
+        ? '${Config.productBaseUrl}/product-details/$uuid'
+        : tag;
 
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.only(bottom: 10),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          children: [
-            SizedBox(width: 70, height: 70, child: QrImageView(data: uuid.isNotEmpty ? uuid : tag)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(tag, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 6),
-                  Text(tree['species']?['name']?.toString() ?? 'Unknown species', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                  const SizedBox(height: 4),
-                  Text(displayDate, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                ],
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: uuid)),
-                );
-                if (result != null) _fetchTrees(refresh: true);
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.mossGreen),
-              child: const Text('View'),
+    Color statusBg() {
+      final s = status.toLowerCase();
+      if (s.contains('flower') || s.contains('bloom'))
+        return const Color(0xFFE8F5E9);
+      if (s.contains('fruit')) return const Color(0xFFFFF3E0);
+      return Colors.grey.shade100;
+    }
+
+    Color statusFg() {
+      final s = status.toLowerCase();
+      if (s.contains('flower') || s.contains('bloom'))
+        return const Color(0xFF2E7D32);
+      if (s.contains('fruit')) return const Color(0xFFE65100);
+      return Colors.grey.shade500;
+    }
+
+    return GestureDetector(
+      onTap: () async {
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => TreeDetailsPage(treeID: uuid)),
+        );
+        if (result != null) _fetchTrees(refresh: true);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey.shade100),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
             ),
           ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              // QR code in rounded container
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: QrImageView(data: qrData, gapless: true),
+              ),
+
+              const SizedBox(width: 14),
+
+              // Tree info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            tag,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: Color(0xFF1A2E1A),
+                              letterSpacing: -0.2,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        // Status badge
+                        if (status != '-' && status.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: statusBg(),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                color: statusFg(),
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.eco_outlined,
+                            size: 12, color: Colors.grey.shade400),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            species,
+                            style: TextStyle(
+                              color: Colors.grey.shade500,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (displayDate.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(Icons.calendar_today_outlined,
+                              size: 11, color: Colors.grey.shade400),
+                          const SizedBox(width: 4),
+                          Text(
+                            displayDate,
+                            style: TextStyle(
+                              color: Colors.grey.shade400,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              // Arrow — replaces the "View" button
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: AppColors.pakistanGreen.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.arrow_forward_ios,
+                  size: 12,
+                  color: AppColors.pakistanGreen,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

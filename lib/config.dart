@@ -8,8 +8,15 @@ class Config {
     // } else {
       // return "http://192.168.1.20:8000/api"; // Default for other platforms (Mac, Windows)
     // }
-    return "http://192.168.0.16:8080/api"; //Android real device
-    // return "https://app-hosbaduriansystem-dev-001-g5dwg4gpeqbfgqgy.southeastasia-01.azurewebsites.net/api";
+    // return "http://192.168.0.7:8080/api"; //Android real device
+    return "https://app-hosbaduriansystem-dev-001-g5dwg4gpeqbfgqgy.southeastasia-01.azurewebsites.net/api";
+  }
+
+  /// Base URL for product detail pages (used in QR codes and links).
+  static String get productBaseUrl {
+    final api = apiBaseUrl;
+    if (api.endsWith('/api')) return api.substring(0, api.length - 4);
+    return api;
   }
 
   // No change in Supabase
