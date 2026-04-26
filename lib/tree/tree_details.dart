@@ -5,6 +5,7 @@ import 'package:fyp_hbs/tree/tab/health/health_tab.dart';
 import 'package:fyp_hbs/tree/tab/harvest/harvest_tab.dart';
 import 'package:fyp_hbs/tree/tab/agrochemical/agrochemical_tab.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter/services.dart';
 import 'package:fyp_hbs/tree/map_individual_tree.dart';
 import 'package:fyp_hbs/tree/create_tree.dart';
 import 'package:fyp_hbs/tree/tab/growthlog/growthlog_tab.dart';
@@ -771,18 +772,30 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 QrImageView(
-                                                  data: uuid,
+                                                  data: '${Config.productBaseUrl}/product-details/$uuid',
                                                   version: QrVersions.auto,
                                                   size: 300,
                                                   gapless: true,
                                                 ),
                                                 const SizedBox(height: 12),
-                                                Text(
-                                                  uuid,
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                    color: Colors.black,
-                                                    fontWeight: FontWeight.w500,
+                                                ElevatedButton.icon(
+                                                  onPressed: () async {
+                                                    final productUrl = '${Config.productBaseUrl}/product-details/$uuid';
+                                                    try {
+                                                      await Clipboard.setData(ClipboardData(text: productUrl));
+                                                    } catch (_) {}
+                                                    Navigator.of(context).pop();
+                                                    ScaffoldMessenger.of(context).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text('Link copied to clipboard'),
+                                                        duration: Duration(seconds: 2),
+                                                      ),
+                                                    );
+                                                  },
+                                                  icon: const Icon(Icons.copy),
+                                                  label: const Text('Copy link'),
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: AppColors.pakistanGreen,
                                                   ),
                                                 ),
                                               ],
@@ -792,7 +805,7 @@ class _TreeDetailsPageState extends State<TreeDetailsPage> {
                                   );
                                 },
                                 child: QrImageView(
-                                  data: uuid,
+                                  data: '${Config.productBaseUrl}/product-details/$uuid',
                                   version: QrVersions.auto,
                                   size: 80,
                                   gapless: true,
