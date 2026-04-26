@@ -80,7 +80,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
 
     try {
       // Limit to first page to avoid long-running full aggregation
-      final response = await TreeApi.fetchTrees(page: 1);
+      final response = await TreeApi.fetchAllTrees();
       List<dynamic> treeList = [];
       if (response['data'] is Map) {
         final d = response['data'];
@@ -732,7 +732,7 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
               initialCenter: initialLocation,
               initialZoom: 16,
               minZoom: 12,
-              maxZoom: 19,
+              maxZoom: 25,
               cameraConstraint: CameraConstraint.contain(
                 bounds: farmBounds,
               ),
