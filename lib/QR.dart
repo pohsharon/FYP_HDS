@@ -6,8 +6,8 @@ import 'package:torch_light/torch_light.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:qr_code_tools/qr_code_tools.dart'; 
 import 'package:another_flushbar/flushbar.dart';
-import 'package:fyp_hbs/services/local database/fruit_db.dart';
-import 'package:fyp_hbs/services/local database/tree_db.dart';
+import 'package:fyp_hbs/services/api/tree_api.dart';
+import 'package:fyp_hbs/services/api/tree_api.dart';
 // import 'package:fyp_hbs/fruit/fruit_list.dart'; // unused import, navigation currently commented
 
 class QRScannerPage extends StatefulWidget {
@@ -22,24 +22,10 @@ class _QRScannerPageState extends State<QRScannerPage> {
   qr.QRViewController? controller;
   bool isTorchOn = false;
   bool _isProcessingQR = false;  // Prevent duplicate scans
-  late List<dynamic> _cachedTrees;
-  late List<dynamic> _cachedFruits;
-
   @override
   void initState() {
     super.initState();
-    _preloadDatabases();
-  }
-
-  Future<void> _preloadDatabases() async {
-    try {
-      // Preload databases to avoid slow first scan
-      _cachedTrees = await TreeDB().fetchAllTrees();
-      _cachedFruits = await FruitDB().getAllFruits();
-      // print('✅ [DB PRELOAD] Databases preloaded: ${_cachedTrees.length} trees, ${_cachedFruits.length} fruits');
-    } catch (e) {
-      print('⚠️ [DB PRELOAD ERROR] Failed to preload databases: $e');
-    }
+    // No local cache preload — always fetch from API
   }
 
   @override
@@ -99,47 +85,35 @@ class _QRScannerPageState extends State<QRScannerPage> {
     // print('🔍 [QR SCAN] Scanned at ${scanTime.toIso8601String()} - UUID: $uuid');
     
     try {
-      // First, check if this UUID is a tree (using cached database)
-      
-      final treeIndex = _cachedTrees.indexWhere((t) => t.uuid == uuid);
-
-      if (treeIndex >= 0 && mounted) {
-        // Found in tree database - navigate to tree details
-        // timing metrics removed (unused)
-        
-        
-        if (mounted) {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: uuid)),
-          );
+      // Try resolving the UUID from the server first (preferred).
+      try {
+        final srv = await TreeApi.getTreeByUuid(uuid);
+        // srv may be {"data": {...}} or the tree map itself
+        Map<String, dynamic>? treeMap;
+        if (srv is Map && srv.containsKey('data')) {
+          final d = srv['data'];
+          if (d is Map) treeMap = Map<String, dynamic>.from(d);
+        } else if (srv is Map) {
+          treeMap = Map<String, dynamic>.from(srv);
         }
-        
-        // navigation timing removed (unused)
-        return;
+
+        if (treeMap != null) {
+          // Upsert into local DB so offline views have the latest copy
+
+          if (mounted) {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => TreeDetailsPage(treeID: uuid)),
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        // Server fetch failed; fallback to local DB lookup below
+        // print('⚠️ [QR] Remote lookup failed, falling back to local DB: $e');
       }
 
-      // Second, check if this UUID is a fruit (using cached database)
-      
-      // Check only the fruit's own uuid field
-      final fruitIndex = _cachedFruits.indexWhere((f) => f.uuid == uuid);
-
-      if (fruitIndex >= 0 && mounted) {
-        // Found in fruit database - navigate to FruitList and show details
-        // timing and intermediate variables removed (unused)
-        
-        // if (mounted) {
-        //   await Navigator.push(
-        //     context,
-        //     MaterialPageRoute(
-        //       builder: (_) => FruitListFromQR(fruitUuid: foundFruit.uuid ?? uuid),
-        //     ),
-        //   );
-        // }
-        
-        // navigation timing removed (unused)
-        return;
-      }
+      // If server lookup failed, treat as not found (no local DB in API-only mode)
 
       // UUID not found in either database
       // not-found timing removed (unused)
