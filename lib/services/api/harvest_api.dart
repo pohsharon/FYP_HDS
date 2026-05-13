@@ -324,8 +324,7 @@ class HarvestApi {
   /// Calls: PUT {Config.apiBaseUrl}/trees/{id}/harvest-records/{harvestUuid}
   /// Body: any of { harvest_date, num_of_fruits, weight, spoilt }
   static Future<Map<String, dynamic>> updateHarvestRecord({
-    required String treeId,
-    required String harvestUuid,
+    required String recordId,
     DateTime? harvestDate,
     int? numOfFruits,
     double? weight,
@@ -335,13 +334,208 @@ class HarvestApi {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
 
-      final uri = Uri.parse('${Config.apiBaseUrl}/trees/$treeId/harvest-records/$harvestUuid');
+      final uri = Uri.parse('${Config.apiBaseUrl}/harvest-records/$recordId');
 
       final body = <String, dynamic>{};
       if (harvestDate != null) body['harvest_date'] = harvestDate.toIso8601String();
       if (numOfFruits != null) body['num_of_fruits'] = numOfFruits;
       if (weight != null) body['weight'] = weight;
       if (spoilt != null) body['spoilt'] = spoilt;
+
+      final response = await http.put(uri,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+     
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        throw Exception('Unexpected response format');
+      }
+
+      final message = (decoded is Map) ? (decoded['message'] ?? decoded['error'] ?? response.body) : response.body;
+      // Make error message explicit and include status for easier debugging
+      throw Exception('Failed to update harvest record (status ${response.statusCode}): $message');
+    } catch (e) {
+      throw Exception('Failed to update harvest record: ${e.toString()}');
+    }
+  }
+
+  /// Delete a harvest record for a tree.
+  /// Calls: DELETE {Config.apiBaseUrl}/trees/{id}/harvest-records/{harvestUuid}
+  /// Returns the decoded JSON response on success.
+  static Future<Map<String, dynamic>> deleteHarvestRecord({
+    required String recordId,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+
+      final uri = Uri.parse('${Config.apiBaseUrl}/harvest-records/$recordId');
+
+      final response = await http.delete(uri, headers: {
+        'Accept': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      });
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        throw Exception('Unexpected response format');
+      }
+
+      final message = (decoded is Map) ? (decoded['message'] ?? decoded['error'] ?? response.body) : response.body;
+      throw Exception(message);
+    } catch (e) {
+      throw Exception('Failed to delete harvest record: ${e.toString()}');
+    }
+  }
+
+  /// Create a harvest grade record.
+  /// Endpoint: POST {Config.apiBaseUrl}/harvest-grades
+  /// Body: {
+  ///   harvest_uuid: string,
+  ///   date: string (YYYY-MM-DD),
+  ///   species_id: int | null,
+  ///   grade: string | null,
+  ///   weight: number | null
+  /// }
+  static Future<Map<String, dynamic>> storeHarvestGrade({
+    required String harvestUuid,
+    required String date,
+    int? speciesId,
+    String? grade,
+    double? weight,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      final uri = Uri.parse('${Config.apiBaseUrl}/harvest-grades');
+
+      final body = <String, dynamic>{
+        'harvest_uuid': harvestUuid,
+        'date': date,
+      };
+      if (speciesId != null) body['species_id'] = speciesId;
+      if (grade != null) body['grade'] = grade;
+      if (weight != null) body['weight'] = weight;
+
+      final response = await http.post(uri,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        throw Exception('Unexpected response format');
+      }
+
+      final message = (decoded is Map) ? (decoded['message'] ?? decoded['error'] ?? response.body) : response.body;
+      throw Exception('Failed to create harvest grade (status ${response.statusCode}): $message');
+    } catch (e) {
+      throw Exception('Failed to create harvest grade: ${e.toString()}');
+    }
+  }
+
+  /// Fetch all harvest grades.
+  /// Endpoint: GET {Config.apiBaseUrl}/harvest-grades
+  /// Returns a list of harvest grades ordered by date and id (descending).
+  static Future<List<dynamic>> indexHarvestGrades() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      final uri = Uri.parse('${Config.apiBaseUrl}/harvest-grades');
+
+      final response = await http.get(uri, headers: {
+        'Accept': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      });
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (decoded is Map && decoded.containsKey('data')) {
+          final data = decoded['data'];
+          if (data is List) return data;
+          return [data];
+        }
+        if (decoded is List) return decoded;
+        throw Exception('Unexpected response format');
+      }
+
+      final message = (decoded is Map) ? (decoded['message'] ?? decoded['error'] ?? response.body) : response.body;
+      throw Exception(message);
+    } catch (e) {
+      throw Exception('Failed to fetch harvest grades: ${e.toString()}');
+    }
+  }
+
+  /// Fetch a specific harvest grade by ID.
+  /// Endpoint: GET {Config.apiBaseUrl}/harvest-grades/{id}
+  static Future<Map<String, dynamic>> showHarvestGrade({required int id}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      final uri = Uri.parse('${Config.apiBaseUrl}/harvest-grades/$id');
+
+      final response = await http.get(uri, headers: {
+        'Accept': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      });
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (decoded is Map && decoded.containsKey('data')) {
+          return Map<String, dynamic>.from(decoded['data']);
+        }
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        throw Exception('Unexpected response format');
+      }
+
+      final message = (decoded is Map) ? (decoded['message'] ?? decoded['error'] ?? response.body) : response.body;
+      throw Exception(message);
+    } catch (e) {
+      throw Exception('Failed to fetch harvest grade: ${e.toString()}');
+    }
+  }
+
+  /// Update a harvest grade record.
+  /// Endpoint: PUT {Config.apiBaseUrl}/harvest-grades/{id}
+  /// Body: {
+  ///   harvest_uuid: string,
+  ///   date: string (YYYY-MM-DD),
+  ///   species_id: int | null,
+  ///   grade: string | null,
+  ///   weight: number | null
+  /// }
+  static Future<Map<String, dynamic>> updateHarvestGrade({
+    required int id,
+    required String harvestUuid,
+    required String date,
+    int? speciesId,
+    String? grade,
+    double? weight,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      final uri = Uri.parse('${Config.apiBaseUrl}/harvest-grades/$id');
+
+      final body = <String, dynamic>{
+        'harvest_uuid': harvestUuid,
+        'date': date,
+      };
+      if (speciesId != null) body['species_id'] = speciesId;
+      if (grade != null) body['grade'] = grade;
+      if (weight != null) body['weight'] = weight;
 
       final response = await http.put(uri,
         headers: {
@@ -359,24 +553,19 @@ class HarvestApi {
       }
 
       final message = (decoded is Map) ? (decoded['message'] ?? decoded['error'] ?? response.body) : response.body;
-      throw Exception(message);
+      throw Exception('Failed to update harvest grade (status ${response.statusCode}): $message');
     } catch (e) {
-      throw Exception('Failed to update harvest record: ${e.toString()}');
+      throw Exception('Failed to update harvest grade: ${e.toString()}');
     }
   }
 
-  /// Delete a harvest record for a tree.
-  /// Calls: DELETE {Config.apiBaseUrl}/trees/{id}/harvest-records/{harvestUuid}
-  /// Returns the decoded JSON response on success.
-  static Future<Map<String, dynamic>> deleteHarvestRecord({
-    required String treeId,
-    required String harvestUuid,
-  }) async {
+  /// Delete a harvest grade record.
+  /// Endpoint: DELETE {Config.apiBaseUrl}/harvest-grades/{id}
+  static Future<Map<String, dynamic>> destroyHarvestGrade({required int id}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
-
-      final uri = Uri.parse('${Config.apiBaseUrl}/trees/$treeId/harvest-records/$harvestUuid');
+      final uri = Uri.parse('${Config.apiBaseUrl}/harvest-grades/$id');
 
       final response = await http.delete(uri, headers: {
         'Accept': 'application/json',
@@ -392,7 +581,7 @@ class HarvestApi {
       final message = (decoded is Map) ? (decoded['message'] ?? decoded['error'] ?? response.body) : response.body;
       throw Exception(message);
     } catch (e) {
-      throw Exception('Failed to delete harvest record: ${e.toString()}');
+      throw Exception('Failed to delete harvest grade: ${e.toString()}');
     }
   }
 }

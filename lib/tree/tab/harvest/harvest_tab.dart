@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fyp_hbs/theme/app_colors.dart';
 import 'package:fyp_hbs/services/api/tree_api.dart';
-import 'package:fyp_hbs/services/local%20database/tree_db.dart';
 import 'package:fyp_hbs/services/api/harvest_api.dart';
 import 'package:intl/intl.dart';
 import 'package:another_flushbar/flushbar.dart';
@@ -100,8 +99,9 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
           }
           return inner?.toString() ?? 'Unknown';
         }
-        if (d.containsKey('flowering_status'))
+        if (d.containsKey('flowering_status')) {
           return d['flowering_status']?.toString() ?? 'Unknown';
+        }
         for (final v in d.values) {
           if (v is String) return v;
         }
@@ -119,10 +119,12 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
     // Expect either { data: [ ... ] } or a top-level list
     if (data is Map) {
       if (data['data'] is List) return List<dynamic>.from(data['data']);
-      if (data['data'] is Map && data['data']['harvest_records'] is List)
+      if (data['data'] is Map && data['data']['harvest_records'] is List) {
         return List<dynamic>.from(data['data']['harvest_records']);
-      if (data['harvest_records'] is List)
+      }
+      if (data['harvest_records'] is List) {
         return List<dynamic>.from(data['harvest_records']);
+      }
       return [];
     }
     if (data is List) return data;
@@ -322,7 +324,7 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
   Future<void> _showAddRecordDialog(BuildContext context) async {
     final dateController = TextEditingController();
     final numController = TextEditingController();
-    final weightController = TextEditingController();
+    // final weightController = TextEditingController();
     bool spoilt = false;
 
     await showModalBottomSheet<void>(
@@ -410,17 +412,6 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
                           label: 'No. of fruits',
                           icon: Icons.format_list_numbered_rounded,
                           keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _BottomSheetField(
-                          controller: weightController,
-                          label: 'Weight (kg)',
-                          icon: Icons.scale_outlined,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
                         ),
                       ),
                     ],
@@ -512,7 +503,7 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
                                   ? dateController.text
                                   : null;
                           final num = int.tryParse(numController.text);
-                          final weight = double.tryParse(weightController.text);
+                          // final weight = double.tryParse(weightController.text);
                           Navigator.pop(context);
 
                           try {
@@ -529,12 +520,13 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
                                         ?.toString();
                               } else if (active is List && active.isNotEmpty) {
                                 final a = active.first;
-                                if (a is Map)
+                                if (a is Map) {
                                   activeHarvestUuid =
                                       (a['uuid'] ??
                                               a['harvest_uuid'] ??
                                               a['id'])
                                           ?.toString();
+                                }
                               }
                             } catch (e) {
                               // ignore - we'll show an error below if missing
@@ -568,17 +560,20 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
                                   widget.treeUuid,
                                 );
                                 Map<String, dynamic>? tmap;
-                                if (srv is Map && srv.containsKey('data')) {
+                                if (srv.containsKey('data')) {
                                   final d = srv['data'];
-                                  if (d is Map)
+                                  if (d is Map) {
                                     tmap = Map<String, dynamic>.from(d);
-                                } else if (srv is Map) {
+                                  }
+                                } else {
                                   tmap = Map<String, dynamic>.from(srv);
                                 }
+                              
                                 if (tmap != null && tmap.containsKey('id')) {
                                   final sid = tmap['id']?.toString();
-                                  if (sid != null && sid.isNotEmpty)
+                                  if (sid != null && sid.isNotEmpty) {
                                     serverId = sid;
+                                  }
                                 }
                               } catch (_) {}
                             }
@@ -602,12 +597,12 @@ class _HarvestTabPageState extends State<HarvestTabPage> {
                               return;
                             }
 
-                            final resp = await HarvestApi.createHarvestRecord(
+                            await HarvestApi.createHarvestRecord(
                               treeId: serverId,
                               harvestUuid: activeHarvestUuid,
                               harvestDate: date,
                               numOfFruits: num,
-                              weight: weight,
+                              // weight: weight,
                               spoilt: spoilt,
                             );
 
@@ -1024,7 +1019,7 @@ class _TimelineRecordTile extends StatelessWidget {
     final monStr =
         date != null ? DateFormat.MMM().format(date).toUpperCase() : '';
     final num = record['num_of_fruits']?.toString() ?? '—';
-    final weight = record['weight'] != null ? '${record['weight']} kg' : '—';
+    // final weight = record['weight'] != null ? '${record['weight']} kg' : '—';
     final spoilt = record['spoilt'] == true;
 
     return IntrinsicHeight(
@@ -1099,9 +1094,29 @@ class _TimelineRecordTile extends StatelessWidget {
               child: GestureDetector(
                 onTap: () async {
                   // Show options: Edit / Delete
-                  final harvestUuid =
-                      (record['uuid'] ?? record['harvest_uuid'] ?? record['id'])
-                          ?.toString();
+                  // Use harvest_uuid (the harvest event UUID) to identify the record for update/delete
+                  final harvestUuid = record['harvest_uuid']?.toString();
+                  final recordId = record['id']?.toString();
+
+                  // Debug: print the selected record and the identifier used for update/delete
+                  try { // ignore: avoid_print
+                    print('Selected harvest record: $record');
+                    print('Edit harvest record - harvest_uuid: $harvestUuid, record id: $recordId');
+                  } catch (_) {}
+
+                  if (harvestUuid == null || harvestUuid.isEmpty) {
+                    await Flushbar(
+                      message: 'Cannot edit this harvest record: missing harvest_uuid',
+                      icon: const Icon(Icons.error, color: Colors.white),
+                      backgroundColor: Colors.red.shade700,
+                      duration: const Duration(seconds: 3),
+                      borderRadius: BorderRadius.circular(8),
+                      margin: const EdgeInsets.all(12),
+                      flushbarPosition: FlushbarPosition.TOP,
+                    ).show(context);
+                    return;
+                  }
+                  final harvestEventUuid = harvestUuid;
                   await showModalBottomSheet<void>(
                     context: context,
                     isScrollControlled: true,
@@ -1115,12 +1130,7 @@ class _TimelineRecordTile extends StatelessWidget {
                         (ctx) => _EditHarvestSheet(
                           record: record,
                           treeId: treeId,
-                          harvestUuid:
-                              (record['uuid'] ??
-                                      record['harvest_uuid'] ??
-                                      record['id'])
-                                  ?.toString() ??
-                              '',
+                          harvestEventUuid: harvestEventUuid,
                           onRefresh: onRefresh,
                         ),
                   );
@@ -1189,21 +1199,25 @@ class _TimelineRecordTile extends StatelessWidget {
                                 ],
                               ),
                             ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          _StatChip(
-                            icon: Icons.eco_rounded,
-                            label: num,
-                            tooltip: 'Fruits',
-                          ),
-                          const SizedBox(width: 8),
-                          _StatChip(
-                            icon: Icons.scale_outlined,
-                            label: weight,
-                            tooltip: 'Weight',
+                          const SizedBox(width: 12),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.eco_rounded,
+                                size: 14,
+                                color: AppColors.mossGreen,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                num,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textMid,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -1222,13 +1236,13 @@ class _TimelineRecordTile extends StatelessWidget {
 class _EditHarvestSheet extends StatefulWidget {
   final dynamic record;
   final String treeId;
-  final String harvestUuid;
+  final String harvestEventUuid;
   final Future<void> Function()? onRefresh;
 
   const _EditHarvestSheet({
     required this.record,
     required this.treeId,
-    required this.harvestUuid,
+    required this.harvestEventUuid,
     this.onRefresh,
   });
 
@@ -1239,7 +1253,7 @@ class _EditHarvestSheet extends StatefulWidget {
 class _EditHarvestSheetState extends State<_EditHarvestSheet> {
   late final TextEditingController dateController;
   late final TextEditingController numController;
-  late final TextEditingController weightController;
+  // late final TextEditingController weightController;
   late bool spoilt;
 
   @override
@@ -1261,9 +1275,9 @@ class _EditHarvestSheetState extends State<_EditHarvestSheet> {
     numController = TextEditingController(
       text: widget.record['num_of_fruits']?.toString() ?? '',
     );
-    weightController = TextEditingController(
-      text: widget.record['weight']?.toString() ?? '',
-    );
+    // weightController = TextEditingController(
+    //   text: widget.record['weight']?.toString() ?? '',
+    // );
     spoilt = widget.record['spoilt'] == true;
   }
 
@@ -1271,7 +1285,7 @@ class _EditHarvestSheetState extends State<_EditHarvestSheet> {
   void dispose() {
     dateController.dispose();
     numController.dispose();
-    weightController.dispose();
+    // weightController.dispose();
     super.dispose();
   }
 
@@ -1340,17 +1354,17 @@ class _EditHarvestSheetState extends State<_EditHarvestSheet> {
                     keyboardType: TextInputType.number,
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _BottomSheetField(
-                    controller: weightController,
-                    label: 'Weight (kg)',
-                    icon: Icons.scale_outlined,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-                ),
+                // const SizedBox(width: 8),
+                // Expanded(
+                //   child: _BottomSheetField(
+                //     controller: weightController,
+                //     label: 'Weight (kg)',
+                //     icon: Icons.scale_outlined,
+                //     keyboardType: const TextInputType.numberWithOptions(
+                //       decimal: true,
+                //     ),
+                //   ),
+                // ),
               ],
             ),
             const SizedBox(height: 8),
@@ -1414,20 +1428,21 @@ class _EditHarvestSheetState extends State<_EditHarvestSheet> {
                     backgroundColor: AppColors.leafGreen,
                   ),
                   onPressed: () async {
-                    Navigator.pop(context);
                     try {
                       await HarvestApi.updateHarvestRecord(
-                        treeId: widget.treeId,
-                        harvestUuid: widget.harvestUuid,
+                        recordId: widget.record['id'].toString(),
                         harvestDate:
                             dateController.text.isNotEmpty
                                 ? DateTime.parse(dateController.text)
                                 : null,
                         numOfFruits: int.tryParse(numController.text),
-                        weight: double.tryParse(weightController.text),
+                        // weight: double.tryParse(weightController.text),
                         spoilt: spoilt,
                       );
+                      print("Record ID: ${widget.record['id']}, Harvest UUID: ${widget.harvestEventUuid}"); // Debug log
+                      print("Updated values - Date: ${dateController.text}, Num of fruits: ${numController.text}, Spoilt: $spoilt"); // Debug log
                       if (widget.onRefresh != null) await widget.onRefresh!();
+                      if (!mounted) return;
                       await Flushbar(
                         message: 'Record updated',
                         icon: const Icon(
@@ -1440,7 +1455,15 @@ class _EditHarvestSheetState extends State<_EditHarvestSheet> {
                         margin: const EdgeInsets.all(12),
                         flushbarPosition: FlushbarPosition.TOP,
                       ).show(context);
+                      if (mounted) {
+                        Navigator.pop(context);
+                      }
                     } catch (e) {
+                      // ignore: avoid_print
+                      print('⚠️ Failed to update harvest record: $e');
+                      // ignore: avoid_print
+                      print(StackTrace.current);
+                      if (!mounted) return;
                       await Flushbar(
                         message: 'Update failed: $e',
                         icon: const Icon(Icons.error, color: Colors.white),
@@ -1490,11 +1513,11 @@ class _EditHarvestSheetState extends State<_EditHarvestSheet> {
                         Navigator.pop(context);
                         try {
                           await HarvestApi.deleteHarvestRecord(
-                            treeId: widget.treeId,
-                            harvestUuid: widget.harvestUuid,
+                            recordId: widget.record['id'].toString(),
                           );
-                          if (widget.onRefresh != null)
+                          if (widget.onRefresh != null) {
                             await widget.onRefresh!();
+                          }
                           await Flushbar(
                             message: 'Record deleted',
                             icon: const Icon(
@@ -1532,60 +1555,20 @@ class _EditHarvestSheetState extends State<_EditHarvestSheet> {
   }
 }
 
-class _StatChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String tooltip;
-  const _StatChip({
-    required this.icon,
-    required this.label,
-    required this.tooltip,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-        decoration: BoxDecoration(
-          color: AppColors.mintFoam,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 13, color: AppColors.mossGreen),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textMid,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _BottomSheetField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final IconData icon;
-  final bool readOnly;
   final TextInputType? keyboardType;
+  final bool readOnly;
   final VoidCallback? onTap;
 
   const _BottomSheetField({
     required this.controller,
     required this.label,
     required this.icon,
-    this.readOnly = false,
     this.keyboardType,
+    this.readOnly = false,
     this.onTap,
   });
 
@@ -1593,23 +1576,16 @@ class _BottomSheetField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
-      readOnly: readOnly,
       keyboardType: keyboardType,
+      readOnly: readOnly,
       onTap: onTap,
-      style: TextStyle(fontSize: 14, color: AppColors.textDark),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(fontSize: 13, color: AppColors.textLight),
-        prefixIcon: Icon(icon, size: 18, color: AppColors.mossGreen),
+        prefixIcon: Icon(icon),
         filled: true,
-        fillColor: AppColors.mintFoam,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 12,
-        ),
+        fillColor: Colors.white,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: AppColors.divider),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
