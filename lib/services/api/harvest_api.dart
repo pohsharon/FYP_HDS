@@ -478,6 +478,74 @@ class HarvestApi {
     }
   }
 
+  /// Fetch harvest grades for a specific date.
+  /// Endpoint: GET {Config.apiBaseUrl}/harvest-grades/by-date/search?date=YYYY-MM-DD
+  /// Expected response shape:
+  /// {
+  ///   "success": true,
+  ///   "data": [ ... ],
+  ///   "count": 3
+  /// }
+  static Future<Map<String, dynamic>> fetchHarvestGradesByDate({
+    required String date,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('token');
+      final uri = Uri.parse(
+        '${Config.apiBaseUrl}/harvest-grades/by-date/search?date=${Uri.encodeQueryComponent(date)}',
+      );
+
+      final response = await http.get(uri, headers: {
+        'Accept': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      });
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (decoded is Map) {
+          final result = Map<String, dynamic>.from(decoded);
+
+          final data = result['data'];
+          if (data is List) {
+            result['data'] = data;
+          } else if (data is Map) {
+            result['data'] = [data];
+          } else if (data == null) {
+            result['data'] = <dynamic>[];
+          }
+
+          if (!result.containsKey('count')) {
+            final dataValue = result['data'];
+            result['count'] = dataValue is List ? dataValue.length : 0;
+          }
+
+          return result;
+        }
+
+        if (decoded is List) {
+          return {
+            'success': true,
+            'data': decoded,
+            'count': decoded.length,
+          };
+        }
+
+        throw Exception('Unexpected response format');
+      }
+
+      final message =
+          (decoded is Map)
+              ? (decoded['message'] ?? decoded['error'] ?? response.body)
+              : response.body;
+      throw Exception(
+        'Failed to fetch harvest grades by date (status ${response.statusCode}): $message',
+      );
+    } catch (e) {
+      throw Exception('Failed to fetch harvest grades by date: ${e.toString()}');
+    }
+  }
+
   /// Fetch a specific harvest grade by ID.
   /// Endpoint: GET {Config.apiBaseUrl}/harvest-grades/{id}
   static Future<Map<String, dynamic>> showHarvestGrade({required int id}) async {

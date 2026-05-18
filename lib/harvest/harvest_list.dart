@@ -8,6 +8,7 @@ import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import '../services/api/harvest_api.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
+import 'package:fyp_hbs/harvest/create_harvest_grade.dart';
 
 class HarvestPage extends StatefulWidget {
   const HarvestPage({super.key});
@@ -437,19 +438,19 @@ class _HarvestPageState extends State<HarvestPage> {
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        '${notSpoilW.toStringAsFixed(2)} kg',
+                                       '${notSpoiltFruits} fruits',
                                         style: TextStyle(
                                           color: AppColors.hunterGreen,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${notSpoiltFruits} fruits',
-                                        style: TextStyle(
-                                          color: AppColors.gray600,
-                                        ),
-                                      ),
+                                      // const SizedBox(height: 4),
+                                      // Text(
+                                      //   '${notSpoiltFruits} fruits',
+                                      //   style: TextStyle(
+                                      //     color: AppColors.gray600,
+                                      //   ),
+                                      // ),
                                     ],
                                   ),
                                 ),
@@ -502,13 +503,13 @@ class _HarvestPageState extends State<HarvestPage> {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      Text(
-                                        '${spoilW.toStringAsFixed(2)} kg',
-                                        style: TextStyle(
-                                          color: Colors.red,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
+                                      // Text(
+                                      //   '${spoilW.toStringAsFixed(2)} kg',
+                                      //   style: TextStyle(
+                                      //     color: Colors.red,
+                                      //     fontWeight: FontWeight.bold,
+                                      //   ),
+                                      // ),
                                       const SizedBox(height: 4),
                                       Text(
                                         '${spoiltFruits} fruits',
@@ -604,7 +605,16 @@ class _HarvestPageState extends State<HarvestPage> {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       elevation: 4,
-      child: Container(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CreateHarvestGradePage()),
+          );
+          _loadSummary(_period);
+        },
+        child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -677,57 +687,67 @@ class _HarvestPageState extends State<HarvestPage> {
                           Row(
                             children: [
                               Expanded(
+                                flex: 2,
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Collected',
+                                      'Summary',
                                       style: TextStyle(
                                         color: AppColors.gray600,
                                       ),
                                     ),
                                     const SizedBox(height: 6),
-                                    Text(
-                                      '$notSpoiltWeight kg',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.hunterGreen,
-                                      ),
+                                    // First row: not-spoilt (green) — fruits then weight
+                                    Row(
+                                      children: [
+                                        Icon(Icons.eco_rounded, size: 14, color: AppColors.hunterGreen),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '${notSpoiltFruits} fruits',
+                                          style: TextStyle(
+                                            color: AppColors.hunterGreen,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        // const SizedBox(width: 12),
+                                        // Text('·', style: TextStyle(color: AppColors.gray600)),
+                                        // const SizedBox(width: 12),
+                                        // Text(
+                                        //   '$notSpoiltWeight kg',
+                                        //   style: TextStyle(
+                                        //     color: AppColors.hunterGreen,
+                                        //     fontWeight: FontWeight.w600,
+                                        //   ),
+                                        // ),
+                                      ],
                                     ),
-                                    Text(
-                                      '$notSpoiltFruits fruits',
-                                      style: TextStyle(
-                                        color: AppColors.gray600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Spoilt',
-                                      style: TextStyle(
-                                        color: AppColors.gray600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      '$spoiltWeight kg',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.red,
-                                      ),
-                                    ),
-                                    Text(
-                                      '$spoiltFruits fruits',
-                                      style: TextStyle(
-                                        color: AppColors.gray600,
-                                      ),
+
+                                    const SizedBox(height: 8),
+
+                                    // Second row: spoilt (red) — fruits then weight
+                                    Row(
+                                      children: [
+                                        Icon(Icons.warning_amber_rounded, size: 14, color: Colors.red),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '${spoiltFruits} fruits',
+                                          style: TextStyle(
+                                            color: Colors.red,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        // Text('·', style: TextStyle(color: AppColors.gray600)),
+                                        // const SizedBox(width: 12),
+                                        // Text(
+                                        //   '$spoiltWeight kg',
+                                        //   style: TextStyle(
+                                        //     color: Colors.red,
+                                        //     fontWeight: FontWeight.w600,
+                                        //   ),
+                                        // ),
+                                      ],
                                     ),
                                   ],
                                 ),
@@ -740,6 +760,7 @@ class _HarvestPageState extends State<HarvestPage> {
                   ],
                 ),
       ),
+    )
     );
   }
 }
