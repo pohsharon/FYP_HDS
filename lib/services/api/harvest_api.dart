@@ -487,14 +487,28 @@ class HarvestApi {
   ///   "count": 3
   /// }
   static Future<Map<String, dynamic>> fetchHarvestGradesByDate({
-    required String date,
+    String? start,
+    String? end,
+    String? date,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('token');
-      final uri = Uri.parse(
-        '${Config.apiBaseUrl}/harvest-grades/by-date/search?date=${Uri.encodeQueryComponent(date)}',
-      );
+
+      final resolvedStart = start ?? date;
+      if (resolvedStart == null || resolvedStart.isEmpty) {
+        throw Exception('Please provide a start date');
+      }
+
+      final queryParameters = <String, String>{
+        'start': resolvedStart,
+      };
+      if (end != null && end.isNotEmpty) {
+        queryParameters['end'] = end;
+      }
+
+      final uri = Uri.parse('${Config.apiBaseUrl}/harvest-grades/by-date/search')
+          .replace(queryParameters: queryParameters);
 
       final response = await http.get(uri, headers: {
         'Accept': 'application/json',

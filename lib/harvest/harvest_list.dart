@@ -7,6 +7,7 @@ import 'package:fyp_hbs/authentication/login.dart';
 import 'package:fyp_hbs/services/api/auth_service.dart';
 import 'package:fyp_hbs/utils/connectivity_helper.dart';
 import '../services/api/harvest_api.dart';
+import 'package:fyp_hbs/harvest/widgets/harvest_info_modal.dart';
 import 'package:fyp_hbs/tree/tree_details.dart';
 import 'package:fyp_hbs/harvest/create_harvest_grade.dart';
 
@@ -154,7 +155,6 @@ class _HarvestPageState extends State<HarvestPage> {
   DateTime _selectedWeekDate = DateTime.now();
   List<Map<String, dynamic>> _details = [];
   bool _loadingDetails = true;
-  String? _lastRangeRaw;
 
   String _formatDate(DateTime d) => d.toIso8601String().split('T').first;
 
@@ -224,8 +224,6 @@ class _HarvestPageState extends State<HarvestPage> {
         try {
           final range = await HarvestApi.fetchRangeSummary(from: from, to: to);
           final rawDetails = range['details'];
-          final rawBody = range['_raw_body']?.toString();
-          if (mounted) setState(() => _lastRangeRaw = rawBody);
 
           if (rawDetails is List) {
             final parsed =
@@ -238,7 +236,6 @@ class _HarvestPageState extends State<HarvestPage> {
           }
         } catch (e) {
           if (mounted) setState(() => _details = []);
-          if (mounted) setState(() => _lastRangeRaw = e.toString());
         } finally {
           if (mounted) setState(() => _loadingDetails = false);
         }
@@ -376,7 +373,6 @@ class _HarvestPageState extends State<HarvestPage> {
                             // Consider this record spoilt when spoilt weight > 0
                             final spoilW = double.tryParse(spoiltWeight) ?? 0.0;
                             final notSpoilW = double.tryParse(notSpoiltWeight) ?? 0.0;
-                            final isSpoilt = spoilW > 0 && notSpoilW == 0;
                             final spoiltFruits =
                                 int.tryParse(
                                   item['spoilt_fruits']?.toString() ?? '0',
@@ -387,7 +383,6 @@ class _HarvestPageState extends State<HarvestPage> {
                                   item['not_spoilt_fruits']?.toString() ?? '0',
                                 ) ??
                                 0;
-                            final totalFruits = spoiltFruits + notSpoiltFruits;
 
                             // Build separate cards when both spoilt and not-spoilt weights exist
                             final List<Widget> cards = [];
@@ -576,20 +571,6 @@ class _HarvestPageState extends State<HarvestPage> {
       totals = {};
     }
 
-    String _formatWeight(dynamic v) {
-      if (v == null) return '0.00';
-      if (v is num) return v.toStringAsFixed(2);
-      final s = v.toString();
-      try {
-        final d = double.parse(s);
-        return d.toStringAsFixed(2);
-      } catch (_) {
-        return s;
-      }
-    }
-
-    final spoiltWeight = _formatWeight(totals['spoilt_weight']);
-    final notSpoiltWeight = _formatWeight(totals['not_spoilt_weight']);
     final spoiltFruits = (totals['spoilt_fruits'] ?? 0).toString();
     final notSpoiltFruits = (totals['not_spoilt_fruits'] ?? 0).toString();
 
@@ -602,165 +583,390 @@ class _HarvestPageState extends State<HarvestPage> {
       subtitle = (from.isNotEmpty || to.isNotEmpty) ? '$from — $to' : '';
     }
 
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      elevation: 4,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const CreateHarvestGradePage()),
-          );
-          _loadSummary(_period);
-        },
-        child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [AppColors.white, AppColors.background],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child:
-            _loadingSummary
-                ? SizedBox(
-                  height: 90,
-                  child: Center(
-                    child: CircularProgressIndicator(
-                      color: AppColors.hunterGreen,
-                    ),
-                  ),
-                )
-                : Row(
-                  children: [
-                    Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: [AppColors.hunterGreen, AppColors.mossGreen],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.12),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.agriculture,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${_period[0].toUpperCase()}${_period.substring(1)} Harvest',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.gray800,
-                            ),
-                          ),
-                          if (subtitle.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                top: 6.0,
-                                bottom: 6.0,
-                              ),
-                              child: Text(
-                                subtitle,
-                                style: TextStyle(color: AppColors.gray600),
-                              ),
-                            ),
-                          Row(
-                            children: [
-                              Expanded(
-                                flex: 2,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Summary',
-                                      style: TextStyle(
-                                        color: AppColors.gray600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    // First row: not-spoilt (green) — fruits then weight
-                                    Row(
-                                      children: [
-                                        Icon(Icons.eco_rounded, size: 14, color: AppColors.hunterGreen),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          '${notSpoiltFruits} fruits',
-                                          style: TextStyle(
-                                            color: AppColors.hunterGreen,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        // const SizedBox(width: 12),
-                                        // Text('·', style: TextStyle(color: AppColors.gray600)),
-                                        // const SizedBox(width: 12),
-                                        // Text(
-                                        //   '$notSpoiltWeight kg',
-                                        //   style: TextStyle(
-                                        //     color: AppColors.hunterGreen,
-                                        //     fontWeight: FontWeight.w600,
-                                        //   ),
-                                        // ),
-                                      ],
-                                    ),
+    final range = _currentPeriodRange();
 
-                                    const SizedBox(height: 8),
-
-                                    // Second row: spoilt (red) — fruits then weight
-                                    Row(
-                                      children: [
-                                        Icon(Icons.warning_amber_rounded, size: 14, color: Colors.red),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          '${spoiltFruits} fruits',
-                                          style: TextStyle(
-                                            color: Colors.red,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        // Text('·', style: TextStyle(color: AppColors.gray600)),
-                                        // const SizedBox(width: 12),
-                                        // Text(
-                                        //   '$spoiltWeight kg',
-                                        //   style: TextStyle(
-                                        //     color: Colors.red,
-                                        //     fontWeight: FontWeight.w600,
-                                        //   ),
-                                        // ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+    return HarvestSummaryCarouselCard(
+      period: _period,
+      subtitle: subtitle,
+      rangeStart: range['start']!,
+      rangeEnd: range['end'],
+      loadingSummary: _loadingSummary,
+      spoiltFruits: spoiltFruits,
+      notSpoiltFruits: notSpoiltFruits,
+      onCreateHarvestGrade: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const CreateHarvestGradePage()),
+        );
+        _loadSummary(_period);
+      },
+      gradeTotalsFuture: _fetchAndAggregateGrades(
+        start: range['start']!,
+        end: range['end'],
       ),
-    )
+    );
+  }
+
+  Map<String, String> _currentPeriodRange() {
+    if (_period == 'day') {
+      final date = _formatDate(_selectedDay);
+      return {'start': date, 'end': date};
+    }
+
+    if (_period == 'week') {
+      final wd = _selectedWeekDate.weekday; // 1 = Monday
+      final monday = _selectedWeekDate.subtract(Duration(days: wd - 1));
+      final sunday = monday.add(const Duration(days: 6));
+      return {
+        'start': _formatDate(monday),
+        'end': _formatDate(sunday),
+      };
+    }
+
+    final now = DateTime.now();
+    final serverFrom = _summary?['from']?.toString();
+    final start = (serverFrom != null && serverFrom.isNotEmpty)
+        ? (serverFrom.length >= 10 ? serverFrom.substring(0, 10) : serverFrom)
+        : _formatDate(DateTime(now.year, 1, 1));
+
+    return {
+      'start': start,
+      'end': _formatDate(now),
+    };
+  }
+
+  Future<Map<String, double>> _fetchAndAggregateGrades({
+    required String start,
+    String? end,
+  }) async {
+    final Map<String, double> totals = {};
+    try {
+      final resp = await HarvestApi.fetchHarvestGradesByDate(
+        start: start,
+        end: end,
+      );
+      final list = resp['data'] as List? ?? [];
+      for (final item in list) {
+        if (item is Map) {
+          final grade = (item['grade'] ?? 'Unspecified').toString();
+          final wRaw = item['weight'];
+          double w = 0.0;
+          if (wRaw is num) w = wRaw.toDouble();
+          else if (wRaw is String) w = double.tryParse(wRaw) ?? 0.0;
+          totals[grade] = (totals[grade] ?? 0.0) + w;
+        }
+      }
+    } catch (_) {
+      // keep empty totals when the range fetch fails
+    }
+    return totals;
+  }
+}
+
+class HarvestSummaryCarouselCard extends StatefulWidget {
+  const HarvestSummaryCarouselCard({
+    super.key,
+    required this.period,
+    required this.subtitle,
+    required this.rangeStart,
+    required this.rangeEnd,
+    required this.loadingSummary,
+    required this.notSpoiltFruits,
+    required this.spoiltFruits,
+    required this.onCreateHarvestGrade,
+    required this.gradeTotalsFuture,
+  });
+
+  final String period;
+  final String subtitle;
+  final String rangeStart;
+  final String? rangeEnd;
+  final bool loadingSummary;
+  final String notSpoiltFruits;
+  final String spoiltFruits;
+  final VoidCallback onCreateHarvestGrade;
+  final Future<Map<String, double>> gradeTotalsFuture;
+
+  @override
+  State<HarvestSummaryCarouselCard> createState() => _HarvestSummaryCarouselCardState();
+}
+
+class _HarvestSummaryCarouselCardState extends State<HarvestSummaryCarouselCard> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(viewportFraction: 0.96);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 190,
+      child: Column(
+        children: [
+          Expanded(
+            child: PageView(
+              controller: _pageController,
+              onPageChanged: (index) => setState(() => _currentPage = index),
+              children: [
+                _buildSummaryPage(),
+                _buildGradeTotalsPage(),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildDot(0),
+              const SizedBox(width: 6),
+              _buildDot(1),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDot(int index) {
+    final selected = _currentPage == index;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: selected ? 18 : 7,
+      height: 7,
+      decoration: BoxDecoration(
+        color: selected ? AppColors.hunterGreen : AppColors.gray300,
+        borderRadius: BorderRadius.circular(999),
+      ),
+    );
+  }
+
+  Widget _panel({required Widget child, required VoidCallback? onTap}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        elevation: 4,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.white, AppColors.background],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryPage() {
+    return _panel(
+      onTap: widget.onCreateHarvestGrade,
+      child: widget.loadingSummary
+          ? Center(
+              child: CircularProgressIndicator(color: AppColors.hunterGreen),
+            )
+          : Row(
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [AppColors.hunterGreen, AppColors.mossGreen],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.12),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.agriculture, color: Colors.white, size: 32),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '${widget.period[0].toUpperCase()}${widget.period.substring(1)} Harvest',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.gray800,
+                        ),
+                      ),
+                      if (widget.subtitle.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6.0, bottom: 6.0),
+                          child: Text(
+                            widget.subtitle,
+                            style: TextStyle(color: AppColors.gray600),
+                          ),
+                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _metricRow(
+                              icon: Icons.eco_rounded,
+                              iconColor: AppColors.hunterGreen,
+                              label: 'Not spoilt',
+                              value: '${widget.notSpoiltFruits} fruits',
+                              valueColor: AppColors.hunterGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _metricRow(
+                              icon: Icons.warning_amber_rounded,
+                              iconColor: Colors.red,
+                              label: 'Spoilt',
+                              value: '${widget.spoiltFruits} fruits',
+                              valueColor: Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Swipe for grade totals',
+                        style: TextStyle(
+                          color: AppColors.gray500,
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _metricRow({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+    required Color valueColor,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: iconColor),
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: TextStyle(color: AppColors.gray600, fontSize: 13),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              color: valueColor,
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGradeTotalsPage() {
+    return _panel(
+      onTap: () {
+        showHarvestInfoModal(
+          context,
+          start: widget.rangeStart,
+          end: widget.rangeEnd,
+          title: '${widget.period[0].toUpperCase()}${widget.period.substring(1)} Harvest Info',
+        );
+      },
+      child: FutureBuilder<Map<String, double>>(
+        future: widget.gradeTotalsFuture,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return Center(
+              child: CircularProgressIndicator(color: AppColors.hunterGreen),
+            );
+          }
+          if (snap.hasError) {
+            return Center(
+              child: Text(
+                'Failed to load grade totals',
+                style: TextStyle(color: AppColors.gray700),
+              ),
+            );
+          }
+
+          final entries = (snap.data ?? {}).entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+          final totalWeight = entries.fold<double>(
+            0.0,
+            (sum, entry) => sum + entry.value,
+          );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '${widget.period[0].toUpperCase()}${widget.period.substring(1)} Total Weight',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.gray800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${totalWeight.toStringAsFixed(2)} kg',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.hunterGreen,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap to open harvest info',
+                style: TextStyle(
+                  color: AppColors.gray500,
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

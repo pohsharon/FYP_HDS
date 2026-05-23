@@ -19,8 +19,15 @@ class _HarvestDetailsSummary {
   });
 }
 
-Future<void> showHarvestInfoModal(BuildContext context, {String? date}) async {
-  final future = _loadHarvestDetails(date: date);
+Future<void> showHarvestInfoModal(
+  BuildContext context, {
+  String? date,
+  String? start,
+  String? end,
+  String? title,
+}) async {
+  final future = _loadHarvestDetails(date: date, start: start, end: end);
+  final resolvedTitle = title ?? 'Harvest info';
 
   if (!context.mounted) return;
   showDialog<void>(
@@ -48,9 +55,9 @@ Future<void> showHarvestInfoModal(BuildContext context, {String? date}) async {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Harvest info',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    Text(
+                      resolvedTitle,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 12),
                     Text('Failed to load harvest details: ${snapshot.error}'),
@@ -82,10 +89,10 @@ Future<void> showHarvestInfoModal(BuildContext context, {String? date}) async {
                   children: [
                     Row(
                       children: [
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Harvest info',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            resolvedTitle,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                           ),
                         ),
                         IconButton(
@@ -94,7 +101,7 @@ Future<void> showHarvestInfoModal(BuildContext context, {String? date}) async {
                         ),
                       ],
                     ),
-                    Text('Date: ${summary.date}'),
+                    Text('Period: ${summary.date}'),
                     const SizedBox(height: 8),
                     Text('Records: ${summary.count}'),
                     const SizedBox(height: 8),
@@ -149,7 +156,7 @@ Future<void> showHarvestInfoModal(BuildContext context, {String? date}) async {
                     ),
                     const SizedBox(height: 10),
                     if (speciesEntries.isEmpty)
-                      const Text('No species data available for today.')
+                      const Text('No species data available for this period.')
                     else
                       ...speciesEntries.map(
                         (entry) => Padding(
@@ -185,9 +192,10 @@ Future<void> showHarvestInfoModal(BuildContext context, {String? date}) async {
   );
 }
 
-Future<_HarvestDetailsSummary> _loadHarvestDetails({String? date}) async {
-  final resolvedDate = date ?? DateTime.now().toIso8601String().split('T').first;
-  final response = await HarvestApi.fetchHarvestGradesByDate(date: resolvedDate);
+Future<_HarvestDetailsSummary> _loadHarvestDetails({String? date, String? start, String? end}) async {
+  final resolvedStart = start ?? date ?? DateTime.now().toIso8601String().split('T').first;
+  final resolvedEnd = end ?? date ?? resolvedStart;
+  final response = await HarvestApi.fetchHarvestGradesByDate(start: resolvedStart, end: resolvedEnd);
   final rawRecords = response['data'];
 
   final records = <Map<String, dynamic>>[];
@@ -221,7 +229,7 @@ Future<_HarvestDetailsSummary> _loadHarvestDetails({String? date}) async {
   }
 
   return _HarvestDetailsSummary(
-    date: resolvedDate,
+    date: resolvedStart == resolvedEnd ? resolvedStart : '$resolvedStart to $resolvedEnd',
     count: records.length,
     totalWeight: totalWeight,
     gradeWeights: gradeWeights,

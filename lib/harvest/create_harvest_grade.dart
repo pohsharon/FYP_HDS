@@ -115,26 +115,24 @@ class _CreateHarvestGradePageState extends State<CreateHarvestGradePage> {
 
         // Calculate species total for this day
         double speciesTotal = 0;
+        final targetSpeciesId = speciesId?.toString();
         for (final item in grades) {
-          if (item is Map && item['species_id'] == speciesId) {
-            final itemWeight = item['weight'];
-            if (itemWeight is num) {
-              speciesTotal += itemWeight.toDouble();
-            }
+          if (item is Map) {
+            final itemSpeciesId = item['species_id']?.toString();
+            final matchesSpecies = targetSpeciesId == null || itemSpeciesId == targetSpeciesId;
+            if (!matchesSpecies) continue;
+
+            speciesTotal += _parseWeightValue(item['weight']);
           }
         }
 
-        final existingWeight = existingRecord['weight'];
-        final existingWeightDouble =
-            existingWeight is num
-                ? existingWeight.toDouble()
-                : (existingWeight is String
-                    ? double.tryParse(existingWeight)
-                    : null);
-        final existingWeightStr =
-            existingWeightDouble != null
-                ? existingWeightDouble.toStringAsFixed(2)
-                : 'N/A';
+        final inputWeightStr =
+          weight != null ? weight.toStringAsFixed(2) : 'N/A';
+        final savedWeight = existingRecord['weight'];
+        final savedWeightDouble =
+          savedWeight is num
+            ? savedWeight.toDouble()
+            : (savedWeight is String ? double.tryParse(savedWeight) : null);
         final speciesTotalStr = speciesTotal.toStringAsFixed(2);
         final existingGrade = existingRecord['grade'] ?? 'N/A';
 
@@ -194,7 +192,7 @@ class _CreateHarvestGradePageState extends State<CreateHarvestGradePage> {
                   const SizedBox(height: 16),
                   _buildInfoRow('Grade', existingGrade),
                   const SizedBox(height: 8),
-                  _buildInfoRow('Record Weight', '$existingWeightStr kg'),
+                  _buildInfoRow('Record Weight', '$inputWeightStr kg'),
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(10),
@@ -213,7 +211,7 @@ class _CreateHarvestGradePageState extends State<CreateHarvestGradePage> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Species total: $speciesTotalStr kg',
+                            'Weight saved: $speciesTotalStr kg',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
@@ -239,9 +237,16 @@ class _CreateHarvestGradePageState extends State<CreateHarvestGradePage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(dialogContext).pop('add'),
-                  child: const Text(
-                    'Add New',
-                    style: TextStyle(color: Colors.blue),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Add New',
+                        style: TextStyle(color: Colors.blue),
+                      ),
+                      const SizedBox(height: 2),
+                    
+                    ],
                   ),
                 ),
 
@@ -266,9 +271,15 @@ class _CreateHarvestGradePageState extends State<CreateHarvestGradePage> {
                       ),
                       onPressed:
                           () => Navigator.of(dialogContext).pop('replace'),
-                      child: const Text(
-                        'Replace',
-                        style: TextStyle(color: Colors.white),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Replace',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                         
+                        ],
                       ),
                     ),
                   ],
@@ -301,7 +312,7 @@ class _CreateHarvestGradePageState extends State<CreateHarvestGradePage> {
             ).show(context);
           } else {
             // Add to existing: sum existing weight + newly entered weight, then update
-            final existingW = existingWeightDouble ?? 0.0;
+            final existingW = savedWeightDouble ?? 0.0;
             final incomingW = weight ?? 0.0;
             final newTotal = existingW + incomingW;
 
@@ -357,6 +368,12 @@ class _CreateHarvestGradePageState extends State<CreateHarvestGradePage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  double _parseWeightValue(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0;
   }
 
   Future<void> _fetchSpecies() async {
